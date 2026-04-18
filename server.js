@@ -196,13 +196,24 @@ class ChessopiaServer {
     }
     
     start() {
-        this.server.listen(this.port, () => {
-            console.log(`Chessopia server running on port ${this.port}`);
-            console.log(`Open http://localhost:${this.port} to play`);
-        });
+        try {
+            this.server.listen(this.port, () => {
+                console.log(`Chessopia server running on port ${this.port}`);
+                console.log(`Open http://localhost:${this.port} to play`);
+            });
+        } catch (error) {
+            console.error('Server startup error:', error);
+            process.exit(1);
+        }
     }
 }
 
 // Start the server
-const server = new ChessopiaServer();
-server.start();
+try {
+    console.log('Starting Chessopia server...');
+    const server = new ChessopiaServer();
+    server.start();
+} catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+}
