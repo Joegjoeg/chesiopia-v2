@@ -18,10 +18,13 @@ class NetworkManager {
     async connect() {
         try {
             this.updateStatus('Connecting...', false);
-            console.log('[Network] Starting connection to localhost:3000...');
+            
+            // Use current domain for connection (works on both localhost and production)
+            const serverUrl = window.location.origin;
+            console.log('[Network] Starting connection to:', serverUrl);
             
             // Connect to server
-            this.socket = io('localhost:3000', {
+            this.socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 timeout: 10000,
                 forceNew: true
