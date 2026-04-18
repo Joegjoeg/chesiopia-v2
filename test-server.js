@@ -1,5 +1,4 @@
 const express = require('express');
-const path = require('path');
 
 console.log('Starting test server...');
 
@@ -8,11 +7,22 @@ const port = process.env.PORT || 3000;
 
 // Simple test route
 app.get('/', (req, res) => {
-    res.send('<h1>Test Server Working!</h1><p>Port: ' + port + '</p>');
+    res.send(`
+        <h1>Chesiopia Test Server Working!</h1>
+        <p>Port: ${port}</p>
+        <p>Time: ${new Date().toISOString()}</p>
+        <p>Status: Server is running successfully</p>
+        <button onclick="alert('JavaScript working!')">Test JavaScript</button>
+        <script>
+            console.log('Client-side JavaScript loaded');
+        </script>
+    `);
 });
 
-// Test static file serving
-app.use(express.static(path.join(__dirname, 'client')));
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', port: port, time: new Date().toISOString() });
+});
 
 app.listen(port, () => {
     console.log(`Test server running on port ${port}`);
