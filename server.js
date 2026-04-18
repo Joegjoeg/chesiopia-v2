@@ -31,12 +31,12 @@ class ChessopiaServer {
     setupMiddleware() {
         this.app.use(cors());
         this.app.use(express.json());
-        this.app.use(express.static(path.join(__dirname, '../client')));
+        this.app.use(express.static(path.join(__dirname, 'client')));
     }
     
     setupRoutes() {
         this.app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, '../client/index.html'));
+            res.sendFile(path.join(__dirname, 'client/index.html'));
         });
         
         this.app.get('/api/terrain/:x/:y', (req, res) => {
