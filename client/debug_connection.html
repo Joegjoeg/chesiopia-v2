@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Connection</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { background: #333; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #2d5a2d; }
+        .error { background: #8b0000; }
+        .warning { background: #8b6914; }
+        pre { background: #2d2d2d; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Socket.IO Connection Debug</h1>
+        <div id="status" class="status">Initializing...</div>
+        <div id="debug"></div>
+    </div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `<div>${timestamp}: ${message}</div>`;
+            debugDiv.innerHTML += entry;
+            console.log(message);
+            
+            // Update status background
+            if (type === 'success') statusDiv.className = 'status success';
+            else if (type === 'error') statusDiv.className = 'status error';
+            else if (type === 'warning') statusDiv.className = 'status warning';
+        }
+        
+        // Step 1: Check environment
+        log('=== ENVIRONMENT CHECK ===');
+        log(`Browser: ${navigator.userAgent}`);
+        log(`Current URL: ${window.location.href}`);
+        log(`Socket.IO version: ${io ? io.version : 'NOT LOADED'}`);
+        
+        // Step 2: Test Socket.IO availability
+        if (typeof io === 'undefined') {
+            log('ERROR: Socket.IO not loaded', 'error');
+            return;
+        }
+        log('SUCCESS: Socket.IO loaded', 'success');
+        
+        // Step 3: Test connection attempts
+        const connectionTests = [
+            {
+                name: 'Default (auto-detect)',
+                config: {}
+            },
+            {
+                name: 'Explicit localhost',
+                config: { url: 'localhost:3000' }
+            },
+            {
+                name: 'Explicit 127.0.0.1',
+                config: { url: '127.0.0.1:3000' }
+            },
+            {
+                name: 'Force polling only',
+                config: { url: 'localhost:3000', transports: ['polling'] }
+            }
+        ];
+        
+        let testIndex = 0;
+        
+        function runConnectionTest() {
+            if (testIndex >= connectionTests.length) {
+                log('=== ALL TESTS COMPLETED ===', 'warning');
+                return;
+            }
+            
+            const test = connectionTests[testIndex];
+            log(`\n=== TESTING: ${test.name} ===`);
+            
+            const socket = io(test.config.url, {
+                timeout: 5000,
+                forceNew: true,
+                ...test.config
+            });
+            
+            let connected = false;
+            
+            socket.on('connect', () => {
+                connected = true;
+                log(`SUCCESS: Connected with ${test.name}`, 'success');
+                socket.disconnect();
+                
+                testIndex++;
+                setTimeout(runConnectionTest, 1000);
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: ${test.name} - ${error.message}`, 'error');
+                socket.disconnect();
+                
+                testIndex++;
+                setTimeout(runConnectionTest, 1000);
+            });
+            
+            socket.on('disconnect', () => {
+                if (!connected) {
+                    log(`DISCONNECTED: ${test.name} (no successful connect)`, 'warning');
+                }
+            });
+            
+            // Timeout
+            setTimeout(() => {
+                if (!connected) {
+                    log(`TIMEOUT: ${test.name}`, 'error');
+                    socket.disconnect();
+                    
+                    testIndex++;
+                    setTimeout(runConnectionTest, 1000);
+                }
+            }, 6000);
+        }
+        
+        // Start testing after delay
+        setTimeout(runConnectionTest, 1000);
+    </script>
+</body>
+</html>

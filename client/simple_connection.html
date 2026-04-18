@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffcccc; }
+        .success { background: #ccffcc; }
+        .warning { background: #ffffcc; }
+        #log { max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Simple Connection Test</h1>
+    <div id="status" class="status">Testing...</div>
+    <div id="log"></div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(message) {
+            console.log(message);
+            logDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+        }
+        
+        // Test 1: Check if we can load the page
+        statusDiv.className = 'status warning';
+        statusDiv.textContent = 'Testing page load...';
+        log('Page loaded successfully');
+        
+        // Test 2: Check if Socket.IO is available
+        if (typeof io === 'undefined') {
+            statusDiv.className = 'status error';
+            statusDiv.textContent = 'Socket.IO not loaded';
+            log('ERROR: Socket.IO not loaded');
+            return;
+        }
+        log('Socket.IO is available');
+        
+        // Test 3: Try connection with different approaches
+        const tests = [
+            {
+                name: 'Default connection',
+                url: undefined
+            },
+            {
+                name: 'Localhost connection',
+                url: 'localhost:3000'
+            },
+            {
+                name: '127.0.0.1 connection',
+                url: '127.0.0.1:3000'
+            },
+            {
+                name: 'HTTP connection',
+                url: 'http://localhost:3000'
+            }
+        ];
+        
+        let currentTest = 0;
+        
+        function runTest() {
+            if (currentTest >= tests.length) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'All connection tests failed';
+                log('All connection tests failed');
+                return;
+            }
+            
+            const test = tests[currentTest];
+            log('Testing: ' + test.name);
+            statusDiv.className = 'status warning';
+            statusDiv.textContent = 'Testing: ' + test.name;
+            
+            const socket = io(test.url, {
+                timeout: 3000,
+                forceNew: true
+            });
+            
+            let connected = false;
+            
+            socket.on('connect', () => {
+                connected = true;
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'SUCCESS: ' + test.name + ' connected!';
+                log('SUCCESS: ' + test.name + ' connected');
+                socket.disconnect();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log('ERROR: ' + test.name + ' - ' + error.message);
+            });
+            
+            socket.on('disconnect', () => {
+                if (!connected) {
+                    log('DISCONNECTED: ' + test.name + ' (no successful connect)');
+                }
+            });
+            
+            setTimeout(() => {
+                if (!connected) {
+                    log('TIMEOUT: ' + test.name);
+                    socket.disconnect();
+                }
+                currentTest++;
+                setTimeout(runTest, 1000);
+            }, 3000);
+        }
+        
+        // Start testing
+        setTimeout(runTest, 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Test</title>
+</head>
+<body>
+    <h1>Direct Connection Test</h1>
+    <div id="status">Testing...</div>
+    <div id="log"></div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(msg) {
+            console.log(msg);
+            logDiv.innerHTML += new Date().toLocaleTimeString() + ': ' + msg + '<br>';
+        }
+        
+        log('Testing direct connection...');
+        
+        // Try connection with minimal configuration
+        const socket = io('localhost:3000');
+        
+        socket.on('connect', () => {
+            log('SUCCESS: Connected!');
+            statusDiv.innerHTML = 'Connected!';
+            statusDiv.style.color = 'green';
+        });
+        
+        socket.on('connect_error', (error) => {
+            log('ERROR: ' + error.message);
+            statusDiv.innerHTML = 'Connection failed: ' + error.message;
+            statusDiv.style.color = 'red';
+        });
+        
+        socket.on('disconnect', () => {
+            log('DISCONNECTED');
+            statusDiv.innerHTML = 'Disconnected';
+            statusDiv.style.color = 'orange';
+        });
+        
+        // Timeout
+        setTimeout(() => {
+            if (socket.disconnected) {
+                log('TIMEOUT: No connection established');
+                statusDiv.innerHTML = 'Connection timeout';
+                statusDiv.style.color = 'red';
+            }
+        }, 5000);
+    </script>
+</body>
+</html>

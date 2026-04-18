@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Final Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .panel { background: #2d2d2d; padding: 20px; border-radius: 8px; margin: 10px 0; }
+        .status { font-size: 18px; font-weight: bold; margin-bottom: 15px; }
+        .success { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
+        .info { color: #3498db; }
+        button { background: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; margin: 5px; font-size: 14px; }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #log { height: 400px; overflow-y: auto; background: #1e1e1e; padding: 15px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <h1>Socket.IO Connection Test</h1>
+            <div id="status" class="status info">Initializing...</div>
+            
+            <div style="margin: 20px 0;">
+                <button onclick="testSocketIO()">Test Socket.IO Connection</button>
+                <button onclick="testWebSocket()">Test Direct WebSocket</button>
+                <button onclick="testHTTP()">Test HTTP Access</button>
+                <button onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Debug Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `<div class="${type}">[${timestamp}] ${message}</div>`;
+            logDiv.innerHTML += entry;
+            console.log(message);
+        }
+        
+        function updateStatus(text, type = 'info') {
+            statusDiv.innerHTML = `<span class="${type}">${text}</span>`;
+        }
+        
+        function clearLog() {
+            logDiv.innerHTML = '';
+        }
+        
+        // Initial check
+        log('=== INITIALIZING ===');
+        if (typeof io === 'undefined') {
+            updateStatus('Socket.IO not loaded', 'error');
+            log('ERROR: Socket.IO library not loaded');
+            return;
+        }
+        
+        updateStatus('Socket.IO loaded, ready for tests', 'success');
+        log('SUCCESS: Socket.IO library loaded');
+        
+        function testSocketIO() {
+            log('\n=== TESTING SOCKET.IO ===');
+            updateStatus('Testing Socket.IO...', 'warning');
+            
+            try {
+                const socket = io('localhost:3000', {
+                    timeout: 5000,
+                    forceNew: true
+                });
+                
+                let connected = false;
+                
+                socket.on('connect', () => {
+                    connected = true;
+                    log('SUCCESS: Socket.IO connected!', 'success');
+                    updateStatus('Socket.IO connected!', 'success');
+                    socket.disconnect();
+                });
+                
+                socket.on('connect_error', (error) => {
+                    log(`ERROR: Socket.IO connection failed - ${error.message}`, 'error');
+                    updateStatus('Socket.IO connection failed', 'error');
+                });
+                
+                socket.on('disconnect', () => {
+                    if (!connected) {
+                        log('INFO: Disconnected without successful connection');
+                    }
+                });
+                
+                setTimeout(() => {
+                    if (!connected) {
+                        log('ERROR: Socket.IO connection timeout');
+                        updateStatus('Socket.IO connection timeout', 'error');
+                        socket.disconnect();
+                    }
+                }, 6000);
+                
+            } catch (error) {
+                log(`ERROR: Exception during Socket.IO test - ${error.message}`, 'error');
+                updateStatus('Socket.IO test exception', 'error');
+            }
+        }
+        
+        function testWebSocket() {
+            log('\n=== TESTING DIRECT WEBSOCKET ===');
+            updateStatus('Testing WebSocket...', 'warning');
+            
+            try {
+                const ws = new WebSocket('ws://localhost:3000');
+                
+                ws.onopen = () => {
+                    log('SUCCESS: Direct WebSocket connected!', 'success');
+                    updateStatus('WebSocket connected!', 'success');
+                    ws.close();
+                };
+                
+                ws.onerror = (error) => {
+                    log(`ERROR: WebSocket connection failed - ${error.message || error}`, 'error');
+                    updateStatus('WebSocket connection failed', 'error');
+                };
+                
+                ws.onclose = () => {
+                    log('INFO: WebSocket closed');
+                };
+                
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.CONNECTING) {
+                        log('ERROR: WebSocket connection timeout');
+                        updateStatus('WebSocket connection timeout', 'error');
+                        ws.close();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                log(`ERROR: Exception during WebSocket test - ${error.message}`, 'error');
+                updateStatus('WebSocket test exception', 'error');
+            }
+        }
+        
+        function testHTTP() {
+            log('\n=== TESTING HTTP ACCESS ===');
+            updateStatus('Testing HTTP access...', 'warning');
+            
+            fetch('http://localhost:3000')
+                .then(response => {
+                    if (response.ok) {
+                        log(`SUCCESS: HTTP server accessible - ${response.status}`, 'success');
+                        updateStatus('HTTP server accessible!', 'success');
+                    } else {
+                        log(`ERROR: HTTP server responded with ${response.status}`, 'error');
+                        updateStatus('HTTP server error', 'error');
+                    }
+                })
+                .catch(error => {
+                    log(`ERROR: HTTP fetch failed - ${error.message}`, 'error');
+                    updateStatus('HTTP server not accessible', 'error');
+                });
+        }
+        
+        // Auto-test HTTP on load
+        setTimeout(testHTTP, 1000);
+    </script>
+</body>
+</html>

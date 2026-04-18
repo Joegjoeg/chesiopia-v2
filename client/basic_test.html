@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .panel { background: #2d2d2d; padding: 20px; border-radius: 8px; max-width: 600px; }
+        .status { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
+        .success { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        .info { color: #3498db; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h1>Basic Connection Test</h1>
+        <div id="status">Loading...</div>
+    </div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        
+        function updateStatus(text, type = 'info') {
+            statusDiv.innerHTML = `<span class="${type}">${text}</span>`;
+            console.log('[STATUS]', text);
+        }
+        
+        // Test 1: Page load
+        updateStatus('Page loaded successfully', 'success');
+        
+        // Test 2: JavaScript execution
+        setTimeout(() => {
+            updateStatus('JavaScript executing', 'success');
+        }, 100);
+        
+        // Test 3: Socket.IO availability
+        setTimeout(() => {
+            if (typeof io !== 'undefined') {
+                updateStatus('Socket.IO not loaded', 'error');
+            } else {
+                updateStatus('Socket.IO loaded', 'success');
+                
+                // Test 4: Connection attempt
+                const socket = io('localhost:3000', {
+                    timeout: 3000,
+                    forceNew: true
+                });
+                
+                let connected = false;
+                
+                socket.on('connect', () => {
+                    connected = true;
+                    updateStatus('Socket.IO connected!', 'success');
+                    socket.disconnect();
+                });
+                
+                socket.on('connect_error', (error) => {
+                    updateStatus('Connection error: ' + error.message, 'error');
+                });
+                
+                socket.on('disconnect', () => {
+                    if (!connected) {
+                        updateStatus('Disconnected without connection', 'error');
+                    }
+                });
+                
+                setTimeout(() => {
+                    if (!connected) {
+                        updateStatus('Connection timeout', 'error');
+                        socket.disconnect();
+                    }
+                }, 4000);
+            }
+        }, 500);
+    </script>
+</body>
+</html>

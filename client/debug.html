@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chessopia Debug</title>
+</head>
+<body>
+    <h1>Chessopia Debug Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="gameState"></div>
+    <div id="pieces"></div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const status = document.getElementById('status');
+        const gameStateDiv = document.getElementById('gameState');
+        const piecesDiv = document.getElementById('pieces');
+        
+        console.log('Starting debug test...');
+        
+        // Connect to server
+        const socket = io('http://localhost:3000');
+        
+        socket.on('connect', () => {
+            console.log('Connected to server!');
+            status.innerHTML = 'Connected to server!';
+            
+            // Join game
+            socket.emit('joinGame', {
+                name: 'Debug Player',
+                color: 'white'
+            });
+        });
+        
+        socket.on('playerJoined', (data) => {
+            console.log('Player joined:', data);
+            status.innerHTML += '<br>Joined game as: ' + data.name;
+        });
+        
+        socket.on('gameState', (data) => {
+            console.log('Game state received:', data);
+            gameStateDiv.innerHTML = 'Game State: ' + JSON.stringify(data, null, 2);
+            
+            if (data.pieces) {
+                piecesDiv.innerHTML = 'Pieces: ' + data.pieces.length + ' pieces<br>';
+                data.pieces.forEach(piece => {
+                    piecesDiv.innerHTML += '- ' + piece.type + ' at (' + piece.x + ', ' + piece.z + ')<br>';
+                });
+            }
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            status.innerHTML = 'Connection error: ' + error.message;
+        });
+    </script>
+</body>
+</html>

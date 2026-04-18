@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Working Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .panel { background: #2d2d2d; padding: 20px; border-radius: 8px; margin: 10px 0; }
+        .status { font-size: 18px; font-weight: bold; margin-bottom: 15px; }
+        .success { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
+        .info { color: #3498db; }
+        button { background: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; margin: 5px; font-size: 14px; }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #log { height: 300px; overflow-y: auto; background: #1e1e1e; padding: 15px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <h1>Working Connection Test</h1>
+            <div id="status" class="status info">Initializing...</div>
+            
+            <div style="margin: 20px 0;">
+                <button onclick="testConnection()">Test Connection</button>
+                <button onclick="testGame()">Test Main Game</button>
+                <button onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Debug Log</h2>
+            <div id="log"></div>
+        </div>
+    </div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `<div class="${type}">[${timestamp}] ${message}</div>`;
+            logDiv.innerHTML += entry;
+            console.log(message);
+            
+            // Update status background
+            if (type === 'success') statusDiv.className = 'status success';
+            else if (type === 'error') statusDiv.className = 'status error';
+            else if (type === 'warning') statusDiv.className = 'status warning';
+        }
+        
+        function updateStatus(text, type = 'info') {
+            statusDiv.innerHTML = `<span class="${type}">${text}</span>`;
+        }
+        
+        function clearLog() {
+            logDiv.innerHTML = '';
+        }
+        
+        // Environment check
+        log('=== ENVIRONMENT CHECK ===');
+        log(`Browser: ${navigator.userAgent}`);
+        log(`Current URL: ${window.location.href}`);
+        log(`Socket.IO available: ${typeof io !== 'undefined'}`);
+        
+        if (typeof io === 'undefined') {
+            updateStatus('Socket.IO not loaded', 'error');
+            return;
+        }
+        
+        updateStatus('Socket.IO loaded, ready for tests', 'success');
+        log('SUCCESS: Socket.IO loaded');
+        
+        function testConnection() {
+            log('\n=== TESTING BASIC CONNECTION ===');
+            updateStatus('Testing connection...', 'warning');
+            
+            const socket = io('localhost:3000', {
+                timeout: 5000,
+                forceNew: true
+            });
+            
+            let connected = false;
+            
+            socket.on('connect', () => {
+                connected = true;
+                log('SUCCESS: Socket.IO connected!', 'success');
+                updateStatus('Connected!', 'success');
+                
+                // Join game
+                socket.emit('joinGame', {
+                    name: 'Test Player',
+                    color: 'blue'
+                });
+                
+                socket.on('gameState', (data) => {
+                    log('SUCCESS: Game state received!', 'success');
+                    log(`Pieces: ${data.pieces ? data.pieces.length : 0}`);
+                });
+                
+                socket.on('playerJoined', (data) => {
+                    log('SUCCESS: Player joined!', 'success');
+                    log(`Player: ${data.name}, Color: ${data.color}`);
+                });
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: Connection failed - ${error.message}`, 'error');
+                updateStatus('Connection failed', 'error');
+            });
+            
+            socket.on('disconnect', () => {
+                if (!connected) {
+                    log('INFO: Disconnected without successful connection');
+                }
+            });
+            
+            setTimeout(() => {
+                if (!connected) {
+                    log('ERROR: Connection timeout');
+                    updateStatus('Connection timeout', 'error');
+                    socket.disconnect();
+                }
+            }, 6000);
+        }
+        
+        function testGame() {
+            log('\n=== TESTING MAIN GAME ===');
+            updateStatus('Loading main game...', 'warning');
+            
+            // Open main game in new window
+            const gameWindow = window.open('index.html', '_blank');
+            
+            if (gameWindow) {
+                log('SUCCESS: Main game window opened', 'success');
+                updateStatus('Main game opened', 'success');
+            } else {
+                log('ERROR: Could not open main game', 'error');
+                updateStatus('Failed to open main game', 'error');
+            }
+        }
+    </script>
+</body>
+</html>

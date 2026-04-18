@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Game Test</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; }
+        #status { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; }
+        #pieces { position: fixed; top: 60px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; max-width: 300px; }
+    </style>
+</head>
+<body>
+    <div id="status">Initializing...</div>
+    <div id="pieces">No pieces</div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const piecesDiv = document.getElementById('pieces');
+        
+        function updateStatus(text, type = 'info') {
+            statusDiv.textContent = text;
+            console.log('[STATUS]', text);
+        }
+        
+        function updatePieces(count) {
+            piecesDiv.textContent = 'Pieces: ' + count;
+        }
+        
+        updateStatus('Loading Socket.IO...');
+        
+        // Test Socket.IO connection
+        if (typeof io === 'undefined') {
+            updateStatus('ERROR: Socket.IO not loaded', 'error');
+            return;
+        }
+        
+        updateStatus('Socket.IO loaded, connecting...');
+        
+        // Simple connection
+        const socket = io('localhost:3000', {
+            timeout: 5000,
+            forceNew: true
+        });
+        
+        let connected = false;
+        
+        socket.on('connect', () => {
+            connected = true;
+            updateStatus('Connected to server!', 'success');
+            
+            // Join game
+            socket.emit('joinGame', {
+                name: 'Minimal Test Player',
+                color: 'blue'
+            });
+        });
+        
+        socket.on('playerJoined', (data) => {
+            updateStatus('Joined as: ' + data.name, 'success');
+        });
+        
+        socket.on('gameState', (data) => {
+            updateStatus('Game state received', 'success');
+            updatePieces(data.pieces ? data.pieces.length : 0);
+        });
+        
+        socket.on('connect_error', (error) => {
+            updateStatus('Connection error: ' + error.message, 'error');
+        });
+        
+        socket.on('disconnect', () => {
+            updateStatus('Disconnected', 'error');
+        });
+        
+        // Timeout
+        setTimeout(() => {
+            if (!connected) {
+                updateStatus('Connection timeout', 'error');
+            }
+        }, 7000);
+    </script>
+</body>
+</html>

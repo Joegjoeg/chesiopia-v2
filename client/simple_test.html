@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Piece Test</title>
+</head>
+<body>
+    <h1>Simple Piece Test</h1>
+    <div id="status">Loading...</div>
+    <div id="pieces"></div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const status = document.getElementById('status');
+        const piecesDiv = document.getElementById('pieces');
+        
+        console.log('Starting simple test...');
+        
+        // Connect to server
+        const socket = io('http://localhost:3000');
+        
+        socket.on('connect', () => {
+            console.log('Connected to server!');
+            status.innerHTML = 'Connected to server!';
+            
+            // Join game
+            socket.emit('joinGame', {
+                name: 'Test Player',
+                color: 'blue'
+            });
+        });
+        
+        socket.on('playerJoined', (data) => {
+            console.log('Player joined:', data);
+            status.innerHTML += '<br>Joined game as: ' + data.name + ' (' + data.color + ')';
+        });
+        
+        socket.on('gameState', (data) => {
+            console.log('Game state received:', data);
+            status.innerHTML += '<br>Game state received!';
+            
+            if (data.pieces && data.pieces.length > 0) {
+                piecesDiv.innerHTML = '<h2>Pieces Found: ' + data.pieces.length + '</h2>';
+                data.pieces.forEach(piece => {
+                    piecesDiv.innerHTML += '<div>' + piece.type + ' at (' + piece.x + ', ' + piece.z + ') - Player: ' + piece.playerId + '</div>';
+                });
+                status.innerHTML += '<br><strong>PIECES ARE WORKING!</strong>';
+            } else {
+                piecesDiv.innerHTML = '<h2>No pieces found!</h2>';
+                status.innerHTML += '<br><strong>NO PIECES - SERVER ISSUE</strong>';
+            }
+        });
+        
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            status.innerHTML = 'Connection error: ' + error.message;
+        });
+    </script>
+</body>
+</html>

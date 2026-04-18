@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ultimate Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .panel { background: #2d2d2d; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .status { font-size: 18px; font-weight: bold; margin-bottom: 15px; }
+        .success { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
+        .info { color: #3498db; }
+        button { background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; margin: 5px; font-size: 14px; }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #log { height: 300px; overflow-y: auto; background: #1e1e1e; padding: 15px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; }
+        .test-section { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <h2>Socket.IO Ultimate Connection Test</h2>
+            <div id="status" class="status info">Initializing...</div>
+            
+            <div class="test-section">
+                <h3>Connection Tests</h3>
+                <button onclick="testBasicConnection()">Test Basic Connection</button>
+                <button onclick="testWithTransports()">Test With Transports</button>
+                <button onclick="testDirectWebSocket()">Test Direct WebSocket</button>
+                <button onclick="testPollingOnly()">Test Polling Only</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Server Tests</h3>
+                <button onclick="testServerHTTP()">Test Server HTTP</button>
+                <button onclick="testServerAPI()">Test Server API</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Debug</h3>
+                <button onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h3>Debug Log</h3>
+            <div id="log"></div>
+        </div>
+    </div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `<div class="${type}">[${timestamp}] ${message}</div>`;
+            logDiv.innerHTML += entry;
+            console.log(message);
+        }
+        
+        function updateStatus(text, type = 'info') {
+            statusDiv.innerHTML = `<span class="${type}">${text}</span>`;
+        }
+        
+        function clearLog() {
+            logDiv.innerHTML = '';
+        }
+        
+        // Environment check
+        log('=== ENVIRONMENT ===');
+        log(`Browser: ${navigator.userAgent}`);
+        log(`Current URL: ${window.location.href}`);
+        log(`Socket.IO version: ${io ? io.version : 'NOT LOADED'}`);
+        
+        if (typeof io === 'undefined') {
+            updateStatus('Socket.IO not loaded', 'error');
+            return;
+        }
+        
+        updateStatus('Socket.IO loaded, ready for tests', 'success');
+        
+        function testBasicConnection() {
+            log('\n=== TESTING BASIC CONNECTION ===');
+            updateStatus('Testing basic connection...', 'warning');
+            
+            const socket = io('localhost:3000');
+            
+            socket.on('connect', () => {
+                log('SUCCESS: Basic connection established', 'success');
+                updateStatus('Basic connection successful!', 'success');
+                socket.disconnect();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: Basic connection failed - ${error.message}`, 'error');
+                updateStatus('Basic connection failed', 'error');
+            });
+            
+            setTimeout(() => {
+                socket.disconnect();
+            }, 5000);
+        }
+        
+        function testWithTransports() {
+            log('\n=== TESTING WITH TRANSPORTS ===');
+            updateStatus('Testing with transports...', 'warning');
+            
+            const socket = io('localhost:3000', {
+                transports: ['websocket', 'polling'],
+                timeout: 5000
+            });
+            
+            socket.on('connect', () => {
+                log('SUCCESS: Connection with transports established', 'success');
+                updateStatus('Transports connection successful!', 'success');
+                socket.disconnect();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: Transports connection failed - ${error.message}`, 'error');
+                updateStatus('Transports connection failed', 'error');
+            });
+            
+            setTimeout(() => {
+                socket.disconnect();
+            }, 5000);
+        }
+        
+        function testDirectWebSocket() {
+            log('\n=== TESTING DIRECT WEBSOCKET ===');
+            updateStatus('Testing direct WebSocket...', 'warning');
+            
+            const socket = io('localhost:3000', {
+                transports: ['websocket'],
+                timeout: 5000
+            });
+            
+            socket.on('connect', () => {
+                log('SUCCESS: Direct WebSocket established', 'success');
+                updateStatus('Direct WebSocket successful!', 'success');
+                socket.disconnect();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: Direct WebSocket failed - ${error.message}`, 'error');
+                updateStatus('Direct WebSocket failed', 'error');
+            });
+            
+            setTimeout(() => {
+                socket.disconnect();
+            }, 5000);
+        }
+        
+        function testPollingOnly() {
+            log('\n=== TESTING POLLING ONLY ===');
+            updateStatus('Testing polling only...', 'warning');
+            
+            const socket = io('localhost:3000', {
+                transports: ['polling'],
+                timeout: 5000
+            });
+            
+            socket.on('connect', () => {
+                log('SUCCESS: Polling connection established', 'success');
+                updateStatus('Polling connection successful!', 'success');
+                socket.disconnect();
+            });
+            
+            socket.on('connect_error', (error) => {
+                log(`ERROR: Polling connection failed - ${error.message}`, 'error');
+                updateStatus('Polling connection failed', 'error');
+            });
+            
+            setTimeout(() => {
+                socket.disconnect();
+            }, 5000);
+        }
+        
+        function testServerHTTP() {
+            log('\n=== TESTING SERVER HTTP ===');
+            updateStatus('Testing server HTTP...', 'warning');
+            
+            fetch('http://localhost:3000')
+                .then(response => {
+                    log(`SUCCESS: Server HTTP response - ${response.status}`, 'success');
+                    updateStatus('Server HTTP accessible!', 'success');
+                })
+                .catch(error => {
+                    log(`ERROR: Server HTTP failed - ${error.message}`, 'error');
+                    updateStatus('Server HTTP failed', 'error');
+                });
+        }
+        
+        function testServerAPI() {
+            log('\n=== TESTING SERVER API ===');
+            updateStatus('Testing server API...', 'warning');
+            
+            fetch('http://localhost:3000/api/terrain/0/0')
+                .then(response => {
+                    if (response.ok) {
+                        log(`SUCCESS: Server API response - ${response.status}`, 'success');
+                        updateStatus('Server API accessible!', 'success');
+                    } else {
+                        log(`ERROR: Server API bad response - ${response.status}`, 'error');
+                        updateStatus('Server API failed', 'error');
+                    }
+                })
+                .catch(error => {
+                    log(`ERROR: Server API failed - ${error.message}`, 'error');
+                    updateStatus('Server API failed', 'error');
+                });
+        }
+    </script>
+</body>
+</html>

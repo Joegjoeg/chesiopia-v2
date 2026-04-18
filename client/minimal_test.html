@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Minimal Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffcccc; }
+        .success { background: #ccffcc; }
+    </style>
+</head>
+<body>
+    <h1>Minimal Chessopia Test</h1>
+    <div id="log"></div>
+    
+    <script src="socket.io.min.js"></script>
+    <script>
+        const logDiv = document.getElementById('log');
+        
+        function log(message, type = 'log') {
+            console.log(message);
+            const div = document.createElement('div');
+            div.className = 'log ' + type;
+            div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+            logDiv.appendChild(div);
+        }
+        
+        log('Starting minimal test...');
+        
+        // Test 1: Check if Socket.IO loaded
+        if (typeof io === 'undefined') {
+            log('ERROR: Socket.IO not loaded', 'error');
+        } else {
+            log('SUCCESS: Socket.IO loaded', 'success');
+        }
+        
+        // Test 2: Connect to server
+        const socket = io('http://localhost:3000');
+        
+        socket.on('connect', () => {
+            log('SUCCESS: Connected to server', 'success');
+            
+            // Test 3: Join game
+            socket.emit('joinGame', {
+                name: 'Minimal Test Player',
+                color: 'red'
+            });
+            log('Sent joinGame request');
+        });
+        
+        socket.on('playerJoined', (data) => {
+            log('SUCCESS: Player joined - ' + data.name + ' (' + data.color + ')', 'success');
+        });
+        
+        socket.on('gameState', (data) => {
+            log('SUCCESS: Game state received', 'success');
+            
+            if (data.pieces && data.pieces.length > 0) {
+                log('PIECES FOUND: ' + data.pieces.length + ' pieces', 'success');
+                data.pieces.slice(0, 5).forEach((piece, i) => {
+                    log(`Piece ${i+1}: ${piece.type} at (${piece.x}, ${piece.z}) by player ${piece.playerId}`);
+                });
+                if (data.pieces.length > 5) {
+                    log(`... and ${data.pieces.length - 5} more pieces`);
+                }
+            } else {
+                log('ERROR: No pieces found in game state', 'error');
+            }
+        });
+        
+        socket.on('connect_error', (error) => {
+            log('ERROR: Connection failed - ' + error.message, 'error');
+        });
+        
+        // Test 4: Timeout check
+        setTimeout(() => {
+            if (socket.connected) {
+                log('SUCCESS: Still connected after 5 seconds', 'success');
+            } else {
+                log('ERROR: Connection lost', 'error');
+            }
+        }, 5000);
+    </script>
+</body>
+</html>

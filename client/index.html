@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chessopia - 3D Infinite Chess</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="uiOverlay">
+            <!-- Player Info -->
+            <div id="playerInfo" class="ui-panel">
+                <h3>Player Info</h3>
+                <div id="playerName">Guest</div>
+                <div id="playerPoints">Points: 0</div>
+                <div id="playerPieces">Pieces: 0</div>
+            </div>
+            
+            <!-- Game Controls -->
+            <div id="gameControls" class="ui-panel">
+                <h3>Controls</h3>
+                <div>WASD: Move Camera</div>
+                <div>Mouse: Select & Move</div>
+                <div>S: Shop</div>
+                <div>C: Center on King</div>
+                <div>Space: Camera Mode</div>
+            </div>
+            
+            <!-- Dev Controls -->
+            <div id="devControls" class="ui-panel" style="background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3);">
+                <h3 style="color: #ff6666;">Dev Tools</h3>
+                <button id="clearAllPiecesBtn" class="dev-btn" style="background: #ff4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Clear All Pieces
+                </button>
+                <button id="spawnTestPiecesBtn" class="dev-btn" style="background: #ff8800; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Spawn Test Pieces
+                </button>
+                <button id="toggleCelShadingBtn" class="dev-btn" style="background: #9966ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Toggle Cel Shading
+                </button>
+            </div>
+            
+            <!-- Shop Modal (hidden by default) -->
+            <div id="shopModal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Chess Shop</h2>
+                        <button id="closeShop" class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="shopPoints">Points: 0</div>
+                        <div id="shopItems" class="shop-grid">
+                            <div class="shop-item" data-piece="pawn">
+                                <h3>Pawn</h3>
+                                <div class="cost">2 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="knight">
+                                <h3>Knight</h3>
+                                <div class="cost">6 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="bishop">
+                                <h3>Bishop</h3>
+                                <div class="cost">6 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="rook">
+                                <h3>Rook</h3>
+                                <div class="cost">10 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="queen">
+                                <h3>Queen</h3>
+                                <div class="cost">18 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Connection Status -->
+            <div id="connectionStatus">
+                <div class="connection-status">
+                    <span id="statusText">Disconnected</span>
+                    <div id="connectionDebug" style="margin-top: 5px; font-size: 12px; color: #ff9999;"></div>
+                </div>
+            </div>
+            
+            <!-- Selected Piece Info -->
+            <div id="selectedPieceInfo" class="ui-panel hidden">
+                <h3>Selected Piece</h3>
+                <div id="selectedPieceType">-</div>
+                <div id="selectedPieceCooldown">Ready</div>
+            </div>
+        </div>
+        
+        <!-- Loading Screen -->
+        <div id="loadingScreen">
+            <div class="loading-content">
+                <h1>Chessopia</h1>
+                <div class="loading-bar">
+                    <div class="loading-progress"></div>
+                </div>
+                <div class="loading-text">Loading 3D World...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Three.js and dependencies - using multiple CDN sources with local fallbacks -->
+    <script>
+        // Load THREE.js with fallback
+        function loadThreeJS() {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/three@0.155.0/build/three.min.js';
+            script.onload = () => console.log('THREE.js loaded from CDN');
+            script.onerror = () => {
+                console.log('THREE.js CDN failed, trying backup...');
+                const backup = document.createElement('script');
+                backup.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js';
+                backup.onload = () => console.log('THREE.js loaded from backup CDN');
+                backup.onerror = () => {
+                    console.log('THREE.js backup CDN failed, using local fallback...');
+                    const local = document.createElement('script');
+                    local.src = 'three.min.js';
+                    local.onload = () => console.log('THREE.js loaded from local fallback');
+                    document.head.appendChild(local);
+                };
+                document.head.appendChild(backup);
+            };
+            document.head.appendChild(script);
+        }
+        
+        // Load Socket.IO with fallback
+        function loadSocketIO() {
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/socket.io-client@4.7.0/dist/socket.io.min.js';
+            script.onload = () => console.log('Socket.IO loaded from CDN');
+            script.onerror = () => {
+                console.log('Socket.IO CDN failed, trying backup...');
+                const backup = document.createElement('script');
+                backup.src = 'https://cdn.socket.io/4.7.0/socket.io.min.js';
+                backup.onload = () => console.log('Socket.IO loaded from backup CDN');
+                backup.onerror = () => {
+                    console.log('Socket.IO backup CDN failed, using local fallback...');
+                    const local = document.createElement('script');
+                    local.src = 'socket.io.min.js';
+                    local.onload = () => console.log('Socket.IO loaded from local fallback');
+                    document.head.appendChild(local);
+                };
+                document.head.appendChild(backup);
+            };
+            document.head.appendChild(script);
+        }
+        
+        // Start loading both libraries
+        loadThreeJS();
+        loadSocketIO();
+    </script>
+    
+    <!-- Game modules -->
+    <script>
+        let loadAttempts = 0;
+        const maxAttempts = 50; // 5 seconds max wait
+        
+        // Wait for THREE.js to load before initializing game
+        function waitForThreeJS() {
+            loadAttempts++;
+            
+            if (typeof THREE !== 'undefined' && typeof io !== 'undefined') {
+                console.log('THREE.js and Socket.IO loaded successfully!');
+                loadGameModules();
+            } else if (loadAttempts > maxAttempts) {
+                console.error('Failed to load THREE.js or Socket.IO after maximum attempts');
+                showError('Failed to load required libraries. Please check your internet connection and refresh the page.');
+            } else {
+                console.log(`Waiting for THREE.js and Socket.IO to load... (attempt ${loadAttempts}/${maxAttempts})`);
+                setTimeout(waitForThreeJS, 100);
+            }
+        }
+        
+        function loadGameModules() {
+            // Load game modules in order
+            const scripts = [
+                'gameState.js',
+                'network.js',
+                'terrain.js',
+                'board_clean.js',
+                'camera.js',
+                'pieces3d.js',
+                'movementBridge.js',
+                'moveValidator.js',
+                'coveringSystem.js',
+                'visualFeedback.js',
+                'celShaderSimple.js',
+                'game.js'
+            ];
+            
+            function loadScript(index) {
+                if (index >= scripts.length) {
+                    // All scripts loaded, initialize game
+                    console.log('All game modules loaded, initializing game...');
+                    if (typeof initializeGame === 'function') {
+                        setTimeout(initializeGame, 100);
+                    } else {
+                        console.error('initializeGame function not found');
+                    }
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = scripts[index];
+                script.onload = () => {
+                    console.log(`Loaded ${scripts[index]}`);
+                    loadScript(index + 1);
+                };
+                script.onerror = () => {
+                    console.error(`Failed to load ${scripts[index]}`);
+                    loadScript(index + 1); // Continue loading other scripts
+                };
+                document.body.appendChild(script);
+            }
+            
+            loadScript(0);
+        }
+        
+        function showError(message) {
+            const loadingScreen = document.getElementById('loadingScreen');
+            if (loadingScreen) {
+                loadingScreen.innerHTML = `
+                    <div class="loading-content">
+                        <h1>Chessopia</h1>
+                        <div style="color: #ff6b6b; margin: 20px 0; text-align: center;">
+                            ${message}
+                        </div>
+                        <button onclick="location.reload()" style="
+                            background: #4CAF50;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        ">Refresh Page</button>
+                    </div>
+                `;
+            }
+        }
+        
+        // Test if JavaScript is working
+        console.log('[HTML] JavaScript is running!');
+        window.testJS = true;
+        
+        // Add visual indicator that page loaded
+        const indicator = document.createElement('div');
+        indicator.id = 'js-test';
+        indicator.style.cssText = 'position: fixed; top: 10px; right: 10px; background: green; color: white; padding: 5px; border-radius: 3px; z-index: 9999;';
+        indicator.textContent = 'JS LOADED';
+        document.body.appendChild(indicator);
+        
+        // Start loading process
+        waitForThreeJS();
+    </script>
+</body>
+</html>
