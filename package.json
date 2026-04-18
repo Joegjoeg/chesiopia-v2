@@ -4,7 +4,7 @@
   "description": "Chessopia multiplayer chess server",
   "main": "server.js",
   "scripts": {
-    "start": "node test-server.js",
+    "start": "node minimal-server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
