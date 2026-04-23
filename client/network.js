@@ -15,13 +15,31 @@ class NetworkManager {
         };
     }
     
+    getServerUrl() {
+        // If running on localhost, connect to localhost
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'localhost:3000';
+        }
+        
+        // If running on Render, use the same hostname but default port
+        if (window.location.hostname.includes('onrender.com')) {
+            return window.location.hostname + ':3000';
+        }
+        
+        // For production, use the current hostname
+        return window.location.hostname;
+    }
+    
     async connect() {
         try {
             this.updateStatus('Connecting...', false);
-            console.log('[Network] Starting connection to localhost:3000...');
+            
+            // Determine server URL based on current hostname
+            const serverUrl = this.getServerUrl();
+            console.log('[Network] Starting connection to', serverUrl, '...');
             
             // Connect to server
-            this.socket = io('localhost:3000', {
+            this.socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 timeout: 10000,
                 forceNew: true
