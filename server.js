@@ -93,6 +93,7 @@ class ChessopiaServer {
         this.app.use(express.json());
         this.app.use(express.static(path.join(__dirname, 'client')));
         this.app.use('/models', express.static(path.join(__dirname, 'models')));
+        this.app.use('/Models', express.static(path.join(__dirname, 'Models')));
     }
     
     setupRoutes() {
