@@ -21,9 +21,9 @@ class NetworkManager {
             return 'localhost:3000';
         }
         
-        // If running on Render, use the same hostname but default port
+        // If running on Render, use the same hostname (standard web ports)
         if (window.location.hostname.includes('onrender.com')) {
-            return window.location.hostname + ':3000';
+            return window.location.hostname;
         }
         
         // For production, use the current hostname
