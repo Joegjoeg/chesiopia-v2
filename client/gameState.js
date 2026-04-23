@@ -24,9 +24,15 @@ class ClientGameState {
         
         // Update pieces
         this.pieces.clear();
+        console.log('[GameState] Loading pieces from server:', serverState.pieces.length, 'pieces');
         serverState.pieces.forEach(piece => {
+            console.log(`[GameState] Loading piece: ${piece.type} at (${piece.x}, ${piece.z}) for player ${piece.playerId}`);
             this.pieces.set(piece.id, piece);
         });
+        
+        // Check for kings specifically
+        const kingPieces = serverState.pieces.filter(piece => piece.type.toLowerCase() === 'king');
+        console.log(`[GameState] Found ${kingPieces.length} king pieces:`, kingPieces);
         
         // Update covering relationships
         this.coveringRelationships.clear();
@@ -216,6 +222,15 @@ class ClientGameState {
         const cooldownTime = this.getPieceCooldown(piece.type);
         const timeSinceMove = Date.now() - (piece.lastMoveTime || 0);
         return timeSinceMove < cooldownTime;
+    }
+    
+    updatePiecePosition(pieceId, newX, newZ) {
+        const piece = this.pieces.get(pieceId);
+        if (piece) {
+            piece.x = newX;
+            piece.z = newZ;
+            this.emit('pieceUpdated', piece);
+        }
     }
     
     getPieceCooldownRemaining(piece) {

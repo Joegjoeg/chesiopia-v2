@@ -1,10 +1,26 @@
 class GameState {
-    constructor() {
+    constructor(terrainGenerator = null) {
         this.players = new Map();
         this.pieces = new Map();
         this.coveringRelationships = new Map(); // coveringPieceId -> coveredPieceId
         this.nextPieceId = 1;
         this.gameStarted = false;
+        this.terrainGenerator = terrainGenerator;
+        
+        // Change detection system
+        this.changeCallback = null; // Callback to notify of any changes
+    }
+    
+    // Set callback for change notifications
+    setChangeCallback(callback) {
+        this.changeCallback = callback;
+    }
+    
+    // Trigger change notification
+    notifyChange(changeType, data) {
+        if (this.changeCallback) {
+            this.changeCallback(changeType, data);
+        }
     }
     
     // Temporary method to clear accumulated pieces
@@ -21,6 +37,9 @@ class GameState {
         this.nextPieceId = 1;
         this.gameStarted = false;
         
+        // Notify of game reset
+        this.notifyChange('gameReset', {});
+        
         console.log('[GameState] After reset - Pieces count:', this.pieces.size);
         console.log('[GameState] After reset - Players count:', this.players.size);
         console.log('[GameState] After reset - Covering relationships count:', this.coveringRelationships.size);
@@ -28,25 +47,52 @@ class GameState {
     }
     
     addPlayer(socketId, playerData) {
-        const player = {
-            id: socketId,
-            name: playerData.name || `Player ${this.players.size + 1}`,
-            color: this.getNextPlayerColor(),
-            points: {
-                total: 50, // Starting points - increased for testing
-                captures: 0
-            },
-            pieces: [],
-            isReady: false,
-            kingPosition: null
-        };
+        console.log('[GameState] addPlayer called with:', socketId, playerData);
         
-        this.players.set(socketId, player);
-        
-        // Spawn initial pieces for the player
-        this.spawnInitialPieces(player);
-        
-        return player;
+        try {
+            // Check if player already exists
+            if (this.players.has(socketId)) {
+                console.log('[GameState] Player already exists, returning existing player');
+                return this.players.get(socketId);
+            }
+            
+            console.log('[GameState] Creating new player...');
+            
+            // Create new player
+            const player = {
+                id: socketId,
+                name: playerData.name || `Player ${this.players.size + 1}`,
+                color: this.getNextPlayerColor(),
+                points: {
+                    total: 50, // Starting points - increased for testing
+                    captures: 0
+                },
+                pieces: [],
+                isReady: false,
+                kingPosition: null
+            };
+            
+            console.log('[GameState] About to set player in players map...');
+            this.players.set(socketId, player);
+            console.log('[GameState] Player set in players map successfully');
+            
+            console.log('[GameState] About to spawn initial pieces...');
+            // Spawn initial pieces for the player
+            this.spawnInitialPieces(player);
+            console.log('[GameState] Initial pieces spawned successfully');
+            
+            // Notify of player added
+            console.log('[GameState] About to call notifyChange for playerAdded:', player.name);
+            console.log('[GameState] Player pieces count:', player.pieces.length);
+            console.log('[GameState] About to call notifyChange...');
+            this.notifyChange('playerAdded', { player, pieces: player.pieces.map(id => this.pieces.get(id)) });
+            console.log('[GameState] notifyChange for playerAdded completed');
+            
+            return player;
+        } catch (error) {
+            console.error('[GameState] ERROR in addPlayer:', error);
+            throw error;
+        }
     }
     
     removePlayer(socketId) {
@@ -68,32 +114,69 @@ class GameState {
     
     spawnInitialPieces(player) {
         console.log('[GameState] Spawning initial pieces for player:', player.name);
-        // Find a suitable spawn location
-        const spawnX = Math.floor(Math.random() * 20) - 10;
-        const spawnZ = Math.floor(Math.random() * 20) - 10;
-        console.log('[GameState] Spawn location:', spawnX, spawnZ);
+        
+        // Find valid spawn positions (not blocked)
+        const validPositions = [];
+        const searchRadius = 15;
+        
+        if (this.terrainGenerator) {
+            for (let x = -searchRadius; x <= searchRadius; x++) {
+                for (let z = -searchRadius; z <= searchRadius; z++) {
+                    const isBlocked = this.terrainGenerator.isTileBlocked(x, z);
+                    if (!isBlocked) {
+                        validPositions.push({ x, z });
+                    }
+                }
+            }
+        }
+        
+        if (validPositions.length === 0) {
+            console.log('[GameState] No valid spawn positions found - using fallback positions');
+            // Fallback to random positions if no terrain generator or all blocked
+            for (let i = 0; i < 10; i++) {
+                validPositions.push({
+                    x: Math.floor(Math.random() * 20) - 10,
+                    z: Math.floor(Math.random() * 20) - 10
+                });
+            }
+        }
+        
+        console.log(`[GameState] Found ${validPositions.length} valid spawn positions`);
+        
+        // Pick a random valid position for the king
+        const kingIndex = Math.floor(Math.random() * validPositions.length);
+        const kingPos = validPositions[kingIndex];
+        validPositions.splice(kingIndex, 1); // Remove used position
         
         // Spawn King first
-        const king = this.createPiece(player.id, 'king', spawnX, spawnZ);
-        player.kingPosition = { x: spawnX, z: spawnZ };
+        const king = this.createPiece(player.id, 'king', kingPos.x, kingPos.z);
+        player.kingPosition = { x: kingPos.x, z: kingPos.z };
         player.pieces.push(king.id);
-        console.log('[GameState] Created king:', king);
+        console.log('[GameState] Created king at valid position:', king);
         
         // Spawn initial army - reduced for testing
         const initialPieces = [
-            { type: 'pawn', offset: { x: 1, z: 0 } },
-            { type: 'pawn', offset: { x: -1, z: 0 } }
+            { type: 'pawn' },
+            { type: 'pawn' }
         ];
         
         initialPieces.forEach(pieceData => {
-            const piece = this.createPiece(
-                player.id,
-                pieceData.type,
-                spawnX + pieceData.offset.x,
-                spawnZ + pieceData.offset.z
-            );
-            player.pieces.push(piece.id);
-            console.log('[GameState] Created piece:', piece);
+            if (validPositions.length > 0) {
+                const randomIndex = Math.floor(Math.random() * validPositions.length);
+                const position = validPositions[randomIndex];
+                validPositions.splice(randomIndex, 1); // Remove used position
+                
+                const piece = this.createPiece(
+                    player.id,
+                    pieceData.type,
+                    position.x,
+                    position.z
+                );
+                player.pieces.push(piece.id);
+                console.log(`[GameState] Created ${pieceData.type} at valid position (${position.x}, ${position.z}):`, piece);
+            } else {
+                console.log(`[GameState] No valid positions left for ${pieceData.type}`);
+            }
         });
         console.log('[GameState] Total pieces for player:', player.pieces.length);
     }
@@ -171,6 +254,17 @@ class GameState {
             player.kingPosition = { x: toX, z: toZ };
         }
         
+        // Notify of piece moved
+        this.notifyChange('pieceMoved', { 
+            piece, 
+            capturedPiece, 
+            pointsEarned: captureReward,
+            fromX: piece.x, 
+            fromZ: piece.z, 
+            toX, 
+            toZ 
+        });
+        
         return {
             success: true,
             piece: piece,
@@ -220,6 +314,9 @@ class GameState {
         const newPiece = this.createPiece(playerId, pieceType, spawnPos.x, spawnPos.z);
         player.pieces.push(newPiece.id);
         
+        // Notify of piece purchased
+        this.notifyChange('piecePurchased', { piece: newPiece, player });
+        
         return {
             success: true,
             piece: newPiece,
@@ -239,7 +336,15 @@ class GameState {
                 const x = player.kingPosition.x + dx;
                 const z = player.kingPosition.z + dz;
                 
-                if (!this.getPieceAt(x, z)) {
+                // Check if position is free and not blocked
+                const isOccupied = this.getPieceAt(x, z);
+                let isBlocked = false;
+                
+                if (this.terrainGenerator) {
+                    isBlocked = this.terrainGenerator.isTileBlocked(x, z);
+                }
+                
+                if (!isOccupied && !isBlocked) {
                     return { x, z };
                 }
             }
@@ -266,6 +371,12 @@ class GameState {
         // Set new coverage
         this.coveringRelationships.set(coveringPieceId, coveredPieceId);
         coveredPiece.isCovered = true;
+        
+        // Notify of covering change
+        this.notifyChange('coveringSet', { 
+            coveringPiece, 
+            coveredPiece 
+        });
         
         return {
             success: true,

@@ -42,6 +42,9 @@
                 <button id="toggleCelShadingBtn" class="dev-btn" style="background: #9966ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
                     Toggle Cel Shading
                 </button>
+                <button id="recreateMapBtn" class="dev-btn" style="background: #ff0066; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Recreate Map
+                </button>
             </div>
             
             <!-- Shop Modal (hidden by default) -->
@@ -118,22 +121,466 @@
         function loadThreeJS() {
             const script = document.createElement('script');
             script.src = 'https://unpkg.com/three@0.155.0/build/three.min.js';
-            script.onload = () => console.log('THREE.js loaded from CDN');
+            script.onload = () => {
+                console.log('THREE.js loaded from CDN');
+                loadGLTFLoader(); // Load GLTF loader after Three.js
+            };
             script.onerror = () => {
                 console.log('THREE.js CDN failed, trying backup...');
                 const backup = document.createElement('script');
                 backup.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js';
-                backup.onload = () => console.log('THREE.js loaded from backup CDN');
+                backup.onload = () => {
+                    console.log('THREE.js loaded from backup CDN');
+                    loadGLTFLoader(); // Load GLTF loader after Three.js
+                };
                 backup.onerror = () => {
                     console.log('THREE.js backup CDN failed, using local fallback...');
                     const local = document.createElement('script');
                     local.src = 'three.min.js';
-                    local.onload = () => console.log('THREE.js loaded from local fallback');
+                    local.onload = () => {
+                        console.log('THREE.js loaded from local fallback');
+                        loadGLTFLoader(); // Load GLTF loader after Three.js
+                    };
                     document.head.appendChild(local);
                 };
                 document.head.appendChild(backup);
             };
             document.head.appendChild(script);
+        }
+        
+        // Create simple GLTF loader that works in script context
+        function loadGLTFLoader() {
+            console.log('Creating simple GLTF loader...');
+            
+            // Ensure THREE object exists
+            if (typeof window.THREE === 'undefined') {
+                console.error('THREE.js not loaded yet!');
+                return;
+            }
+            
+            // Attach GLTFLoader to THREE object
+            window.THREE.GLTFLoader = class SimpleGLTFLoader {
+                constructor() {
+                    console.log('SimpleGLTFLoader constructor called');
+                }
+                loadAsync(url) {
+                    return new Promise((resolve, reject) => {
+                        console.log('Loading GLB model:', url);
+                        
+                        // Use fetch to load the GLB file
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+                                return response.arrayBuffer();
+                            })
+                            .then(arrayBuffer => {
+                                console.log('GLB file loaded, size:', arrayBuffer.byteLength);
+                                
+                                // Try to parse GLB directly
+                                try {
+                                    const gltf = this.parseGLB(arrayBuffer);
+                                    if (gltf) {
+                                        console.log('GLTF parsed successfully:', gltf);
+                                        resolve({ scene: gltf });
+                                    } else {
+                                        console.log('GLTF parsing failed, using fallback');
+                                        this.createFallbackScene(resolve);
+                                    }
+                                } catch (e) {
+                                    console.error('GLTF parsing failed:', e);
+                                    this.createFallbackScene(resolve);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Failed to load GLB:', error);
+                                reject(error);
+                            });
+                    });
+                }
+                
+                parseGLB(arrayBuffer) {
+                    try {
+                        console.log('Parsing GLB data...');
+                        const dataView = new DataView(arrayBuffer);
+                        
+                        // Check GLB magic number
+                        const magic = dataView.getUint32(0, true);
+                        if (magic !== 0x46546C67) { // "glTF" in little endian
+                            throw new Error('Not a valid GLB file');
+                        }
+                        
+                        const version = dataView.getUint32(4, true);
+                        const totalLength = dataView.getUint32(8, true);
+                        
+                        console.log(`GLB file: version=${version}, length=${totalLength}`);
+                        
+                        // Parse chunks
+                        let offset = 12; // Start after header
+                        let jsonChunk = null;
+                        let binaryChunk = null;
+                        
+                        while (offset < totalLength) {
+                            const chunkLength = dataView.getUint32(offset, true);
+                            const chunkType = dataView.getUint32(offset + 4, true);
+                            const chunkData = arrayBuffer.slice(offset + 8, offset + 8 + chunkLength);
+                            
+                            if (chunkType === 0x4E4F534A) { // "JSON"
+                                jsonChunk = chunkData;
+                            } else if (chunkType === 0x004E4942) { // "BIN"
+                                binaryChunk = chunkData;
+                            }
+                            
+                            offset += 8 + chunkLength;
+                        }
+                        
+                        if (!jsonChunk) {
+                            throw new Error('No JSON chunk found in GLB file');
+                        }
+                        
+                        // Parse JSON chunk
+                        const jsonText = new TextDecoder().decode(jsonChunk);
+                        const gltf = JSON.parse(jsonText);
+                        
+                        console.log('GLTF JSON loaded:', gltf);
+                        console.log('Meshes:', gltf.meshes?.length || 0);
+                        console.log('Accessors:', gltf.accessors?.length || 0);
+                        console.log('BufferViews:', gltf.bufferViews?.length || 0);
+                        
+                        // Create scene from GLTF data
+                        const scene = new THREE.Group();
+                        
+                        // Try to parse actual GLTF meshes
+                        if (gltf.meshes && gltf.meshes.length > 0) {
+                            console.log('=== PARSING ACTUAL GLTF MESHES ===');
+                            
+                            // Parse first mesh (assuming it's king)
+                            const mesh = gltf.meshes[0];
+                            console.log('Parsing mesh:', mesh);
+                            
+                            // Create mesh from GLTF data
+                            const threeMesh = this.createMeshFromGLTF(mesh, gltf, binaryChunk);
+                            if (threeMesh) {
+                                threeMesh.castShadow = true;
+                                threeMesh.receiveShadow = true;
+                                scene.add(threeMesh);
+                                console.log('Actual GLTF mesh loaded successfully!');
+                            } else {
+                                console.log('Failed to parse GLTF mesh, falling back to placeholder');
+                                this.createPlaceholder(scene);
+                            }
+                        } else {
+                            console.log('No meshes found in GLTF, creating placeholder');
+                            this.createPlaceholder(scene);
+                        }
+                        
+                        console.log('GLB parsed successfully');
+                        return scene;
+                        
+                    } catch (error) {
+                        console.error('GLB parsing failed:', error);
+                        return null;
+                    }
+                }
+                
+                createMeshFromGLTF(mesh, gltf, binaryChunk) {
+                    try {
+                        console.log('Creating mesh from GLTF data...');
+                        
+                        // Get first primitive
+                        const primitive = mesh.primitives[0];
+                        if (!primitive) {
+                            console.log('No primitive found in mesh');
+                            return null;
+                        }
+                        
+                        console.log('Primitive:', primitive);
+                        
+                        // Get accessors
+                        const positionAccessor = gltf.accessors[primitive.attributes.POSITION];
+                        const normalAccessor = gltf.accessors[primitive.attributes.NORMAL];
+                        const uvAccessor = gltf.accessors[primitive.attributes.TEXCOORD_0];
+                        const indexAccessor = gltf.accessors[primitive.indices];
+                        
+                        if (!positionAccessor) {
+                            console.log('No position accessor found');
+                            return null;
+                        }
+                        
+                        console.log('Position accessor:', positionAccessor);
+                        
+                        // Get buffer views
+                        const positionBufferView = gltf.bufferViews[positionAccessor.bufferView];
+                        const normalBufferView = normalAccessor ? gltf.bufferViews[normalAccessor.bufferView] : null;
+                        const uvBufferView = uvAccessor ? gltf.bufferViews[uvAccessor.bufferView] : null;
+                        const indexBufferView = indexAccessor ? gltf.bufferViews[indexAccessor.bufferView] : null;
+                        
+                        console.log('Position buffer view:', positionBufferView);
+                        
+                        // Extract geometry data
+                        const positionData = this.extractAccessorData(positionAccessor, positionBufferView, binaryChunk);
+                        const normalData = normalAccessor ? this.extractAccessorData(normalAccessor, normalBufferView, binaryChunk) : null;
+                        const uvData = uvAccessor ? this.extractAccessorData(uvAccessor, uvBufferView, binaryChunk) : null;
+                        const indexData = indexAccessor ? this.extractAccessorData(indexAccessor, indexBufferView, binaryChunk) : null;
+                        
+                        if (!positionData) {
+                            console.log('Failed to extract position data');
+                            return null;
+                        }
+                        
+                        console.log('Position data length:', positionData.length);
+                        console.log('Normal data length:', normalData ? normalData.length : 'none');
+                        console.log('UV data length:', uvData ? uvData.length : 'none');
+                        console.log('Index data length:', indexData ? indexData.length : 'none');
+                        
+                        // Calculate vertex count
+                        const vertexCount = positionData ? positionData.length / 3 : 0;
+                        const triangleCount = indexData ? indexData.length / 3 : vertexCount / 3;
+                        console.log('=== GEOMETRY ANALYSIS ===');
+                        console.log('Vertex count:', vertexCount);
+                        console.log('Triangle count:', triangleCount);
+                        console.log('Position data size:', positionData ? (positionData.length * 4) : 0, 'bytes');
+                        console.log('Normal data size:', normalData ? (normalData.length * 4) : 0, 'bytes');
+                        console.log('Index data size:', indexData ? (indexData.length * 2) : 0, 'bytes');
+                        
+                        // Create Three.js geometry
+                        const geometry = new THREE.BufferGeometry();
+                        
+                        // Set position attributes
+                        const positionArray = new Float32Array(positionData);
+                        geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+                        
+                        // Set normal attributes if available
+                        if (normalData) {
+                            const normals = new Float32Array(normalData);
+                            geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+                        } else {
+                            geometry.computeVertexNormals();
+                        }
+                        
+                        // Set UV attributes if available - CRITICAL for texture mapping
+                        if (uvData) {
+                            const uvs = new Float32Array(uvData);
+                            geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                            console.log('*** UV COORDINATES APPLIED TO GEOMETRY ***');
+                            console.log('UV count:', uvData.length / 2);
+                        } else {
+                            console.log('*** NO UV COORDINATES FOUND - TEXTURE MAPPING WILL FAIL ***');
+                        }
+                        
+                        // Set indices if available
+                        if (indexData) {
+                            const indices = new Uint16Array(indexData);
+                            geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+                        }
+                        
+                        // Try to preserve original materials from GLB
+                        let material;
+                        if (gltf.materials && gltf.materials.length > 0) {
+                            // Use first material from GLB file
+                            const gltfMaterial = gltf.materials[0];
+                            console.log('Using GLB material:', gltfMaterial);
+                            
+                            material = new THREE.MeshStandardMaterial({
+                                color: gltfMaterial.pbrMetallicRoughness?.baseColorFactor || 0xffffff,
+                                metalness: gltfMaterial.pbrMetallicRoughness?.metallicFactor || 0.1,
+                                roughness: gltfMaterial.pbrMetallicRoughness?.roughnessFactor || 0.8
+                            });
+                            
+                            // Try to load texture if available
+                            if (gltfMaterial.pbrMetallicRoughness?.baseColorTexture) {
+                                console.log('Loading base color texture from GLB');
+                                const textureInfo = gltfMaterial.pbrMetallicRoughness.baseColorTexture;
+                                console.log('Texture info:', textureInfo);
+                                
+                                // Try to extract texture from GLB binary data
+                                if (gltf.images && gltf.images[textureInfo.index]) {
+                                    const image = gltf.images[textureInfo.index];
+                                    console.log('=== TEXTURE ANALYSIS ===');
+                                    console.log('Found image data:', image);
+                                    console.log('Image mimeType:', image.mimeType);
+                                    console.log('Image bufferView:', image.bufferView);
+                                    console.log('Image name:', image.name);
+                                    
+                                    // Check if it's WebP
+                                    if (image.mimeType && image.mimeType.includes('webp')) {
+                                        console.log('*** WEBP TEXTURE DETECTED ***');
+                                    } else if (image.mimeType && image.mimeType.includes('jpeg')) {
+                                        console.log('*** JPEG TEXTURE DETECTED ***');
+                                    } else if (image.mimeType && image.mimeType.includes('png')) {
+                                        console.log('*** PNG TEXTURE DETECTED ***');
+                                    } else {
+                                        console.log('*** UNKNOWN TEXTURE FORMAT ***');
+                                    }
+                                    
+                                    // Create texture from image data
+                                    if (image.bufferView !== undefined) {
+                                        const bufferView = gltf.bufferViews[image.bufferView];
+                                        const textureData = binaryChunk.slice(bufferView.byteOffset, bufferView.byteOffset + bufferView.byteLength);
+                                        
+                                        console.log('=== FILE SIZE ANALYSIS ===');
+                                        console.log('Texture data size:', textureData.length, 'bytes');
+                                        console.log('Texture data size (KB):', (textureData.length / 1024).toFixed(2), 'KB');
+                                        console.log('Texture data size (MB):', (textureData.length / 1024 / 1024).toFixed(2), 'MB');
+                                        console.log('BufferView byteOffset:', bufferView.byteOffset);
+                                        console.log('BufferView byteLength:', bufferView.byteLength);
+                                        
+                                        // Create blob and texture
+                                        const blob = new Blob([textureData], { type: image.mimeType || 'image/png' });
+                                        const imageUrl = URL.createObjectURL(blob);
+                                        
+                                        const texture = new THREE.TextureLoader().load(imageUrl);
+                                        texture.flipY = false; // GLTF textures don't need to be flipped
+                                        texture.colorSpace = THREE.SRGBColorSpace; // Updated for newer Three.js
+                                        texture.wrapS = THREE.RepeatWrapping;
+                                        texture.wrapT = THREE.RepeatWrapping;
+                                        texture.anisotropy = 4; // Improve texture quality
+                                        
+                                        material.map = texture;
+                                        material.needsUpdate = true;
+                                        
+                                        // If texture is loaded, don't use base color factor
+                                        material.color.setHex(0xffffff);
+                                        
+                                        console.log('Texture loaded and applied to material');
+                                    }
+                                }
+                            }
+                        } else {
+                            // Fallback material
+                            material = new THREE.MeshStandardMaterial({
+                                color: 0xcccccc,
+                                metalness: 0.3,
+                                roughness: 0.7
+                            });
+                        }
+                        
+                        // Create mesh
+                        const threeMesh = new THREE.Mesh(geometry, material);
+                        
+                        console.log('Three.js mesh created successfully');
+                        return threeMesh;
+                        
+                    } catch (error) {
+                        console.error('Error creating mesh from GLTF:', error);
+                        return null;
+                    }
+                }
+                
+                extractAccessorData(accessor, bufferView, binaryChunk) {
+                    try {
+                        const byteOffset = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
+                        const byteLength = accessor.count * this.getComponentSize(accessor);
+                        
+                        console.log(`Extracting data: offset=${byteOffset}, length=${byteLength}, type=${accessor.type}, componentType=${accessor.componentType}`);
+                        
+                        // Extract relevant slice from binary chunk
+                        const dataSlice = binaryChunk.slice(byteOffset, byteOffset + byteLength);
+                        
+                        // Convert based on component type
+                        switch (accessor.componentType) {
+                            case 5126: // FLOAT
+                                return new Float32Array(dataSlice);
+                            case 5123: // UNSIGNED_SHORT
+                                return new Uint16Array(dataSlice);
+                            case 5121: // UNSIGNED_BYTE
+                                return new Uint8Array(dataSlice);
+                            case 5125: // UNSIGNED_INT
+                                return new Uint32Array(dataSlice);
+                            default:
+                                console.log('Unsupported component type:', accessor.componentType);
+                                return null;
+                        }
+                    } catch (error) {
+                        console.error('Error extracting accessor data:', error);
+                        return null;
+                    }
+                }
+                
+                getComponentSize(accessor) {
+                    const typeSizes = {
+                        'SCALAR': 1,
+                        'VEC2': 2,
+                        'VEC3': 3,
+                        'VEC4': 4,
+                        'MAT2': 4,
+                        'MAT3': 9,
+                        'MAT4': 16
+                    };
+                    
+                    const componentTypeSizes = {
+                        5120: 1,  // BYTE
+                        5121: 1,  // UNSIGNED_BYTE
+                        5122: 2,  // SHORT
+                        5123: 2,  // UNSIGNED_SHORT
+                        5125: 4,  // UNSIGNED_INT
+                        5126: 4   // FLOAT
+                    };
+                    
+                    const typeSize = typeSizes[accessor.type] || 1;
+                    const componentSize = componentTypeSizes[accessor.componentType] || 1;
+                    
+                    return typeSize * componentSize;
+                }
+                
+                createPlaceholder(scene) {
+                    // Create a better placeholder that looks more like a chess piece
+                    const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 8);
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0xcccccc,
+                        metalness: 0.3,
+                        roughness: 0.7
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+                    
+                    // Add a simple crown
+                    const crownGeometry = new THREE.BoxGeometry(0.6, 0.3, 0.6);
+                    const crown = new THREE.Mesh(crownGeometry, material);
+                    crown.position.y = 0.9;
+                    crown.castShadow = true;
+                    scene.add(crown);
+                    
+                    // Add cross on top
+                    const crossGeometry = new THREE.BoxGeometry(0.1, 0.4, 0.1);
+                    const cross = new THREE.Mesh(crossGeometry, material);
+                    cross.position.y = 1.3;
+                    cross.castShadow = true;
+                    scene.add(cross);
+                    
+                    console.log('Created chess piece placeholder');
+                }
+                
+                createFallbackScene(resolve) {
+                    console.log('Creating fallback scene');
+                    const scene = new THREE.Group();
+                    const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 8);
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0xcccccc,
+                        metalness: 0.3,
+                        roughness: 0.7
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+                    resolve({ scene });
+                }
+            };
+            
+            // Verify GLTFLoader is properly attached
+            console.log('Verifying GLTFLoader attachment...');
+            console.log('THREE.GLTFLoader:', window.THREE.GLTFLoader);
+            console.log('typeof THREE.GLTFLoader:', typeof window.THREE.GLTFLoader);
+            
+            if (typeof window.THREE.GLTFLoader !== 'undefined') {
+                console.log('Simple GLTF loader created successfully');
+            } else {
+                console.error('Failed to create GLTFLoader!');
+            }
         }
         
         // Load Socket.IO with fallback
@@ -174,6 +621,10 @@
             
             if (typeof THREE !== 'undefined' && typeof io !== 'undefined') {
                 console.log('THREE.js and Socket.IO loaded successfully!');
+                
+                // Load GLTFLoader after THREE.js is available
+                loadGLTFLoader();
+                
                 loadGameModules();
             } else if (loadAttempts > maxAttempts) {
                 console.error('Failed to load THREE.js or Socket.IO after maximum attempts');
@@ -189,14 +640,16 @@
             const scripts = [
                 'gameState.js',
                 'network.js',
-                'terrain.js',
+                'terrain-new.js?v=' + Date.now(),
                 'board_clean.js',
                 'camera.js',
+                'soundManager.js',
                 'pieces3d.js',
                 'movementBridge.js',
                 'moveValidator.js',
                 'coveringSystem.js',
                 'visualFeedback.js',
+                'localTreeSystem.js',
                 'celShaderSimple.js',
                 'game.js'
             ];
