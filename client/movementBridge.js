@@ -7,16 +7,20 @@ class MovementBridge {
     }
     
     getValidMovesForPiece(piece) {
+        console.log(`[MovementBridge] Getting valid moves for piece ${piece.id} at (${piece.x}, ${piece.z})`);
+        
         const cacheKey = `${piece.id}_${piece.x}_${piece.z}_${piece.lastMoveTime}`;
         
         // Check cache first
         const cached = this.moveCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+            console.log(`[MovementBridge] Using cached moves: ${cached.moves.length} moves`);
             return cached.moves;
         }
         
         // Calculate valid moves
         const moves = this.calculateValidMoves(piece);
+        console.log(`[MovementBridge] Calculated ${moves.length} valid moves for piece ${piece.id}`);
         
         // Cache the result
         this.moveCache.set(cacheKey, {
@@ -31,12 +35,16 @@ class MovementBridge {
     }
     
     calculateValidMoves(piece) {
+        console.log(`[MovementBridge] Calculating moves for ${piece.type} at (${piece.x}, ${piece.z})`);
         const moves = [];
         const pattern = this.getMovementPattern(piece.type);
         
         if (!pattern) {
+            console.log(`[MovementBridge] No movement pattern found for piece type: ${piece.type}`);
             return moves;
         }
+        
+        console.log(`[MovementBridge] Found movement pattern for ${piece.type}:`, pattern);
         
         if (Array.isArray(pattern.moves)) {
             // Fixed distance moves (pawns, knights, kings)
@@ -176,29 +184,40 @@ class MovementBridge {
     }
     
     isValidMove(piece, x, z) {
+        console.log(`[MovementBridge] Checking move to (${x}, ${z}) for piece ${piece.id}`);
+        
         // Check if tile is blocked by terrain
         if (this.boardSystem.isTileBlocked(x, z)) {
+            console.log(`[MovementBridge] Move rejected: tile (${x}, ${z}) is blocked by terrain`);
             return false;
         }
         
         // Check if there's a piece at destination
         const destPiece = this.gameState.getPieceAt(x, z);
         if (destPiece) {
+            console.log(`[MovementBridge] Destination has piece: ${destPiece.id} (player ${destPiece.playerId})`);
             // Can't move to friendly piece
             if (destPiece.playerId === piece.playerId) {
+                console.log(`[MovementBridge] Move rejected: friendly piece at destination`);
                 return false;
             }
             // Can capture enemy piece (unless covered)
             if (this.gameState.isCovered(destPiece.id)) {
+                console.log(`[MovementBridge] Move rejected: enemy piece is covered`);
                 return false;
             }
+            console.log(`[MovementBridge] Valid capture move on enemy piece`);
+        } else {
+            console.log(`[MovementBridge] Destination is empty`);
         }
         
         // Check cooldown
         if (this.isPieceOnCooldown(piece)) {
+            console.log(`[MovementBridge] Move rejected: piece is on cooldown`);
             return false;
         }
         
+        console.log(`[MovementBridge] Move to (${x}, ${z}) is valid!`);
         return true;
     }
     

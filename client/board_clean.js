@@ -332,7 +332,9 @@ class CleanBoardSystem {
         // Check if tile is blocked by terrain
         const height = this.getTileHeight(x, z);
         const slope = this.calculateSlope(x, z, height);
-        return slope > 45; // Degrees - steep slopes are impassable
+        const isBlocked = slope > 60; // Degrees - increased from 20 to allow movement on reasonable terrain
+        console.log(`[Board] isTileBlocked(${x}, ${z}): height=${height.toFixed(3)}, slope=${slope.toFixed(1)}°, blocked=${isBlocked}`);
+        return isBlocked;
     }
     
     calculateSlope(x, z, height) {
@@ -493,5 +495,23 @@ class CleanBoardSystem {
         
         geometry.attributes.position.needsUpdate = true;
         geometry.attributes.normal.needsUpdate = true;
+    }
+    
+    clearTerrainCache() {
+        // Clear any cached terrain data
+        this.terrainCache = this.terrainCache || new Map();
+        this.terrainCache.clear();
+        console.log('[Board] Terrain cache cleared');
+    }
+    
+    updateTerrainMesh() {
+        // Update all board chunks with new terrain data
+        console.log('[Board] Updating terrain mesh with new data');
+        
+        for (const [chunkKey, chunk] of this.chunks) {
+            if (chunk.mesh && this.terrainSystem) {
+                this.updateChunkWithTerrain(chunk, this.terrainSystem);
+            }
+        }
     }
 }

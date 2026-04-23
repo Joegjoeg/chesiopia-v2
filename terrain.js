@@ -1,18 +1,41 @@
 class TerrainGenerator {
     constructor() {
-        this.noiseScale = 0.02;
-        this.heightScale = 25;
+        this.noiseScale = 0.015;
+        this.heightScale = 20.0;
         this.tileCache = new Map();
         this.maxCacheSize = 10000;
+        this.seed = null;
         
-        // Simple noise implementation
+        // Simple noise implementation - will be initialized with seed
+        this.permutation = [];
+        this.generatePermutation();
+    }
+    
+    setSeed(seed) {
+        this.seed = seed;
+        this.tileCache.clear(); // Clear cache when seed changes
+        this.generatePermutation();
+        console.log(`[TerrainGenerator] Set seed to: ${seed}`);
+    }
+    
+    generatePermutation() {
+        const random = this.seed !== null ? this.seededRandom() : Math.random;
+        
         this.permutation = [];
         for (let i = 0; i < 256; i++) {
-            this.permutation[i] = Math.floor(Math.random() * 256);
+            this.permutation[i] = Math.floor(random() * 256);
         }
         for (let i = 0; i < 256; i++) {
             this.permutation[256 + i] = this.permutation[i];
         }
+    }
+    
+    seededRandom() {
+        let seed = this.seed || 12345;
+        return function() {
+            seed = (seed * 9301 + 49297) % 233280;
+            return seed / 233280;
+        };
     }
     
     getHeight(x, y) {
@@ -53,7 +76,7 @@ class TerrainGenerator {
     }
     
     simplexNoise(x, y) {
-        // Simple simplex noise implementation
+        // Simple continuous noise function for chunk boundaries
         const X = Math.floor(x) & 255;
         const Y = Math.floor(y) & 255;
         
@@ -96,7 +119,15 @@ class TerrainGenerator {
     isTileBlocked(x, y) {
         const height = this.getHeight(x, y);
         const slope = this.calculateSlope(x, y, height);
-        return slope > 45; // Degrees - steep slopes are impassable
+        let isBlocked = slope > 25; // Degrees - steep slopes are impassable (lowered for more trees)
+        
+        // Add 50% chance for blocked tiles to not be blocked
+        if (isBlocked && Math.random() < 0.5) {
+            isBlocked = false;
+        }
+        
+        console.log(`[TerrainGen] Tile (${x},${y}): height=${height.toFixed(2)}, slope=${slope.toFixed(2)}°, blocked=${isBlocked}`);
+        return isBlocked;
     }
     
     calculateSlope(x, y, height) {
@@ -134,10 +165,14 @@ class TerrainGenerator {
     getChunkData(chunkX, chunkZ, chunkSize = 16) {
         const chunk = [];
         
-        for (let x = 0; x < chunkSize; x++) {
-            for (let z = 0; z < chunkSize; z++) {
+        // Generate terrain using noise directly - no over-smoothing
+        for (let z = 0; z < chunkSize; z++) {
+            const worldZ = chunkZ * chunkSize + z;
+            
+            for (let x = 0; x < chunkSize; x++) {
                 const worldX = chunkX * chunkSize + x;
-                const worldZ = chunkZ * chunkSize + z;
+                
+                // Get height directly from noise function
                 const height = this.getHeight(worldX, worldZ);
                 const isBlocked = this.isTileBlocked(worldX, worldZ);
                 const color = this.getBiomeColor(height);

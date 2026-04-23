@@ -18,13 +18,10 @@ class NetworkManager {
     async connect() {
         try {
             this.updateStatus('Connecting...', false);
-            
-            // Use current domain for connection (works on both localhost and production)
-            const serverUrl = window.location.origin;
-            console.log('[Network] Starting connection to:', serverUrl);
+            console.log('[Network] Starting connection to localhost:3000...');
             
             // Connect to server
-            this.socket = io(serverUrl, {
+            this.socket = io('localhost:3000', {
                 transports: ['websocket', 'polling'],
                 timeout: 10000,
                 forceNew: true
@@ -116,6 +113,13 @@ class NetworkManager {
         this.socket.on('pieceMoved', (data) => {
             console.log('[Network] Received pieceMoved event:', data);
             this.triggerEvent('pieceMoved', data);
+        });
+        
+        this.socket.on('pieceAdded', (data) => {
+            console.log('[Network] === PIECE ADDED EVENT RECEIVED ===');
+            console.log('[Network] Piece data:', data);
+            console.log('[Network] Socket ID:', this.socket.id);
+            this.triggerEvent('pieceAdded', data);
         });
         
         this.socket.on('piecePurchased', (data) => {
@@ -273,23 +277,6 @@ class NetworkManager {
                     console.error(`Error in event handler for ${event}:`, error);
                 }
             });
-        }
-    }
-    
-    on(event, handler) {
-        if (!this.eventHandlers.has(event)) {
-            this.eventHandlers.set(event, []);
-        }
-        this.eventHandlers.get(event).push(handler);
-    }
-    
-    off(event, handler) {
-        if (this.eventHandlers.has(event)) {
-            const handlers = this.eventHandlers.get(event);
-            const index = handlers.indexOf(handler);
-            if (index > -1) {
-                handlers.splice(index, 1);
-            }
         }
     }
     

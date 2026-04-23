@@ -10,13 +10,14 @@ class CameraController {
         
         // Movement
         this.moveSpeed = 0.5;
-        this.rotationSpeed = 0.002;
+        this.rotationSpeed = 0.001; // Reduced mouse sensitivity
         this.zoomSpeed = 0.5;
         
         // Input state
         this.keys = {};
         this.mouseDown = false;
         this.rightMouseDown = false;
+        this.middleMouseDown = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         
@@ -28,14 +29,33 @@ class CameraController {
         // Animation
         this.animating = false;
         this.animationStart = null;
+        
+        // Smooth movement with acceleration
+        this.currentTarget = new THREE.Vector3(0, 0, 0); // Actual position being interpolated
+        this.currentTarget.copy(this.target);
+        this.smoothSpeed = 0.1; // Interpolation speed (0.1 = smooth, 1.0 = instant)
+        
+        // Velocity-based movement for acceleration/deceleration
+        this.velocity = new THREE.Vector3(0, 0, 0);
+        this.acceleration = 0.04; // Slower acceleration
+        this.deceleration = 0.98; // Lower damping for more gradual coasting
+        this.maxSpeed = 0.2; // Much lower max speed for very gentle movement
+        
+        // Smooth rotation with spin momentum
+        this.currentAngle = this.angle; // Actual angle being interpolated
+        this.angleVelocity = 0; // Angular velocity for momentum
+        this.rotationAcceleration = 0.2; // Much lower acceleration
+        this.rotationDamping = 0.75; // Much higher damping for minimal momentum
+        
+        // Smooth target point zoom system
+        this.zoomTarget = null; // Target point for smooth zoom
+        this.zoomSpeed = 0.075; // Halved speed for elegant swoosh zoom
+        this.zoomThreshold = 0.5; // Distance threshold to consider "arrived" at target
         this.animationDuration = 1000;
         this.animationStartPos = null;
         this.animationTargetPos = null;
         
-        // Add green sphere at camera target position for visualization
-        this.targetSphere = this.createTargetSphere();
-        this.scene.add(this.targetSphere);
-        
+                
         // Setup initial position
         this.updateCameraPosition();
         this.setupEventListeners();
@@ -73,11 +93,14 @@ class CameraController {
     }
     
     handleMouseDown(event) {
-        if (event.button === 0) { // Left click
-            this.mouseDown = true;
+        if (event.button === 0) { // Left click - now for pieces only
+            // Don't handle camera controls here - let game handle pieces
+        } else if (event.button === 1) { // Middle click - camera orientation
+            this.middleMouseDown = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
-        } else if (event.button === 2) { // Right click
+            event.preventDefault(); // Prevent middle-click behavior
+        } else if (event.button === 2) { // Right click - camera position
             this.rightMouseDown = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
@@ -86,20 +109,45 @@ class CameraController {
     }
     
     handleMouseUp(event) {
-        if (event.button === 0) { // Left click
+        if (event.button === 0) { // Left click - pieces only
             this.mouseDown = false;
-        } else if (event.button === 2) { // Right click
+        } else if (event.button === 1) { // Middle click - camera orientation
+            this.middleMouseDown = false;
+        } else if (event.button === 2) { // Right click - camera position
             this.rightMouseDown = false;
         }
     }
     
     handleMouseMove(event) {
-        if (this.mouseDown) {
+        if (this.middleMouseDown) {
             const deltaX = event.clientX - this.lastMouseX;
             const deltaY = event.clientY - this.lastMouseY;
             
             if (this.mode === 'tactical' || this.mode === 'free') {
-                // Move camera target like WASD keys (swapped from right click)
+                // Add angular velocity for spin momentum rotation (now middle click)
+                this.angleVelocity -= deltaX * this.rotationSpeed * 100;
+                
+                // Vertical arc rotation around center point
+                const verticalRotationSpeed = 0.002;
+                const currentVerticalAngle = Math.atan2(this.height - 15, this.distance); // Current vertical angle
+                const newVerticalAngle = currentVerticalAngle + deltaY * verticalRotationSpeed;
+                
+                // Calculate new height and distance based on vertical arc
+                const arcRadius = Math.sqrt(Math.pow(this.distance, 2) + Math.pow(this.height - 15, 2));
+                this.distance = Math.max(5, Math.min(50, arcRadius * Math.cos(newVerticalAngle)));
+                this.height = 15 + arcRadius * Math.sin(newVerticalAngle);
+            }
+            
+            this.lastMouseX = event.clientX;
+            this.lastMouseY = event.clientY;
+        }
+        
+        if (this.rightMouseDown) {
+            const deltaX = event.clientX - this.lastMouseX;
+            const deltaY = event.clientY - this.lastMouseY;
+            
+            if (this.mode === 'tactical' || this.mode === 'free') {
+                // Move camera target like WASD keys (now right click)
                 const panSpeed = 0.05;
                 const angleRad = this.angle * Math.PI / 180;
                 
@@ -114,22 +162,9 @@ class CameraController {
                 moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
                 moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
                 
+                // Apply movement
                 this.target.add(moveVector);
                 this.updateCameraPosition();
-            }
-            
-            this.lastMouseX = event.clientX;
-            this.lastMouseY = event.clientY;
-        }
-        
-        if (this.rightMouseDown) {
-            const deltaX = event.clientX - this.lastMouseX;
-            const deltaY = event.clientY - this.lastMouseY;
-            
-            if (this.mode === 'tactical' || this.mode === 'free') {
-                // Rotate camera around target (reversed Y direction) (swapped from left click)
-                this.angle -= deltaX * this.rotationSpeed * 100;
-                this.height = Math.max(5, Math.min(50, this.height + deltaY * 0.1)); // Reversed: + instead of -
             }
             
             this.lastMouseX = event.clientX;
@@ -140,18 +175,20 @@ class CameraController {
     handleWheel(event) {
         event.preventDefault();
         
-        // Move camera along its local forward axis
-        const moveSpeed = 2.0;
-        const delta = event.deltaY > 0 ? -1 : 1; // Reversed: scroll forward = move forward
+        // Target point zoom system
+        const scrollDelta = event.deltaY;
+        const zoomDirection = scrollDelta > 0 ? -1 : 1; // Reversed: scroll forward = zoom in
         
-        // Get camera's local forward direction
+        // Get camera's forward direction
         const forward = new THREE.Vector3();
         this.camera.getWorldDirection(forward);
         
-        // Move target along camera's local forward axis
-        const moveVector = forward.clone().multiplyScalar(delta * moveSpeed);
-        this.target.add(moveVector);
-        this.updateCameraPosition();
+        // Calculate target point along line of sight
+        const stepDistance = 10.0; // Large step distance for target point
+        const newTarget = this.target.clone().add(forward.clone().multiplyScalar(zoomDirection * stepDistance));
+        
+        // Set the zoom target for smooth movement
+        this.zoomTarget = newTarget;
     }
     
     handleTouchStart(event) {
@@ -168,8 +205,17 @@ class CameraController {
             const deltaY = event.touches[0].clientY - this.lastMouseY;
             
             if (this.mode === 'tactical' || this.mode === 'free') {
-                this.angle -= deltaX * this.rotationSpeed * 100;
-                this.height = Math.max(5, Math.min(50, this.height - deltaY * 0.1));
+                this.angleVelocity -= deltaX * this.rotationSpeed * 100;
+                
+                // Vertical arc rotation around center point (same as mouse movement)
+                const verticalRotationSpeed = 0.002;
+                const currentVerticalAngle = Math.atan2(this.height - 15, this.distance);
+                const newVerticalAngle = currentVerticalAngle - deltaY * verticalRotationSpeed; // Reversed for touch
+                
+                // Calculate new height and distance based on vertical arc
+                const arcRadius = Math.sqrt(Math.pow(this.distance, 2) + Math.pow(this.height - 15, 2));
+                this.distance = Math.max(5, Math.min(50, arcRadius * Math.cos(newVerticalAngle)));
+                this.height = 15 + arcRadius * Math.sin(newVerticalAngle);
             }
             
             this.lastMouseX = event.touches[0].clientX;
@@ -287,11 +333,66 @@ class CameraController {
     }
     
     updateCameraPosition() {
-        const angleRad = this.angle * Math.PI / 180;
+        // Calculate desired movement direction
+        const desiredMovement = new THREE.Vector3().subVectors(this.target, this.currentTarget);
         
-        // Calculate camera position based on target and angle
-        const x = this.target.x + Math.sin(angleRad) * this.distance;
-        const z = this.target.z + Math.cos(angleRad) * this.distance;
+        // Apply acceleration when there's input, deceleration when there's no input
+        if (desiredMovement.length() > 0.01) {
+            // There's input - accelerate towards target
+            const accelerationForce = desiredMovement.normalize().multiplyScalar(this.acceleration);
+            this.velocity.add(accelerationForce);
+        } else {
+            // No input - apply deceleration (friction)
+            this.velocity.multiplyScalar(this.deceleration);
+            
+            // Stop completely if velocity is very small
+            if (this.velocity.length() < 0.001) {
+                this.velocity.set(0, 0, 0);
+            }
+        }
+        
+        // Limit maximum speed
+        if (this.velocity.length() > this.maxSpeed) {
+            this.velocity.normalize().multiplyScalar(this.maxSpeed);
+        }
+        
+        // Apply velocity to current target position
+        this.currentTarget.add(this.velocity);
+        
+        // If we're very close to the target and have low velocity, snap to target
+        if (desiredMovement.length() < 0.1 && this.velocity.length() < 0.1) {
+            this.currentTarget.copy(this.target);
+            this.velocity.set(0, 0, 0);
+        }
+        
+        // Spin momentum rotation - no spring back
+        this.angleVelocity *= this.rotationDamping; // Apply damping
+        this.currentAngle += this.angleVelocity;
+        
+        // Update target angle to match current angle (prevents spring back)
+        this.angle = this.currentAngle;
+        
+        // Smooth zoom target movement
+        if (this.zoomTarget) {
+            const distance = this.target.distanceTo(this.zoomTarget);
+            
+            if (distance > this.zoomThreshold) {
+                // Move towards target point smoothly
+                const direction = new THREE.Vector3().subVectors(this.zoomTarget, this.target).normalize();
+                const moveAmount = Math.min(distance * this.zoomSpeed, distance); // Don't overshoot
+                this.target.add(direction.multiplyScalar(moveAmount));
+            } else {
+                // Arrived at target, clear it
+                this.target.copy(this.zoomTarget);
+                this.zoomTarget = null;
+            }
+        }
+        
+        const angleRad = this.currentAngle * Math.PI / 180;
+        
+        // Calculate camera position based on smoothed target and angle
+        const x = this.currentTarget.x + Math.sin(angleRad) * this.distance;
+        const z = this.currentTarget.z + Math.cos(angleRad) * this.distance;
         
         // Get terrain height at camera position for collision avoidance
         let terrainHeight = 0;
@@ -300,7 +401,7 @@ class CameraController {
         }
         
         // Calculate desired height
-        let desiredHeight = this.target.y + this.height;
+        let desiredHeight = this.currentTarget.y + this.height;
         
         // Ensure camera stays above terrain with minimum clearance
         const minHeightAboveTerrain = terrainHeight + this.minCameraHeight;
@@ -417,19 +518,7 @@ class CameraController {
         return raycaster;
     }
     
-    createTargetSphere() {
-        const geometry = new THREE.SphereGeometry(0.2, 16, 16);
-        const material = new THREE.MeshBasicMaterial({
-            color: 0x00ff00,
-            transparent: true,
-            opacity: 0.3
-        });
         
-        const sphere = new THREE.Mesh(geometry, material);
-        sphere.renderOrder = 1000; // Render on top
-        return sphere;
-    }
-    
     // Get visible tiles in camera view
     getVisibleTiles(range = 50) {
         const tiles = [];

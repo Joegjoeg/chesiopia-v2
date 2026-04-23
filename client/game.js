@@ -95,8 +95,8 @@ class ChessopiaGame {
         // Create scene
         this.scene = new THREE.Scene();
         
-        // Add distance fog to obscure background terrain
-        this.scene.fog = new THREE.Fog(0x808080, 10, 40); // 50% gray, pea souper fog
+        // Add distance fog to obscure background terrain - INCREASED FOR BETTER VISIBILITY
+        this.scene.fog = new THREE.Fog(0x808080, 10, 60); // 50% gray, increased far distance from 30 to 60
         console.log('[Game] Fog applied:', !!this.scene.fog, 'Color:', this.scene.fog.color.getHex(), 'Near:', this.scene.fog.near, 'Far:', this.scene.fog.far);
         
         // Setup lighting
@@ -112,7 +112,7 @@ class ChessopiaGame {
         
         // Verify fog is still applied after camera setup
         console.log('[Game] Fog verification after camera setup:', !!this.scene.fog);
-        this.camera.position.set(10, 15, 10);
+        this.camera.position.set(5, 20, 5);
         this.camera.lookAt(0, 0, 0);
     }
     
@@ -151,9 +151,15 @@ class ChessopiaGame {
     async setupSystems() {
         // Initialize game systems
         this.gameState = new ClientGameState();
-        this.terrainSystem = new TerrainSystem(this.scene);
+        this.treeSystem = new LocalTreeSystem(this.scene, null);
+        this.terrainSystem = new TerrainSystem(this.scene, this.treeSystem);
         this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem);
         this.piecesSystem = new Pieces3D(this.scene, this.terrainSystem);
+        
+        // Update tree system with terrain system reference
+        this.treeSystem.terrainSystem = this.terrainSystem;
+        
+        // Simple tree system works independently with server data
         this.cameraController = new CameraController(this.camera, this.scene);
         this.movementBridge = new MovementBridge(this.gameState, this.boardSystem);
         this.visualFeedback = new VisualFeedbackSystem(this.scene);
@@ -166,6 +172,11 @@ class ChessopiaGame {
         
         // Create initial board
         this.boardSystem.createBoard(0, 0, 10);
+        
+        // Initialize tree system with initial camera position
+        if (this.treeSystem) {
+            this.treeSystem.updateCameraPosition(this.camera.position);
+        }
     }
     
     async setupEventListeners() {
@@ -231,6 +242,59 @@ class ChessopiaGame {
             });
         }
         
+        const recreateMapBtn = document.getElementById('recreateMapBtn');
+        if (recreateMapBtn) {
+            recreateMapBtn.addEventListener('click', async () => {
+                console.log('[Game] Recreate map button clicked');
+                try {
+                    const response = await fetch('/api/world/recreate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        console.log('[Game] Map recreated successfully with seed:', result.seed);
+                        
+                        // Clear all terrain data and trees
+                        this.terrainSystem.chunks.clear();
+                        this.treeSystem.trees.clear();
+                        
+                        // Clear board system terrain cache
+                        if (this.boardSystem) {
+                            this.boardSystem.clearTerrainCache();
+                        }
+                        
+                        // Refresh terrain around camera
+                        const cameraPos = this.cameraController.camera.position;
+                        await this.terrainSystem.generateInitialTerrain(
+                            Math.floor(cameraPos.x), 
+                            Math.floor(cameraPos.z), 
+                            this.terrainSystem.loadDistance
+                        );
+                        
+                        // Update board system with new terrain
+                        if (this.boardSystem) {
+                            this.boardSystem.updateTerrainMesh();
+                        }
+                        
+                        // Force camera position update to refresh terrain heights
+                        this.cameraController.updateCameraPosition();
+                        
+                        alert(`Map recreated! New seed: ${result.seed}`);
+                    } else {
+                        console.error('[Game] Failed to recreate map:', result.message);
+                        alert('Failed to recreate map: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('[Game] Error recreating map:', error);
+                    alert('Error recreating map: ' + error.message);
+                }
+            });
+        }
+        
         const toggleCelShadingBtn = document.getElementById('toggleCelShadingBtn');
         if (toggleCelShadingBtn) {
             console.log('[Game] Toggle cel shading button found and event listener added');
@@ -271,6 +335,10 @@ class ChessopiaGame {
             this.handlePieceMoved(data);
         });
         
+        this.networkManager.on('pieceAdded', (data) => {
+            this.handlePieceAdded(data);
+        });
+        
         this.networkManager.on('piecePurchased', (data) => {
             this.handlePiecePurchased(data);
         });
@@ -290,8 +358,19 @@ class ChessopiaGame {
             
             // Update systems
             this.cameraController.update();
-            this.piecesSystem.update();
-            this.visualFeedback.update();
+            
+            // Update trees based on camera position
+            if (this.treeSystem) {
+                this.treeSystem.updateCameraPosition(this.camera.position);
+                this.treeSystem.updateTreeFade();
+            }
+            
+            // Update visual feedback system
+            if (this.visualFeedback) {
+                this.visualFeedback.update();
+            }
+            
+            // Tree system updates handled by updateCameraPosition
             
             // Update terrain streaming
             this.terrainSystem.updateStreaming(this.camera.position);
@@ -343,7 +422,24 @@ class ChessopiaGame {
             
             if (tilePos) {
                 console.log('[Game] Tile clicked:', tilePos.x, tilePos.z);
-                this.handleTileClick(tilePos.x, tilePos.z);
+                
+                // Check if there's a marker on this clicked square
+                const hasMarkerOnSquare = this.validMoves.some(move => move.x === tilePos.x && move.z === tilePos.z);
+                
+                if (hasMarkerOnSquare) {
+                    console.log('[Game] Tile has marker, processing move for:', tilePos.x, tilePos.z);
+                    this.handleTileClick(tilePos.x, tilePos.z);
+                    return;
+                } else {
+                    // Only process non-marker board clicks if there are no visible markers
+                    const hasVisibleMarkers = this.visualFeedback.hasVisibleMoveMarkers();
+                    if (!hasVisibleMarkers) {
+                        console.log('[Game] No markers on tile and no visible markers, processing regular tile click');
+                        this.handleTileClick(tilePos.x, tilePos.z);
+                    } else {
+                        console.log('[Game] No marker on this tile, ignoring click (markers are present elsewhere)');
+                    }
+                }
             }
         }
     }
@@ -408,51 +504,9 @@ class ChessopiaGame {
         this.selectedPiece = piece;
         this.validMoves = this.movementBridge.getValidMovesForPiece(piece);
         
-        console.log('[Game] Valid moves found:', this.validMoves.length);
-        
         // Show visual feedback
         this.visualFeedback.showSelectedPiece(piece);
         this.visualFeedback.showValidMoves(this.validMoves);
-        
-        // Update UI
-        this.updateSelectedPieceUI(piece);
-    }
-    
-    handleTileClick(x, z) {
-        if (this.selectedPiece) {
-            // Check if this specific square's marker is ready for interaction
-            const isValidMove = this.validMoves.some(move => move.x === x && move.z === z);
-            
-            if (isValidMove) {
-                if (!this.visualFeedback.isMarkerReady(x, z)) {
-                    console.log(`[Game] Marker for square (${x},${z}) not ready yet, ignoring click`);
-                    return; // Behave as empty square until this marker appears
-                }
-                
-                this.movePiece(this.selectedPiece, x, z);
-                // Don't deselect here - let handlePieceMoved handle it
-                return;
-            }
-        }
-        
-        // Deselect piece only if no valid move was made
-        this.selectedPiece = null;
-        this.validMoves = [];
-        this.visualFeedback.hideSelection();
-        this.visualFeedback.clearValidMovesImmediate(); // Clear move markers on deselect
-        this.updateSelectedPieceUI(null);
-    }
-    
-    movePiece(piece, toX, toZ) {
-        if (this.networkManager) {
-            this.networkManager.emit('movePiece', {
-                pieceId: piece.id,
-                fromX: piece.x,
-                fromZ: piece.z,
-                toX: toX,
-                toZ: toZ
-            });
-        }
     }
     
     purchasePiece(pieceType) {
@@ -466,49 +520,118 @@ class ChessopiaGame {
     
     handlePieceMoved(data) {
         console.log('[Game] Piece moved:', data);
-        if (data.success) {
-            this.piecesSystem.movePiece(data.piece.id, data.piece.x, data.piece.z);
+        console.log('[Game] BEFORE clearValidMoves - selectedPiece:', this.selectedPiece);
+        
+        // Update piece position in game state and visual mesh
+        if (data.piece && data.piece.id) {
+            this.gameState.updatePiecePosition(data.piece.id, data.piece.x, data.piece.z);
+            console.log('[Game] Updated piece position in game state:', data.piece.id, 'to', data.piece.x, data.piece.z);
             
-            if (data.capturedPiece) {
-                this.piecesSystem.removePiece(data.capturedPiece.id);
-                this.visualFeedback.showCaptureEffect(data.capturedPiece.x, data.capturedPiece.z);
-            }
+            // Clear all available square markers first
+            console.log('[Game] Clearing valid moves immediately...');
+            this.visualFeedback.clearValidMovesImmediate();
             
-            // Clear all available square markers with animation
-            console.log('[Game] Clearing valid moves with animation...');
-            this.visualFeedback.clearValidMoves();
-            
-            // Update valid moves using the moved piece data (since piece gets deselected)
-            const movedPiece = this.gameState.getPiece(data.piece.id);
-            if (movedPiece) {
-                console.log('[Game] Getting valid moves for moved piece:', movedPiece);
-                this.validMoves = this.movementBridge.getValidMovesForPiece(movedPiece);
-                console.log('[Game] Valid moves found:', this.validMoves.length);
+            // Update visual piece mesh position with animation and callback
+            const pieceMesh = this.piecesSystem.getPieceMesh(data.piece.id);
+            if (pieceMesh) {
+                console.log('[Game] Starting piece animation with callback for:', data.piece.id);
                 
-                // Wait for animated cleanup to complete before showing new markers
-                setTimeout(() => {
-                    this.visualFeedback.showValidMoves(this.validMoves, false);
-                }, 600); // Wait for pop-out animation to complete
+                // Create callback to generate new available square markers when animation completes
+                const onAnimationComplete = () => {
+                    console.log('[Game] Piece animation completed, generating new available square markers');
+                    
+                    // Update valid moves using the moved piece data
+                    const movedPiece = this.gameState.getPiece(data.piece.id);
+                    console.log('[Game] Moved piece from game state:', movedPiece);
+                    console.log('[Game] Data piece from server:', data.piece);
+                    if (movedPiece) {
+                        console.log('[Game] Getting valid moves for moved piece:', movedPiece);
+                        this.validMoves = this.movementBridge.getValidMovesForPiece(movedPiece);
+                        console.log('[Game] Valid moves found:', this.validMoves.length);
+                        
+                        if (this.validMoves.length > 0) {
+                            console.log('[Game] Showing valid moves for moved piece:', this.validMoves.length, 'moves');
+                            this.visualFeedback.showValidMoves(this.validMoves, false);
+                        } else {
+                            console.log('[Game] No valid moves to show for moved piece');
+                        }
+                        
+                        // Keep the piece selected to show its moves
+                        console.log('[Game] BEFORE RESELECTING - selectedPiece:', this.selectedPiece);
+                        this.selectedPiece = movedPiece;
+                        console.log('[Game] AFTER RESELECTING - selectedPiece:', this.selectedPiece);
+                        this.visualFeedback.showSelectedPiece(movedPiece);
+                        this.updateSelectedPieceUI(movedPiece);
+                    } else {
+                        console.log('[Game] ERROR: Could not find moved piece in game state');
+                    }
+                };
                 
-                // Keep the piece selected to show its moves
-                this.selectedPiece = movedPiece;
-                this.visualFeedback.showSelectedPiece(movedPiece);
-                this.updateSelectedPieceUI(movedPiece);
+                this.piecesSystem.movePieceWithCallback(data.piece.id, data.piece.x, data.piece.z, onAnimationComplete);
+                console.log('[Game] Updated visual piece mesh position with callback:', data.piece.id, 'to', data.piece.x, data.piece.z);
             } else {
-                console.log('[Game] Moved piece not found in game state');
+                console.log('[Game] Warning: Piece mesh not found for ID:', data.piece.id);
             }
+            
+            // Verify the update worked
+            const updatedPiece = this.gameState.getPiece(data.piece.id);
+            console.log('[Game] Verification - piece position after update:', updatedPiece);
         }
     }
     
     handlePiecePurchased(data) {
         if (data.success) {
-            // Get player color for the new piece
+            // Get player color for new piece
             const player = this.gameState.getCurrentPlayer();
             if (player) {
                 data.piece.color = player.color;
             }
-            this.piecesSystem.addPiece(data.piece);
-            this.visualFeedback.showSpawnEffect(data.piece.x, data.piece.z);
+            
+            const spawnedPiece = this.piecesSystem.addPiece(data.piece);
+            
+            if (spawnedPiece) {
+                // Piece spawned successfully
+                this.visualFeedback.showSpawnEffect(data.piece.x, data.piece.z);
+                
+                // Add purchased piece to game state
+                this.gameState.pieces.set(data.piece.id, data.piece);
+            } else {
+                // Spawn failed - location surrounded by blocked terrain
+                console.warn('[Game] Piece spawn failed - invalid location');
+                // Could show error feedback to user here
+            }
+        }
+    }
+    
+    handlePieceAdded(data) {
+        console.log('[Game] === HANDLE PIECE ADDED ===');
+        console.log('[Game] Received piece data:', data);
+        console.log('[Game] Current pieces in gameState before adding:', this.gameState.pieces.size);
+        
+        // Get player color for new piece
+        const player = this.gameState.players.get(data.playerId);
+        console.log('[Game] Found player for piece:', player ? player.name : 'NOT FOUND');
+        if (player) {
+            data.color = player.color;
+            console.log('[Game] Applied player color:', data.color);
+        }
+        
+        // Add piece to pieces system and game state
+        console.log('[Game] Calling piecesSystem.addPiece...');
+        const spawnedPiece = this.piecesSystem.addPiece(data);
+        
+        if (spawnedPiece) {
+            // Piece spawned successfully
+            console.log('[Game] Calling visualFeedback.showSpawnEffect...');
+            this.visualFeedback.showSpawnEffect(data.x, data.z);
+            
+            // Add new piece to game state
+            this.gameState.pieces.set(data.id, data);
+            console.log('[Game] Added new player piece to game state:', data.id);
+            console.log('[Game] Total pieces in gameState after adding:', this.gameState.pieces.size);
+        } else {
+            // Spawn failed - location surrounded by blocked terrain
+            console.warn('[Game] Piece spawn failed in handlePieceAdded - invalid location');
         }
     }
     
@@ -538,6 +661,54 @@ class ChessopiaGame {
         if (king) {
             this.cameraController.centerOnPosition(king.x, king.z);
         }
+    }
+    
+    handleTileClick(x, z) {
+        console.log(`[Game] handleTileClick called at (${x},${z})`);
+        console.log(`[Game] selectedPiece:`, this.selectedPiece);
+        console.log(`[Game] validMoves:`, this.validMoves);
+        
+        if (this.selectedPiece) {
+            // Check if this is a valid move for the selected piece
+            const isValidMove = this.validMoves.some(move => move.x === x && move.z === z);
+            console.log(`[Game] isValidMove: ${isValidMove}`);
+            
+            if (isValidMove) {
+                console.log(`[Game] About to call movePiece with piece:`, this.selectedPiece, `to (${x},${z})`);
+                this.movePiece(this.selectedPiece, x, z);
+                console.log(`[Game] movePiece called, returning early`);
+                // Don't deselect here - let handlePieceMoved handle it
+                return;
+            }
+        }
+        
+        console.log(`[Game] No valid move, deselecting piece`);
+        // Deselect piece only if no valid move was made
+        console.log(`[Game] BEFORE DESELECT - selectedPiece:`, this.selectedPiece);
+        this.selectedPiece = null;
+        console.log(`[Game] AFTER DESELECT - selectedPiece:`, this.selectedPiece);
+        this.validMoves = [];
+        this.visualFeedback.hideSelection();
+    }
+    
+    movePiece(piece, toX, toZ) {
+        console.log(`[Game] movePiece called with piece:`, piece, `to (${toX},${toZ})`);
+        
+        if (!this.networkManager) {
+            console.log('[Game] No network manager, cannot send move');
+            return;
+        }
+        
+        // Send move request to server
+        this.networkManager.emit('movePiece', {
+            pieceId: piece.id,
+            fromX: piece.x,
+            fromZ: piece.z,
+            toX: toX,
+            toZ: toZ
+        });
+        
+        console.log(`[Game] Move request sent for piece ${piece.id} from (${piece.x},${piece.z}) to (${toX},${toZ})`);
     }
     
     closeAllModals() {
@@ -635,6 +806,13 @@ class ChessopiaGame {
             console.log(`[Game] Spawning ${gameStateData.pieces.length} pieces from game state...`);
             gameStateData.pieces.forEach((pieceData, index) => {
                 
+                // Check if piece already exists to prevent duplicates
+                const existingPiece = this.piecesSystem.getPiece(pieceData.id);
+                if (existingPiece) {
+                    console.log(`[Game] Piece ${pieceData.id} already exists, skipping creation`);
+                    return;
+                }
+                
                 // Add player color to piece data
                 const player = gameStateData.players.find(p => p.id === pieceData.playerId);
                 if (player) {
@@ -712,6 +890,22 @@ function initializeGame() {
     try {
         console.log('Initializing Chessopia game...');
         window.game = new ChessopiaGame();
+        
+        // Test king model loading after a delay to ensure pieces system is ready
+        setTimeout(() => {
+            console.log('*** TESTING KING MODEL LOADING ***');
+            if (window.game && window.game.piecesSystem) {
+                const testGroup = new THREE.Group();
+                const testMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                window.game.piecesSystem.createKing(testGroup, testMaterial);
+                window.game.scene.add(testGroup);
+                console.log('*** TEST KING CREATED ***');
+            } else {
+                console.log('*** GAME OR PIECES SYSTEM NOT READY ***');
+                console.log('window.game:', window.game);
+                console.log('window.game.piecesSystem:', window.game?.piecesSystem);
+            }
+        }, 1000); // Wait 1 second for systems to fully initialize
     } catch (error) {
         console.error('Failed to initialize game:', error);
         showError('Failed to initialize game. Please refresh the page.');
