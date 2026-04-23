@@ -384,7 +384,7 @@ class Pieces3D {
     async loadPieceModel(group, pieceType, material) {
         try {
             console.log(`[Pieces3D] === ${pieceType.toUpperCase()} MODEL LOADING START ===`);
-            console.log(`[Pieces3D] Loading ${pieceType} model from: ../Models/${pieceType}.glb`);
+            console.log(`[Pieces3D] Loading ${pieceType} model from: /Models/${pieceType}.glb`);
             
             // Check if GLTFLoader is available
             if (typeof THREE.GLTFLoader === 'undefined') {
@@ -397,7 +397,7 @@ class Pieces3D {
             
             console.log(`[Pieces3D] Using custom GLTFLoader to load ${pieceType}.glb`);
             const loader = new THREE.GLTFLoader();
-            const gltf = await loader.loadAsync(`../Models/${pieceType}.glb`);
+            const gltf = await loader.loadAsync(`/Models/${pieceType}.glb`);
             
             console.log(`[Pieces3D] GLTF loaded successfully for ${pieceType}:`, gltf);
             console.log(`[Pieces3D] GLTF scene:`, gltf.scene);
