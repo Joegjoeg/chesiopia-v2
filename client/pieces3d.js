@@ -397,7 +397,7 @@ class Pieces3D {
             
             console.log(`[Pieces3D] Using custom GLTFLoader to load ${pieceType}.glb`);
             const loader = new THREE.GLTFLoader();
-            const gltf = await loader.loadAsync(`/Models/${pieceType}.glb`);
+            const gltf = await loader.loadAsync(`/Models/${pieceType}.glb?v=${Date.now()}`);
             
             console.log(`[Pieces3D] GLTF loaded successfully for ${pieceType}:`, gltf);
             console.log(`[Pieces3D] GLTF scene:`, gltf.scene);
