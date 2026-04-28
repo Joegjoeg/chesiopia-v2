@@ -26,121 +26,56 @@ class TerrainSystem {
     }
     
     async downloadEntireWorld() {
-        console.log('[Terrain] STARTING WORLD DOWNLOAD - THIS SHOULD APPEAR!');
+        console.log('[Terrain] On-demand world initialization - no pre-download needed');
         
         try {
-            console.log('[Terrain] STEP 1: Fetching world data...');
-            const response = await fetch('/api/terrain/world');
-            
-            if (!response.ok) {
-                if (response.status === 503) {
-                    console.log('[Terrain] World still generating, retrying in 2 seconds...');
-                    setTimeout(() => this.downloadEntireWorld(), 2000);
-                    return;
-                }
-                throw new Error(`Failed to download world: ${response.status}`);
-            }
-            
-            console.log('[Terrain] STEP 2: Parsing JSON response...');
-            const worldData = await response.json();
-            console.log(`[Terrain] STEP 3: Parsed world with ${Object.keys(worldData.chunks).length} chunks, version: ${worldData.version}`);
-            
-            // Validate world data structure
-            if (!worldData || !worldData.chunks) {
-                console.error('[Terrain] Invalid world data structure:', worldData);
-                throw new Error('Invalid world data received');
-            }
-            
-            // Store palette for color lookups
-            this.colorPalette = worldData.palette || [];
-            console.log(`[Terrain] Loaded ${this.colorPalette.length} colors from palette`);
-            
-            console.log('[Terrain] STEP 4: Starting chunk caching loop...');
-            console.log(`[Terrain] CRITICAL: About to cache ${Object.keys(worldData.chunks).length} chunks`);
-            
-            // Cache all chunks locally
-            let loadedChunks = 0;
-            const totalChunks = Object.keys(worldData.chunks).length;
-            const chunkEntries = Object.entries(worldData.chunks);
-            
-            console.log(`[Terrain] CRITICAL: Total chunk entries to process: ${chunkEntries.length}`);
-            
-            for (const [chunkKey, chunkData] of chunkEntries) {
-                // Convert new format to old format for compatibility
-                const convertedChunkData = this.convertChunkFormat(chunkKey, chunkData);
-                
-                this.chunks.set(chunkKey, {
-                    data: convertedChunkData,
-                    loaded: true
-                });
-                loadedChunks++;
-                
-                // Log progress more frequently
-                if (loadedChunks % 50 === 0) {
-                    console.log(`[Terrain] PROGRESS: ${loadedChunks}/${totalChunks} chunks cached (${Math.round(loadedChunks/totalChunks*100)}%)`);
-                }
-                
-                // Debug: Log first few chunk keys and data structure
-                if (loadedChunks <= 5) {
-                    console.log(`[Terrain] DEBUG: Chunk ${chunkKey} data:`, {
-                        key: chunkKey,
-                        dataType: typeof chunkData,
-                        isArray: Array.isArray(chunkData),
-                        length: chunkData.length,
-                        firstItem: chunkData[0]
-                    });
-                }
-                
-                // Debug: Log every 100th chunk to see progress
-                if (loadedChunks % 100 === 0) {
-                    console.log(`[Terrain] MILESTONE: Cached ${loadedChunks} chunks, last key: ${chunkKey}`);
-                }
-            }
-            
-            console.log('[Terrain] STEP 5: Caching loop completed!');
-            console.log(`[Terrain] CRITICAL FINAL: Expected ${totalChunks}, actually cached ${this.chunks.size} chunks`);
-            console.log(`[Terrain] CRITICAL FINAL: First 10 server keys:`, Object.keys(worldData.chunks).slice(0, 10));
-            console.log(`[Terrain] CRITICAL FINAL: First 10 cache keys:`, Array.from(this.chunks.keys()).slice(0, 10));
+            // Set default color palette (will be generated from chunk data)
+            this.colorPalette = [
+                { r: 0.2, g: 0.6, b: 0.2 },  // grass
+                { r: 0.8, g: 0.7, b: 0.4 },  // sand
+                { r: 0.2, g: 0.4, b: 0.7 },  // water
+                { r: 0.1, g: 0.4, b: 0.1 }   // dark grass
+            ];
             
             this.worldDownloaded = true;
-            console.log('[Terrain] STEP 6: World download completed successfully!');
+            console.log('[Terrain] On-demand initialization complete - chunks will load as needed');
             
         } catch (error) {
-            console.error('[Terrain] ERROR IN WORLD DOWNLOAD:', error);
+            console.error('[Terrain] ERROR IN INITIALIZATION:', error);
             setTimeout(() => this.downloadEntireWorld(), 5000); // Retry after 5 seconds
         }
     }
     
-    convertChunkFormat(chunkKey, chunkData) {
-        // Parse chunk coordinates from key (e.g., "-25,-25")
-        const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+    async loadChunk(chunkX, chunkZ) {
+        const chunkKey = `${chunkX},${chunkZ}`;
         
-        // Convert new format [height, terrainType, colorIndex] to old format
-        const convertedTiles = chunkData.tiles.map((tileData, index) => {
-            // Derive world coordinates from index
-            const localX = index % this.chunkSize;
-            const localZ = Math.floor(index / this.chunkSize);
-            const worldX = chunkX * this.chunkSize + localX;
-            const worldZ = chunkZ * this.chunkSize + localZ;
-            
-            const [height, terrainType, colorIndex] = tileData;
-            
-            // Convert terrain type back to isBlocked for now
-            const isBlocked = terrainType !== 0;
-            
-            // Get color from palette
-            const paletteColor = this.colorPalette[colorIndex] || { r: 0.2, g: 0.6, b: 0.2 };
-            
-            return {
-                x: worldX,
-                z: worldZ,
-                height: height,
-                isBlocked: isBlocked,
-                color: paletteColor
-            };
-        });
+        // Check if already loaded
+        if (this.chunks.has(chunkKey)) {
+            return this.chunks.get(chunkKey).data;
+        }
         
-        return convertedTiles;
+        try {
+            console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
+            const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load chunk ${chunkKey}: ${response.status}`);
+            }
+            
+            const chunkData = await response.json();
+            console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
+            
+            // Cache the chunk
+            this.chunks.set(chunkKey, {
+                data: chunkData,
+                loaded: true
+            });
+            
+            return chunkData;
+        } catch (error) {
+            console.error(`[Terrain] Error loading chunk ${chunkKey}:`, error);
+            return null;
+        }
     }
     
     async generateInitialTerrain(centerX, centerZ, radius) {
@@ -151,8 +86,22 @@ class TerrainSystem {
             await this.downloadEntireWorld();
         }
         
-        // All chunks are now cached locally, no need to load individual chunks
-        console.log(`[Terrain] All terrain data available locally for ${this.chunks.size} chunks`);
+        // Load chunks around initial position
+        const chunkRadius = Math.ceil(radius / this.chunkSize);
+        const centerChunkX = Math.floor(centerX / this.chunkSize);
+        const centerChunkZ = Math.floor(centerZ / this.chunkSize);
+        
+        console.log(`[Terrain] Loading chunks around (${centerChunkX}, ${centerChunkZ}) with radius ${chunkRadius}`);
+        
+        const chunkPromises = [];
+        for (let x = centerChunkX - chunkRadius; x <= centerChunkX + chunkRadius; x++) {
+            for (let z = centerChunkZ - chunkRadius; z <= centerChunkZ + chunkRadius; z++) {
+                chunkPromises.push(this.loadChunk(x, z));
+            }
+        }
+        
+        await Promise.all(chunkPromises);
+        console.log(`[Terrain] Initial terrain generation complete. Loaded ${this.chunks.size} chunks`);
     }
     
     updateStreaming(cameraPosition) {

@@ -165,9 +165,22 @@ class ChessopiaServer {
         // Endpoint for getting chunk data with blocked information
         this.app.get('/api/terrain/chunk/:chunkX/:chunkZ', (req, res) => {
             const { chunkX, chunkZ } = req.params;
+            const chunkKey = `${chunkX},${chunkZ}`;
             console.log(`[Server] Chunk request received: (${chunkX}, ${chunkZ})`);
+            
+            // Check cache first
+            if (this.chunkCache.has(chunkKey)) {
+                console.log(`[Server] Chunk ${chunkKey} found in cache`);
+                return res.json(this.chunkCache.get(chunkKey));
+            }
+            
+            // Generate chunk on-demand
             const chunkData = this.terrainGenerator.getChunkData(parseInt(chunkX), parseInt(chunkZ));
             console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${chunkX}, ${chunkZ})`);
+            
+            // Cache the chunk
+            this.chunkCache.set(chunkKey, chunkData);
+            
             res.json(chunkData);
         });
         
@@ -576,43 +589,55 @@ class ChessopiaServer {
     
     async initializeWorld() {
         try {
-            console.log('[Server] Initializing world...');
+            console.log('[Server] Initializing world with on-demand generation...');
             
-            // Try to load existing world data
+            // Try to load existing world data for seed
             const worldData = await this.loadWorldData();
             
             if (worldData) {
-                console.log('[Server] Loaded existing world with seed:', worldData.seed, 'version:', worldData.version);
+                console.log('[Server] Loaded existing world with seed:', worldData.seed);
                 this.worldSeed = worldData.seed;
-                
-                // Initialize terrain generator with saved seed
-                this.terrainGenerator.setSeed(this.worldSeed);
-                
-                // Handle version 2 format (new optimized format)
-                if (worldData.version === 2) {
-                    console.log('[Server] Using version 2 world format (optimized)');
-                    this.worldData = worldData;
-                } 
-                // Handle version 1 format (old format)
-                else if (worldData.fullyGenerated && worldData.worldData) {
-                    console.log('[Server] World is fully generated (version 1 format), skipping background generation');
-                    this.worldData = worldData.worldData;
-                    this.terrainCache = new Map(worldData.terrainCache || []);
-                } else {
-                    console.log('[Server] World exists but not fully generated, starting background generation...');
-                    this.terrainCache = new Map(worldData.terrainCache || []);
-                    this.startBackgroundChunkGeneration();
-                }
             } else {
-                console.log('[Server] No existing world found, generating new world...');
-                await this.generateNewWorld();
+                // Generate new seed
+                this.worldSeed = Math.floor(Math.random() * 1000000);
+                console.log('[Server] No existing world found, using new seed:', this.worldSeed);
             }
             
-            console.log('[Server] World initialization complete');
+            // Initialize terrain generator with seed
+            this.terrainGenerator.setSeed(this.worldSeed);
+            
+            // Initialize empty world data structure
+            this.worldData = {
+                seed: this.worldSeed,
+                chunks: {},
+                worldBounds: {
+                    minX: -400,
+                    maxX: 400,
+                    minZ: -400,
+                    maxZ: 400
+                }
+            };
+            
+            // Initialize chunk cache
+            this.chunkCache = new Map();
+            
+            console.log('[Server] World initialization complete - chunks will be generated on-demand');
         } catch (error) {
             console.error('[Server] Error initializing world:', error);
-            // Fallback: generate new world
-            await this.generateNewWorld();
+            // Fallback: generate new seed
+            this.worldSeed = Math.floor(Math.random() * 1000000);
+            this.terrainGenerator.setSeed(this.worldSeed);
+            this.worldData = {
+                seed: this.worldSeed,
+                chunks: {},
+                worldBounds: {
+                    minX: -400,
+                    maxX: 400,
+                    minZ: -400,
+                    maxZ: 400
+                }
+            };
+            this.chunkCache = new Map();
         }
     }
     
@@ -671,9 +696,21 @@ class ChessopiaServer {
         this.terrainGenerator.setSeed(this.worldSeed);
         
         // Clear cache
-        this.terrainCache.clear();
+        this.chunkCache.clear();
         
-        // Save the new world
+        // Initialize empty world data structure
+        this.worldData = {
+            seed: this.worldSeed,
+            chunks: {},
+            worldBounds: {
+                minX: -400,
+                maxX: 400,
+                minZ: -400,
+                maxZ: 400
+            }
+        };
+        
+        // Save the seed for persistence
         await this.saveWorldData();
         
         console.log('[Server] New world generated with seed:', this.worldSeed);
@@ -681,58 +718,8 @@ class ChessopiaServer {
         // Notify all clients to refresh terrain
         this.io.emit('worldRegenerated', { seed: this.worldSeed });
         
-        // Start background chunk pre-generation
-        this.startBackgroundChunkGeneration();
-    }
-    
-    startBackgroundChunkGeneration() {
-        // Pre-generate entire world for single download
-        console.log('[Server] Starting entire world generation...');
-        
-        const preGenRadius = 25; // Generate 51x51 chunks around origin (much larger world)
-        const chunksToPreGen = [];
-        
-        for (let x = -preGenRadius; x <= preGenRadius; x++) {
-            for (let z = -preGenRadius; z <= preGenRadius; z++) {
-                chunksToPreGen.push({ x, z });
-            }
-        }
-        
-        // Generate entire world in background
-        setTimeout(async () => {
-            this.worldData = {
-                seed: this.worldSeed,
-                chunks: {},
-                worldBounds: {
-                    minX: -preGenRadius * 16,
-                    maxX: preGenRadius * 16,
-                    minZ: -preGenRadius * 16,
-                    maxZ: preGenRadius * 16
-                }
-            };
-            
-            chunksToPreGen.forEach(chunk => {
-                const chunkData = this.terrainGenerator.getChunkData(chunk.x, chunk.z);
-                const chunkKey = `${chunk.x},${chunk.z}`;
-                this.worldData.chunks[chunkKey] = chunkData;
-                
-                if (chunksToPreGen.length % 100 === 0) {
-                    console.log(`[Server] Generated ${Object.keys(this.worldData.chunks).length}/${chunksToPreGen.length} chunks`);
-                }
-            });
-            
-            console.log(`[Server] Entire world generation completed! Generated ${chunksToPreGen.length} chunks`);
-            console.log(`[Server] World bounds: X(${this.worldData.worldBounds.minX} to ${this.worldData.worldBounds.maxX}), Z(${this.worldData.worldBounds.minZ} to ${this.worldData.worldBounds.maxZ})`);
-            
-            // Calculate total world size
-            const totalTiles = chunksToPreGen.length * 256; // 256 tiles per chunk
-            const worldSizeKB = JSON.stringify(this.worldData).length / 1024;
-            console.log(`[Server] Total tiles: ${totalTiles}, World data size: ${worldSizeKB.toFixed(2)} KB`);
-            
-            // Save the generated world data to disk for future startups
-            await this.saveGeneratedWorldData();
-            console.log('[Server] Generated world data saved to disk - future startups will be faster');
-        }, 1000); // Start after 1 second
+        // No background generation - chunks will be generated on-demand
+        console.log('[Server] Chunks will be generated on-demand as requested');
     }
 
     isValidSpawnPositionForServer(x, z) {
