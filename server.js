@@ -32,7 +32,7 @@ class ChessopiaServer {
         });
         
         // World storage
-        this.worldDataPath = path.join(__dirname, 'world-data.json');
+        this.worldDataPath = path.join(__dirname, 'world-data-v2.json');
         this.worldSeed = null;
         this.terrainCache = new Map(); // Cache terrain chunks in memory
         
@@ -582,19 +582,25 @@ class ChessopiaServer {
             const worldData = await this.loadWorldData();
             
             if (worldData) {
-                console.log('[Server] Loaded existing world with seed:', worldData.seed);
+                console.log('[Server] Loaded existing world with seed:', worldData.seed, 'version:', worldData.version);
                 this.worldSeed = worldData.seed;
-                this.terrainCache = new Map(worldData.terrainCache || []);
                 
                 // Initialize terrain generator with saved seed
                 this.terrainGenerator.setSeed(this.worldSeed);
                 
-                // Check if world is fully generated
-                if (worldData.fullyGenerated && worldData.worldData) {
-                    console.log('[Server] World is fully generated, skipping background generation');
+                // Handle version 2 format (new optimized format)
+                if (worldData.version === 2) {
+                    console.log('[Server] Using version 2 world format (optimized)');
+                    this.worldData = worldData;
+                } 
+                // Handle version 1 format (old format)
+                else if (worldData.fullyGenerated && worldData.worldData) {
+                    console.log('[Server] World is fully generated (version 1 format), skipping background generation');
                     this.worldData = worldData.worldData;
+                    this.terrainCache = new Map(worldData.terrainCache || []);
                 } else {
                     console.log('[Server] World exists but not fully generated, starting background generation...');
+                    this.terrainCache = new Map(worldData.terrainCache || []);
                     this.startBackgroundChunkGeneration();
                 }
             } else {

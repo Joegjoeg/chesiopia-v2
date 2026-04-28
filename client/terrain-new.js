@@ -43,13 +43,17 @@ class TerrainSystem {
             
             console.log('[Terrain] STEP 2: Parsing JSON response...');
             const worldData = await response.json();
-            console.log(`[Terrain] STEP 3: Parsed world with ${Object.keys(worldData.chunks).length} chunks`);
+            console.log(`[Terrain] STEP 3: Parsed world with ${Object.keys(worldData.chunks).length} chunks, version: ${worldData.version}`);
             
             // Validate world data structure
             if (!worldData || !worldData.chunks) {
                 console.error('[Terrain] Invalid world data structure:', worldData);
                 throw new Error('Invalid world data received');
             }
+            
+            // Store palette for color lookups
+            this.colorPalette = worldData.palette || [];
+            console.log(`[Terrain] Loaded ${this.colorPalette.length} colors from palette`);
             
             console.log('[Terrain] STEP 4: Starting chunk caching loop...');
             console.log(`[Terrain] CRITICAL: About to cache ${Object.keys(worldData.chunks).length} chunks`);
@@ -62,8 +66,11 @@ class TerrainSystem {
             console.log(`[Terrain] CRITICAL: Total chunk entries to process: ${chunkEntries.length}`);
             
             for (const [chunkKey, chunkData] of chunkEntries) {
+                // Convert new format to old format for compatibility
+                const convertedChunkData = this.convertChunkFormat(chunkKey, chunkData);
+                
                 this.chunks.set(chunkKey, {
-                    data: chunkData,
+                    data: convertedChunkData,
                     loaded: true
                 });
                 loadedChunks++;
@@ -102,6 +109,38 @@ class TerrainSystem {
             console.error('[Terrain] ERROR IN WORLD DOWNLOAD:', error);
             setTimeout(() => this.downloadEntireWorld(), 5000); // Retry after 5 seconds
         }
+    }
+    
+    convertChunkFormat(chunkKey, chunkData) {
+        // Parse chunk coordinates from key (e.g., "-25,-25")
+        const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+        
+        // Convert new format [height, terrainType, colorIndex] to old format
+        const convertedTiles = chunkData.tiles.map((tileData, index) => {
+            // Derive world coordinates from index
+            const localX = index % this.chunkSize;
+            const localZ = Math.floor(index / this.chunkSize);
+            const worldX = chunkX * this.chunkSize + localX;
+            const worldZ = chunkZ * this.chunkSize + localZ;
+            
+            const [height, terrainType, colorIndex] = tileData;
+            
+            // Convert terrain type back to isBlocked for now
+            const isBlocked = terrainType !== 0;
+            
+            // Get color from palette
+            const paletteColor = this.colorPalette[colorIndex] || { r: 0.2, g: 0.6, b: 0.2 };
+            
+            return {
+                x: worldX,
+                z: worldZ,
+                height: height,
+                isBlocked: isBlocked,
+                color: paletteColor
+            };
+        });
+        
+        return convertedTiles;
     }
     
     async generateInitialTerrain(centerX, centerZ, radius) {
