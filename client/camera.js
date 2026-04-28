@@ -11,7 +11,7 @@ class CameraController {
         // Movement
         this.moveSpeed = 0.5;
         this.rotationSpeed = 0.001; // Reduced mouse sensitivity
-        this.zoomSpeed = 0.5;
+        this.zoomSpeed = 1.0;
         
         // Input state
         this.keys = {};
@@ -24,7 +24,7 @@ class CameraController {
         // Camera position for panning
         this.cameraX = 0;
         this.cameraZ = 0;
-        this.minCameraHeight = 5; // Minimum height above terrain
+        this.minCameraHeight = 10; // Increased minimum height above terrain to prevent snagging
         
         // Animation
         this.animating = false;
@@ -55,6 +55,11 @@ class CameraController {
         this.animationStartPos = null;
         this.animationTargetPos = null;
         
+        // Failsafe for camera oscillation
+        this.lastPosition = new THREE.Vector3();
+        this.oscillationCount = 0;
+        this.maxOscillationCount = 10;
+        
                 
         // Setup initial position
         this.updateCameraPosition();
@@ -70,7 +75,7 @@ class CameraController {
         window.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         window.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        window.addEventListener('wheel', (e) => this.handleWheel(e));
+        window.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
         window.addEventListener('contextmenu', (e) => e.preventDefault()); // Prevent right-click context menu
         
         // Touch events for mobile
@@ -115,6 +120,12 @@ class CameraController {
             this.middleMouseDown = false;
         } else if (event.button === 2) { // Right click - camera position
             this.rightMouseDown = false;
+            // Sync currentTarget with target to prevent wobble when drag ends
+            this.currentTarget.copy(this.target);
+            // Clear velocity to prevent momentum-based movement after drag
+            this.velocity.set(0, 0, 0);
+            // Reset oscillation counter to prevent false triggers
+            this.oscillationCount = 0;
         }
     }
     
@@ -148,7 +159,7 @@ class CameraController {
             
             if (this.mode === 'tactical' || this.mode === 'free') {
                 // Move camera target like WASD keys (now right click)
-                const panSpeed = 0.05;
+                const panSpeed = 0.04; // Reduced sensitivity for more controlled movement
                 const angleRad = this.angle * Math.PI / 180;
                 
                 // Calculate movement vectors based on camera angle
@@ -162,9 +173,12 @@ class CameraController {
                 moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
                 moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
                 
-                // Apply movement
+                // Apply movement directly to target during dragging for immediate response
                 this.target.add(moveVector);
-                this.updateCameraPosition();
+                
+                // During dragging, update currentTarget more aggressively for smoother movement
+                this.currentTarget.lerp(this.target, 0.3); // Faster interpolation during drag
+                this.velocity.set(0, 0, 0); // Clear velocity during drag to prevent sway
             }
             
             this.lastMouseX = event.clientX;
@@ -184,7 +198,7 @@ class CameraController {
         this.camera.getWorldDirection(forward);
         
         // Calculate target point along line of sight
-        const stepDistance = 10.0; // Large step distance for target point
+        const stepDistance = 5.0; // Reduced step distance for less dramatic zoom
         const newTarget = this.target.clone().add(forward.clone().multiplyScalar(zoomDirection * stepDistance));
         
         // Set the zoom target for smooth movement
@@ -335,15 +349,16 @@ class CameraController {
     updateCameraPosition() {
         // Calculate desired movement direction
         const desiredMovement = new THREE.Vector3().subVectors(this.target, this.currentTarget);
+        const distanceToTarget = desiredMovement.length();
         
         // Apply acceleration when there's input, deceleration when there's no input
-        if (desiredMovement.length() > 0.01) {
+        if (distanceToTarget > 0.01) {
             // There's input - accelerate towards target
             const accelerationForce = desiredMovement.normalize().multiplyScalar(this.acceleration);
             this.velocity.add(accelerationForce);
         } else {
-            // No input - apply deceleration (friction)
-            this.velocity.multiplyScalar(this.deceleration);
+            // No input - apply stronger deceleration to prevent oscillation
+            this.velocity.multiplyScalar(this.deceleration * 0.9); // Stronger damping
             
             // Stop completely if velocity is very small
             if (this.velocity.length() < 0.001) {
@@ -351,16 +366,17 @@ class CameraController {
             }
         }
         
-        // Limit maximum speed
-        if (this.velocity.length() > this.maxSpeed) {
-            this.velocity.normalize().multiplyScalar(this.maxSpeed);
+        // Limit maximum speed - reduce it when close to target to prevent overshooting
+        const speedLimit = distanceToTarget < 2.0 ? this.maxSpeed * 0.5 : this.maxSpeed;
+        if (this.velocity.length() > speedLimit) {
+            this.velocity.normalize().multiplyScalar(speedLimit);
         }
         
         // Apply velocity to current target position
         this.currentTarget.add(this.velocity);
         
         // If we're very close to the target and have low velocity, snap to target
-        if (desiredMovement.length() < 0.1 && this.velocity.length() < 0.1) {
+        if (distanceToTarget < 0.05 && this.velocity.length() < 0.05) {
             this.currentTarget.copy(this.target);
             this.velocity.set(0, 0, 0);
         }
@@ -409,11 +425,50 @@ class CameraController {
             desiredHeight = minHeightAboveTerrain;
         }
         
-        // Smooth height adjustment for collision avoidance
+        // More stable height adjustment to prevent oscillation
         const currentHeight = this.camera.position.y;
         const heightDiff = desiredHeight - currentHeight;
-        const smoothHeight = currentHeight + heightDiff * 0.1; // Smooth transition
         
+        // Use different smoothing factors based on the situation
+        let smoothingFactor = 0.15; // Default smooth transition
+        
+        // If we're being pushed up by terrain, use more gradual smoothing
+        if (desiredHeight > currentHeight && heightDiff > 1.0) {
+            smoothingFactor = 0.05; // Very gradual when terrain is pushing up
+        }
+        // If we're close to target height, use faster smoothing
+        else if (Math.abs(heightDiff) < 0.5) {
+            smoothingFactor = 0.3; // Faster when close to target
+        }
+        
+        const smoothHeight = currentHeight + heightDiff * smoothingFactor;
+        
+        // Check for oscillation and apply failsafe (only when not actively dragging)
+        const currentPosition = new THREE.Vector3(x, smoothHeight, z);
+        const movementDelta = currentPosition.distanceTo(this.lastPosition);
+        
+        // Skip oscillation detection during mouse dragging to prevent interference with normal camera control
+        if (!this.rightMouseDown && !this.middleMouseDown) {
+            // If we're moving back and forth in a small area, increment oscillation count
+            if (movementDelta < 0.1 && this.velocity.length() > 0.01) {
+                this.oscillationCount++;
+            } else {
+                this.oscillationCount = 0; // Reset if movement is normal
+            }
+            
+            // Apply failsafe if we've been oscillating too long
+            if (this.oscillationCount > this.maxOscillationCount) {
+                console.log('[Camera] Oscillation detected - applying failsafe');
+                this.currentTarget.copy(this.target); // Snap to target
+                this.velocity.set(0, 0, 0); // Stop all movement
+                this.oscillationCount = 0; // Reset counter
+            }
+        } else {
+            // Reset oscillation counter when dragging to prevent false triggers
+            this.oscillationCount = 0;
+        }
+        
+        this.lastPosition.copy(currentPosition);
         this.camera.position.set(x, smoothHeight, z);
         this.camera.lookAt(this.target);
     }

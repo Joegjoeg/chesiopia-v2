@@ -445,6 +445,11 @@ class VisualFeedbackSystem {
         this.validMoves = [];
     }
     
+    hasVisibleMoveMarkers() {
+        // Check if there are any visible move markers
+        return this.highlightMeshes.size > 0 || this.validMoves.length > 0;
+    }
+    
     clearValidMovesImmediate() {
         const moveKeys = [];
         console.log('[VisualFeedback] Clearing valid moves immediately, current keys:', Array.from(this.highlightMeshes.keys()));

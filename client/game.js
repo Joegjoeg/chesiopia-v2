@@ -13,6 +13,8 @@ class ChessopiaGame {
         this.networkManager = null;
         this.gameState = null;
         this.celShaderSystem = null;
+        this.grassSystem = null;
+        this.textureBlendingSystem = null;
         
         this.selectedPiece = null;
         this.validMoves = [];
@@ -41,11 +43,19 @@ class ChessopiaGame {
             
             console.log('[Game] Setting up scene...');
             await this.setupScene();
+            console.log('[Game] Scene setup completed!');
+            console.log('[Game] About to call showLoadingProgress(50)');
             this.showLoadingProgress(50);
+            console.log('[Game] Called showLoadingProgress(50)');
             
             console.log('[Game] Setting up systems...');
-            await this.setupSystems();
-            this.showLoadingProgress(70);
+            try {
+                await this.setupSystems();
+                this.showLoadingProgress(70);
+            } catch (error) {
+                console.error('[Game] Error in setupSystems:', error);
+                throw error;
+            }
             
             console.log('[Game] Setting up event listeners...');
             await this.setupEventListeners();
@@ -62,6 +72,32 @@ class ChessopiaGame {
             setTimeout(() => {
                 this.hideLoadingScreen();
                 this.isInitialized = true;
+                
+                // Expose board system to global scope for debug button AFTER full initialization
+                window.boardSystem = this.boardSystem;
+                console.log('[Game] Board system exposed to window.boardSystem for debug button');
+                
+                // Initialize LOD system properly
+                if (this.boardSystem && this.boardSystem.initializeLODLevels) {
+                    this.boardSystem.initializeLODLevels();
+                    console.log('[Game] LOD system initialized');
+                }
+                
+                // Expose LOD debug functions
+                window.testLODDistances = () => {
+                    if (window.boardSystem && window.boardSystem.testLODDistances) {
+                        window.boardSystem.testLODDistances();
+                    }
+                };
+                
+                window.debugSeamlessLOD = () => {
+                    if (window.boardSystem && window.boardSystem.debugSeamlessTransitions) {
+                        window.boardSystem.debugSeamlessTransitions();
+                    }
+                };
+                
+                console.log('[Game] LOD debug functions exposed - use testLODDistances() or debugSeamlessLOD() in console');
+                
                 console.log('[Game] Game initialization completed successfully!');
             }, 500);
             
@@ -85,7 +121,7 @@ class ChessopiaGame {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.5;
+        this.renderer.toneMappingExposure = 1.5;  // Increased from 0.5 for brighter scene
         
         // Set background color
         this.renderer.setClearColor(0x87CEEB, 1);
@@ -96,11 +132,12 @@ class ChessopiaGame {
         this.scene = new THREE.Scene();
         
         // Add distance fog to obscure background terrain - INCREASED FOR BETTER VISIBILITY
-        this.scene.fog = new THREE.Fog(0x808080, 10, 60); // 50% gray, increased far distance from 30 to 60
+        this.scene.fog = new THREE.Fog(0x808080, 20, 60); // 50% gray, increased near distance from 10 to 20 for clearer view
         console.log('[Game] Fog applied:', !!this.scene.fog, 'Color:', this.scene.fog.color.getHex(), 'Near:', this.scene.fog.near, 'Far:', this.scene.fog.far);
         
         // Setup lighting
         this.setupLighting();
+        console.log('[Game] Lighting setup completed');
         
         // Setup camera
         this.camera = new THREE.PerspectiveCamera(
@@ -114,46 +151,48 @@ class ChessopiaGame {
         console.log('[Game] Fog verification after camera setup:', !!this.scene.fog);
         this.camera.position.set(5, 20, 5);
         this.camera.lookAt(0, 0, 0);
+        console.log('[Game] Camera setup completed');
+        console.log('[Game] setupScene() about to complete');
+        console.log('[Game] setupScene() completed!');
     }
     
     setupLighting() {
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-        this.scene.add(ambientLight);
-        
-        // Additional low brightness fill light to lighten shadows
-        const fillLight = new THREE.AmbientLight(0xffffff, 0.15); // Soft white fill light
-        this.scene.add(fillLight);
-        
-        // Main directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        directionalLight.position.set(50, 100, 50);
-        directionalLight.castShadow = true;
-        
-        // Configure shadow camera
-        directionalLight.shadow.camera.left = -50;
-        directionalLight.shadow.camera.right = 50;
-        directionalLight.shadow.camera.top = 50;
-        directionalLight.shadow.camera.bottom = -50;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.bias = -0.0001;
-        
-        this.scene.add(directionalLight);
-        
-        // Add light helper for debugging
-        // const helper = new THREE.DirectionalLightHelper(directionalLight, 10);
-        // this.scene.add(helper);
+        // All lights disabled - using board system's sun light only
+        // // Ambient light
+        // const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        // this.scene.add(ambientLight);
+        //
+        // // Additional low brightness fill light to lighten shadows
+        // const fillLight = new THREE.AmbientLight(0xffffff, 0.15); // Soft white fill light
+        // this.scene.add(fillLight);
+        //
+        // // Main directional light (sun)
+        // const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        // directionalLight.position.set(50, 100, 50);
+        // directionalLight.castShadow = true;
+        //
+        // // Configure shadow camera
+        // directionalLight.shadow.camera.left = -50;
+        // directionalLight.shadow.camera.right = 50;
+        // directionalLight.shadow.camera.top = 50;
+        // directionalLight.shadow.camera.bottom = -50;
+        // directionalLight.shadow.camera.near = 0.5;
+        // directionalLight.shadow.camera.far = 500;
+        // directionalLight.shadow.mapSize.width = 2048;
+        // directionalLight.shadow.mapSize.height = 2048;
+        // directionalLight.shadow.bias = -0.0001;
+        //
+        // this.scene.add(directionalLight);
     }
     
     async setupSystems() {
+        console.log('[Game] setupSystems() started!');
         // Initialize game systems
         this.gameState = new ClientGameState();
         this.treeSystem = new LocalTreeSystem(this.scene, null);
+        console.log('[Game] Tree system created:', !!this.treeSystem);
         this.terrainSystem = new TerrainSystem(this.scene, this.treeSystem);
-        this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem);
+        this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem, this.treeSystem, this);
         this.piecesSystem = new Pieces3D(this.scene, this.terrainSystem);
         
         // Update tree system with terrain system reference
@@ -167,15 +206,34 @@ class ChessopiaGame {
         this.celShaderSystem = new SimpleCelShaderSystem();
         console.log('[Game] SimpleCelShaderSystem created:', !!this.celShaderSystem);
         
+        // Initialize decorative visuals system
+        console.log('[Game] Creating DecorativeVisualsSystem...');
+        this.decorativeVisuals = new DecorativeVisualsSystem(this.scene, this.terrainSystem, this);
+        console.log('[Game] DecorativeVisualsSystem created:', !!this.decorativeVisuals);
+        
+        // Initialize grass and texture blending systems (DISABLED)
+        console.log('[Game] GrassSystem and TextureBlendingSystem disabled - using board grass texture instead');
+        this.grassSystem = null;
+        this.textureBlendingSystem = null;
+        
         // Generate initial terrain
         await this.terrainSystem.generateInitialTerrain(0, 0, 10);
         
-        // Create initial board
-        this.boardSystem.createBoard(0, 0, 10);
+        // Create initial board - increased radius for proper LOD visibility
+        this.boardSystem.createBoard(0, 0, 3);
+
         
         // Initialize tree system with initial camera position
+        console.log('[Game] Tree system exists:', !!this.treeSystem);
         if (this.treeSystem) {
+            console.log('[Game] Calling updateCameraPosition');
             this.treeSystem.updateCameraPosition(this.camera.position);
+            // Force tree loading immediately
+            console.log('[Game] About to call updateTreesFromServerData()');
+            this.treeSystem.updateTreesFromServerData();
+            console.log('[Game] Called updateTreesFromServerData()');
+        } else {
+            console.log('[Game] ERROR: Tree system is null/undefined!');
         }
     }
     
@@ -295,6 +353,33 @@ class ChessopiaGame {
             });
         }
         
+        const testServerErrorBtn = document.getElementById('testServerErrorBtn');
+        if (testServerErrorBtn) {
+            testServerErrorBtn.addEventListener('click', async () => {
+                console.log('[Game] Test server error button clicked');
+                try {
+                    const response = await fetch('/api/test-error', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        console.log('[Game] Test error triggered successfully');
+                        alert('Test error triggered! Check the Server Errors panel.');
+                    } else {
+                        console.error('[Game] Failed to trigger test error:', result.message);
+                        alert('Failed to trigger test error: ' + result.message);
+                    }
+                } catch (error) {
+                    console.error('[Game] Error triggering test error:', error);
+                    alert('Error triggering test error: ' + error.message);
+                }
+            });
+        }
+        
         const toggleCelShadingBtn = document.getElementById('toggleCelShadingBtn');
         if (toggleCelShadingBtn) {
             console.log('[Game] Toggle cel shading button found and event listener added');
@@ -316,6 +401,11 @@ class ChessopiaGame {
     async setupNetwork() {
         this.networkManager = new NetworkManager();
         await this.networkManager.connect();
+        
+        // Setup server error display with network manager
+        if (window.serverErrorDisplay) {
+            window.serverErrorDisplay.setNetworkManager(this.networkManager);
+        }
         
         // Setup network event handlers
         this.networkManager.on('gameState', (data) => {
@@ -353,36 +443,85 @@ class ChessopiaGame {
     }
     
     startGameLoop() {
-        const animate = () => {
+        let lastTime = 0;
+
+        const animate = (currentTime) => {
             requestAnimationFrame(animate);
-            
+
+            const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+            lastTime = currentTime;
+
+            // console.log('[Game DEBUG] Game loop running, deltaTime:', deltaTime);
+
             // Update systems
             this.cameraController.update();
-            
+
             // Update trees based on camera position
             if (this.treeSystem) {
                 this.treeSystem.updateCameraPosition(this.camera.position);
                 this.treeSystem.updateTreeFade();
             }
-            
+
             // Update visual feedback system
             if (this.visualFeedback) {
                 this.visualFeedback.update();
             }
-            
-            // Tree system updates handled by updateCameraPosition
-            
+
+            // Update decorative visuals system
+            if (this.decorativeVisuals) {
+                this.decorativeVisuals.updateCameraPosition(this.camera.position);
+                this.decorativeVisuals.update(deltaTime);
+            }
+
+            // Grass system disabled - using board grass texture instead
+            if (this.grassSystem) {
+                console.log('[Game DEBUG] Grass system should be null but is not - this should not happen');
+            }
+
+            // Update texture blending (temporarily disabled to fix errors)
+            // if (this.textureBlendingSystem) {
+            //     this.textureBlendingSystem.updateAllChunks(this.camera.position, currentTime * 0.001); // Convert to seconds
+            //     this.textureBlendingSystem.updateAnimation(currentTime * 0.001, this.camera.position); // Convert to seconds
+            // }
+
             // Update terrain streaming
             this.terrainSystem.updateStreaming(this.camera.position);
-            
+
             // Update board streaming
-            this.boardSystem.updateStreaming(this.camera.position);
-            
+            this.boardSystem.updateStreaming(this.camera.position, this.camera);
+
+            // Count vertices in scene
+            let totalVertices = 0;
+            let totalTriangles = 0;
+            this.scene.traverse((object) => {
+                if (object.isMesh && object.geometry) {
+                    const positionAttribute = object.geometry.getAttribute('position');
+                    if (positionAttribute) {
+                        totalVertices += positionAttribute.count;
+                    }
+                    const indexAttribute = object.geometry.getIndex();
+                    if (indexAttribute) {
+                        totalTriangles += indexAttribute.count / 3;
+                    } else if (positionAttribute) {
+                        totalTriangles += positionAttribute.count / 3;
+                    }
+                }
+            });
+
+            // Update dev tools section with vertex/triangle counts every 10 frames
+            if (Math.floor(currentTime / 16) % 10 === 0) {
+                const debugEl = document.getElementById('connectionDebug');
+                if (debugEl) {
+                    debugEl.innerHTML = `Vertices: ${(totalVertices / 1000).toFixed(1)}K | Triangles: ${(totalTriangles / 1000).toFixed(1)}K`;
+                    debugEl.style.color = '#66ff66';
+                }
+            }
+
             // Render
             this.renderer.render(this.scene, this.camera);
         };
-        
-        animate();
+
+        animate(0);
     }
     
     onMouseClick(event) {
@@ -467,6 +606,9 @@ class ChessopiaGame {
             if (tilePos && (!this.hoveredTile || this.hoveredTile.x !== tilePos.x || this.hoveredTile.z !== tilePos.z)) {
                 this.hoveredTile = tilePos;
                 this.visualFeedback.showTileHover(tilePos.x, tilePos.z);
+                
+                // Update fade system to center on this tile position
+                this.boardSystem.updateFadeCenter(tilePos.x + 0.5, tilePos.z + 0.5);
             }
         } else {
             this.hoveredTile = null;
@@ -777,12 +919,13 @@ class ChessopiaGame {
     }
     
     updateConnectionStatus(status) {
-        const statusEl = document.getElementById('connectionStatus');
-        const statusText = document.getElementById('statusText');
+        // Hide the floating connection status - only log to console
+        console.log(`[CONNECTION ${status.connected ? 'CONNECTED' : 'DISCONNECTED'}]`, status.text);
         
-        if (statusEl && statusText) {
-            statusText.textContent = status.text;
-            statusEl.className = `status-indicator ${status.connected ? 'connected' : 'disconnected'}`;
+        // Optional: Keep the element but hide it visually
+        const statusEl = document.getElementById('connectionStatus');
+        if (statusEl) {
+            statusEl.style.display = 'none';
         }
     }
     
@@ -891,21 +1034,7 @@ function initializeGame() {
         console.log('Initializing Chessopia game...');
         window.game = new ChessopiaGame();
         
-        // Test king model loading after a delay to ensure pieces system is ready
-        setTimeout(() => {
-            console.log('*** TESTING KING MODEL LOADING ***');
-            if (window.game && window.game.piecesSystem) {
-                const testGroup = new THREE.Group();
-                const testMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-                window.game.piecesSystem.createKing(testGroup, testMaterial);
-                window.game.scene.add(testGroup);
-                console.log('*** TEST KING CREATED ***');
-            } else {
-                console.log('*** GAME OR PIECES SYSTEM NOT READY ***');
-                console.log('window.game:', window.game);
-                console.log('window.game.piecesSystem:', window.game?.piecesSystem);
-            }
-        }, 1000); // Wait 1 second for systems to fully initialize
+        // Random test king logic removed - pieces now spawn properly through gameState
     } catch (error) {
         console.error('Failed to initialize game:', error);
         showError('Failed to initialize game. Please refresh the page.');

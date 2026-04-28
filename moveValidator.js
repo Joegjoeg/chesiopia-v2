@@ -74,8 +74,8 @@ class MoveValidator {
         
         // Check if destination is within board bounds (infinite board, so no bounds check)
         
-        // Check if destination is blocked by terrain
-        if (this.isTileBlocked(gameState, toX, toZ)) {
+        // Check if destination is blocked by terrain (trees)
+        if (gameState.terrainGenerator && gameState.terrainGenerator.isTileBlocked(toX, toZ)) {
             return { valid: false, reason: 'Destination tile is blocked by terrain' };
         }
         
@@ -124,8 +124,8 @@ class MoveValidator {
                     const newX = piece.x + dir.dx * i;
                     const newZ = piece.z + dir.dz * i;
                     
-                    // Check if tile is blocked by terrain
-                    if (this.isTileBlocked(gameState, newX, newZ)) {
+                    // Check if tile is blocked by terrain (trees)
+                    if (gameState.terrainGenerator && gameState.terrainGenerator.isTileBlocked(newX, newZ)) {
                         break;
                     }
                     
@@ -172,8 +172,8 @@ class MoveValidator {
     }
     
     isValidDestination(gameState, piece, x, z) {
-        // Check if tile is blocked by terrain
-        if (this.isTileBlocked(gameState, x, z)) {
+        // Check if tile is blocked by terrain (trees)
+        if (gameState.terrainGenerator && gameState.terrainGenerator.isTileBlocked(x, z)) {
             return false;
         }
         
@@ -194,11 +194,15 @@ class MoveValidator {
     }
     
     isTileBlocked(gameState, x, z) {
-        // For now, implement simple blocking based on slope
-        // In a full implementation, this would use the terrain generator
+        // Check if tile has a tree - pieces cannot move to squares with trees
+        if (gameState.terrainGenerator && gameState.terrainGenerator.isTileBlocked(x, z)) {
+            return true;
+        }
+        
+        // Fallback to slope check for terrain-based blocking (if needed)
         const height = this.getTerrainHeight(gameState, x, z);
         const slope = this.calculateSlope(gameState, x, z, height);
-        return slope > 45; // Degrees
+        return slope > 60; // Degrees - increased to allow movement on reasonable terrain
     }
     
     getTerrainHeight(gameState, x, z) {

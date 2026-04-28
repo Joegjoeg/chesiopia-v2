@@ -52,7 +52,7 @@ class MovementBridge {
                 const newX = piece.x + move.dx;
                 const newZ = piece.z + move.dz;
                 
-                if (this.isValidMove(piece, newX, newZ)) {
+                if (this.isValidDestination(piece, newX, newZ)) {
                     const height = this.boardSystem.getTileHeight(newX, newZ);
                     moves.push({
                         x: newX,
@@ -183,41 +183,20 @@ class MovementBridge {
         }
     }
     
-    isValidMove(piece, x, z) {
-        console.log(`[MovementBridge] Checking move to (${x}, ${z}) for piece ${piece.id}`);
-        
-        // Check if tile is blocked by terrain
+    // Simplified move validation for visual feedback only
+    // Server will handle actual validation
+    isValidDestination(piece, x, z) {
+        // Only check for basic blocking for visual feedback
+        // Server will validate actual move legality
         if (this.boardSystem.isTileBlocked(x, z)) {
-            console.log(`[MovementBridge] Move rejected: tile (${x}, ${z}) is blocked by terrain`);
-            return false;
+            return false; // Don't show moves on tree squares
         }
         
-        // Check if there's a piece at destination
         const destPiece = this.gameState.getPieceAt(x, z);
-        if (destPiece) {
-            console.log(`[MovementBridge] Destination has piece: ${destPiece.id} (player ${destPiece.playerId})`);
-            // Can't move to friendly piece
-            if (destPiece.playerId === piece.playerId) {
-                console.log(`[MovementBridge] Move rejected: friendly piece at destination`);
-                return false;
-            }
-            // Can capture enemy piece (unless covered)
-            if (this.gameState.isCovered(destPiece.id)) {
-                console.log(`[MovementBridge] Move rejected: enemy piece is covered`);
-                return false;
-            }
-            console.log(`[MovementBridge] Valid capture move on enemy piece`);
-        } else {
-            console.log(`[MovementBridge] Destination is empty`);
+        if (destPiece && destPiece.playerId === piece.playerId) {
+            return false; // Don't show moves on friendly pieces
         }
         
-        // Check cooldown
-        if (this.isPieceOnCooldown(piece)) {
-            console.log(`[MovementBridge] Move rejected: piece is on cooldown`);
-            return false;
-        }
-        
-        console.log(`[MovementBridge] Move to (${x}, ${z}) is valid!`);
         return true;
     }
     
@@ -348,29 +327,6 @@ class MovementBridge {
     // Clear all cached moves
     clearCache() {
         this.moveCache.clear();
-    }
-    
-    // Validate a specific move
-    validateMove(piece, fromX, fromZ, toX, toZ) {
-        // Check if piece is at expected position
-        if (piece.x !== fromX || piece.z !== fromZ) {
-            return { valid: false, reason: 'Piece not at expected position' };
-        }
-        
-        // Check cooldown
-        if (this.isPieceOnCooldown(piece)) {
-            return { valid: false, reason: 'Piece is on cooldown' };
-        }
-        
-        // Get valid moves for piece
-        const validMoves = this.getValidMovesForPiece(piece);
-        const isValidMove = validMoves.some(move => move.x === toX && move.z === toZ);
-        
-        if (!isValidMove) {
-            return { valid: false, reason: 'Invalid move pattern' };
-        }
-        
-        return { valid: true };
     }
     
     // Get move animation data

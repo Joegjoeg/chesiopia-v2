@@ -6,6 +6,7 @@ class NetworkManager {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
         this.eventHandlers = new Map();
+        this.consoleManager = null;
         
         // Connection status
         this.status = {
@@ -150,6 +151,32 @@ class NetworkManager {
             this.triggerEvent('playerJoined', data);
         });
         
+        // Server error events
+        this.socket.on('server-error', (errorData) => {
+            console.log('[Network] Received server-error event:', errorData);
+            
+            // Forward to server error display if available
+            if (window.serverErrorDisplay) {
+                window.serverErrorDisplay.addError(errorData);
+            }
+            
+            // Also trigger as regular event for other handlers
+            this.triggerEvent('server-error', errorData);
+        });
+        
+        // Client error events (forwarded from client)
+        this.socket.on('client-error', (errorData) => {
+            console.log('[Network] Received client-error event:', errorData);
+            
+            // Forward to server error display if available
+            if (window.serverErrorDisplay) {
+                window.serverErrorDisplay.addError(errorData);
+            }
+            
+            // Also trigger as regular event for other handlers
+            this.triggerEvent('client-error', errorData);
+        });
+        
         this.socket.on('playerDisconnected', (data) => {
             console.log('[Network] Received playerDisconnected event:', data);
             this.triggerEvent('playerDisconnected', data);
@@ -186,6 +213,14 @@ class NetworkManager {
             this.onError(error);
         });
         
+        // Console logs request handler
+        this.socket.on('requestConsoleLogs', () => {
+            console.log('[Network] Server requested console logs');
+            if (this.consoleManager) {
+                this.consoleManager.sendConsoleLogs();
+            }
+        });
+        
         // Debug: Catch-all event listener to see what we receive
         this.socket.onAny((eventName, ...args) => {
             console.log('[Network] ANY EVENT:', eventName, args);
@@ -199,6 +234,9 @@ class NetworkManager {
         this.reconnectAttempts = 0;
         this.updateStatus('Connected', true);
         this.updateConnectionDebug('Socket connected - joining game...');
+        
+        // Initialize console manager after connection
+        this.initializeConsoleManager();
         
         // Join game
         const playerData = {
@@ -348,13 +386,13 @@ class NetworkManager {
         this.status.text = text;
         this.status.lastError = null;
         
-        // Update UI
-        const statusEl = document.getElementById('connectionStatus');
-        const statusText = document.getElementById('statusText');
+        // Hide connection status - only log to console
+        console.log(`[NETWORK ${connected ? 'CONNECTED' : 'DISCONNECTED'}]`, text);
         
-        if (statusEl && statusText) {
-            statusText.textContent = text;
-            statusEl.className = `status-indicator ${connected ? 'connected' : 'disconnected'}`;
+        // Hide the visual element completely
+        const statusEl = document.getElementById('connectionStatus');
+        if (statusEl) {
+            statusEl.style.display = 'none';
         }
     }
     
@@ -477,8 +515,21 @@ class NetworkManager {
         }, 5000);
     }
     
+    // Initialize console manager
+    initializeConsoleManager() {
+        if (!this.consoleManager && typeof ConsoleManager !== 'undefined') {
+            this.consoleManager = new ConsoleManager(this);
+            console.log('[Network] Console manager initialized');
+        }
+    }
+    
     // Cleanup
     cleanup() {
+        if (this.consoleManager) {
+            this.consoleManager.restoreConsole();
+            this.consoleManager = null;
+        }
+        
         if (this.socket) {
             this.socket.removeAllListeners();
             this.socket.disconnect();

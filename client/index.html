@@ -30,6 +30,17 @@
                 <div>Space: Camera Mode</div>
             </div>
             
+            <!-- Server Errors -->
+            <div id="serverErrors" class="ui-panel" style="background: rgba(255, 0, 0, 0.1); border: 1px solid rgba(255, 0, 0, 0.3); max-height: 200px; overflow-y: auto;">
+                <h3 style="color: #ff0000;">Server Errors</h3>
+                <div id="errorList" style="font-family: monospace; font-size: 12px; color: #ff6666;">
+                    <div>No server errors...</div>
+                </div>
+                <button id="clearErrorsBtn" class="dev-btn" style="background: #cc0000; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin: 2px; font-size: 11px;">
+                    Clear Errors
+                </button>
+            </div>
+            
             <!-- Dev Controls -->
             <div id="devControls" class="ui-panel" style="background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3);">
                 <h3 style="color: #ff6666;">Dev Tools</h3>
@@ -45,6 +56,14 @@
                 <button id="recreateMapBtn" class="dev-btn" style="background: #ff0066; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
                     Recreate Map
                 </button>
+                <button id="testServerErrorBtn" class="dev-btn" style="background: #ff0000; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Test Server Error
+                </button>
+                <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
+                    <div>Vertices: <span id="vertexCount">0</span></div>
+                    <div>Chunks: <span id="chunkCount">0</span> / <span id="totalChunks">0</span></div>
+                    <div>Reduction: <span id="reductionPercent">0%</span></div>
+                </div>
             </div>
             
             <!-- Shop Modal (hidden by default) -->
@@ -87,21 +106,44 @@
                 </div>
             </div>
             
-            <!-- Connection Status -->
-            <div id="connectionStatus">
+            <!-- Connection Status (Hidden) -->
+            <div id="connectionStatus" style="display: none;">
                 <div class="connection-status">
                     <span id="statusText">Disconnected</span>
                     <div id="connectionDebug" style="margin-top: 5px; font-size: 12px; color: #ff9999;"></div>
                 </div>
             </div>
             
-            <!-- Selected Piece Info -->
-            <div id="selectedPieceInfo" class="ui-panel hidden">
-                <h3>Selected Piece</h3>
-                <div id="selectedPieceType">-</div>
-                <div id="selectedPieceCooldown">Ready</div>
-            </div>
+            <script>
+                // Immediately hide connection status on page load
+                document.addEventListener('DOMContentLoaded', () => {
+                    const statusEl = document.getElementById('connectionStatus');
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                        console.log('🔇 Connection status element hidden');
+                    }
+                });
+                
+                // Also hide it after a delay in case other scripts show it
+                setTimeout(() => {
+                    const statusEl = document.getElementById('connectionStatus');
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                    }
+                }, 1000);
+            </script>
         </div>
+    </div>
+    
+                
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loading-content">
+            <h1>Chessopia</h1>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+            <div class="loading-text">Loading 3D World...</div>
         
         <!-- Loading Screen -->
         <div id="loadingScreen">
@@ -640,18 +682,21 @@
             const scripts = [
                 'gameState.js',
                 'network.js',
+                'consoleManager.js',
+                'serverErrorDisplay.js',
                 'terrain-new.js?v=' + Date.now(),
-                'board_clean.js',
+                'board_clean.js?v=' + Date.now(),
                 'camera.js',
                 'soundManager.js',
                 'pieces3d.js',
                 'movementBridge.js',
-                'moveValidator.js',
                 'coveringSystem.js',
                 'visualFeedback.js',
                 'localTreeSystem.js',
                 'celShaderSimple.js',
-                'game.js'
+                'textureBlendingSystem.js',
+                'decorativeVisuals.js',
+                'game.js?v=' + Date.now()
             ];
             
             function loadScript(index) {

@@ -6,6 +6,9 @@ class TerrainGenerator {
         this.maxCacheSize = 10000;
         this.seed = null;
         
+        // Tree data for consistent blocking between client and server
+        this.trees = new Map(); // Store tree positions by tile coordinates
+        
         // Simple noise implementation - will be initialized with seed
         this.permutation = [];
         this.generatePermutation();
@@ -117,17 +120,62 @@ class TerrainGenerator {
     }
     
     isTileBlocked(x, y) {
-        const height = this.getHeight(x, y);
-        const slope = this.calculateSlope(x, y, height);
-        let isBlocked = slope > 25; // Degrees - steep slopes are impassable (lowered for more trees)
+        // Check if tile has a tree (primary blocking method)
+        const treeKey = `${x},${y}`;
+        const hasTree = this.trees.has(treeKey);
         
-        // Add 50% chance for blocked tiles to not be blocked
-        if (isBlocked && Math.random() < 0.5) {
-            isBlocked = false;
+        if (hasTree) {
+            console.log(`[TerrainGen] Tile (${x},${y}): blocked by tree`);
+            return true;
         }
         
-        console.log(`[TerrainGen] Tile (${x},${y}): height=${height.toFixed(2)}, slope=${slope.toFixed(2)}°, blocked=${isBlocked}`);
-        return isBlocked;
+        // Fallback: Check slope-based blocking for very steep terrain
+        const height = this.getHeight(x, y);
+        const slope = this.calculateSlope(x, y, height);
+        const isSlopeBlocked = slope > 80; // Only block very steep terrain
+        
+        console.log(`[TerrainGen] Tile (${x},${y}): height=${height.toFixed(2)}, slope=${slope.toFixed(2)}°, blocked=${isSlopeBlocked}`);
+        return isSlopeBlocked;
+    }
+    
+    // Add tree at position (for consistent server/client state)
+    addTree(x, y) {
+        const treeKey = `${x},${y}`;
+        this.trees.set(treeKey, { x, y });
+    }
+    
+    // Remove tree at position
+    removeTree(x, y) {
+        const treeKey = `${x},${y}`;
+        this.trees.delete(treeKey);
+    }
+    
+    // Check if tree exists at position
+    hasTreeAt(x, y) {
+        const treeKey = `${x},${y}`;
+        return this.trees.has(treeKey);
+    }
+    
+    // Generate trees for terrain (call this after terrain generation)
+    generateTrees(searchRadius = 50) {
+        console.log(`[TerrainGen] Generating trees in radius ${searchRadius}`);
+        
+        for (let x = -searchRadius; x <= searchRadius; x++) {
+            for (let y = -searchRadius; y <= searchRadius; y++) {
+                const height = this.getHeight(x, y);
+                const slope = this.calculateSlope(x, y, height);
+                
+                // Generate trees on steep slopes (where trees naturally grow)
+                if (slope > 25 && slope < 80) {
+                    // Add some randomness to tree placement
+                    if (Math.random() < 0.3) { // 30% chance of tree on suitable terrain
+                        this.addTree(x, y);
+                    }
+                }
+            }
+        }
+        
+        console.log(`[TerrainGen] Generated ${this.trees.size} trees`);
     }
     
     calculateSlope(x, y, height) {

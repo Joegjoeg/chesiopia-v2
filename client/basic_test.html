@@ -5,24 +5,18 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
         .panel { background: #2d2d2d; padding: 20px; border-radius: 8px; max-width: 600px; }
-        .status { font-size: 20px; font-weight: bold; margin-bottom: 15px; }
-        .success { color: #2ecc71; }
-        .error { color: #e74c3c; }
-        .info { color: #3498db; }
     </style>
 </head>
 <body>
     <div class="panel">
         <h1>Basic Connection Test</h1>
-        <div id="status">Loading...</div>
+        <p>Check console for connection status</p>
     </div>
     
     <script>
-        const statusDiv = document.getElementById('status');
-        
         function updateStatus(text, type = 'info') {
-            statusDiv.innerHTML = `<span class="${type}">${text}</span>`;
-            console.log('[STATUS]', text);
+            // Only log to console, no visual display
+            console.log(`[STATUS ${type.toUpperCase()}]`, text);
         }
         
         // Test 1: Page load
@@ -72,6 +66,64 @@
                 }, 4000);
             }
         }, 500);
+        
+        // Initialize LOD levels immediately when boardSystem is available
+        function initializeLODWhenReady() {
+            if (window.boardSystem && window.boardSystem.initializeLODLevels) {
+                console.log('🚀 Initializing LOD levels...');
+                boardSystem.initializeLODLevels();
+                console.log('✅ LOD levels initialized! Move camera to see dynamic LOD updates.');
+                
+                // Force an immediate optimization update
+                setTimeout(() => {
+                    if (window.boardSystem && window.boardSystem.updateOptimization) {
+                        console.log('� Triggering immediate LOD update...');
+                        boardSystem.updateOptimization();
+                    }
+                }, 500);
+            } else {
+                console.log('⏳ Waiting for board system...');
+                setTimeout(initializeLODWhenReady, 1000);
+            }
+        }
+        
+        // Start initialization after a short delay
+        setTimeout(initializeLODWhenReady, 2000);
+        
+        // Also try after 5 seconds as backup
+        setTimeout(initializeLODWhenReady, 5000);
+        
+        // Add manual trigger button
+        setTimeout(() => {
+            const button = document.createElement('button');
+            button.textContent = 'Force LOD (No Hysteresis)';
+            button.style.position = 'fixed';
+            button.style.top = '10px';
+            button.style.right = '10px';
+            button.style.zIndex = '9999';
+            button.style.padding = '10px';
+            button.style.backgroundColor = '#4CAF50';
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.borderRadius = '5px';
+            button.style.cursor = 'pointer';
+            button.onclick = () => {
+                console.log('🔥 Button clicked! Force LOD without hysteresis triggered!');
+                console.log('🔥 window.boardSystem:', window.boardSystem);
+                console.log('🔥 forceLODWithoutHysteresis method:', window.boardSystem?.forceLODWithoutHysteresis);
+                
+                if (window.boardSystem && window.boardSystem.forceLODWithoutHysteresis) {
+                    console.log('🔥 Calling forceLODWithoutHysteresis...');
+                    const result = boardSystem.forceLODWithoutHysteresis();
+                    console.log('🔥 Result:', result);
+                } else {
+                    console.log('❌ Board system not available or method missing');
+                    console.log('❌ boardSystem exists:', !!window.boardSystem);
+                    console.log('❌ method exists:', !!window.boardSystem?.forceLODWithoutHysteresis);
+                }
+            };
+            document.body.appendChild(button);
+        }, 3000);
     </script>
 </body>
 </html>

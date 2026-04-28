@@ -4,7 +4,7 @@ class TerrainSystem {
         this.treeSystem = treeSystem;
         this.chunks = new Map();
         this.chunkSize = 16;
-        this.loadDistance = 2; // Reduced for better performance (32 units / 16 chunk size)
+        this.loadDistance = 6; // Expanded for wider camera cone (96 units / 16 chunk size)
         this.lastCameraChunk = { x: 0, z: 0 };
         
         // Terrain colors for different biomes

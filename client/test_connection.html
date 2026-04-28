@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>Connection Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="logs"></div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logsDiv = document.getElementById('logs');
+        
+        function log(message) {
+            console.log(message);
+            logsDiv.innerHTML += '<p>' + new Date().toLocaleTimeString() + ': ' + message + '</p>';
+        }
+        
+        log('Starting connection test...');
+        
+        try {
+            const socket = io('http://localhost:3000');
+            
+            socket.on('connect', () => {
+                log('Connected to server with ID: ' + socket.id);
+                statusDiv.textContent = 'Connected';
+                statusDiv.style.color = 'green';
+            });
+            
+            socket.on('disconnect', () => {
+                log('Disconnected from server');
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.style.color = 'red';
+            });
+            
+            socket.on('connect_error', (error) => {
+                log('Connection error: ' + error.message);
+                statusDiv.textContent = 'Connection Error: ' + error.message;
+                statusDiv.style.color = 'red';
+            });
+            
+            socket.on('gameState', (data) => {
+                log('Received gameState: ' + JSON.stringify(data).substring(0, 100) + '...');
+            });
+            
+        } catch (error) {
+            log('Error creating socket: ' + error.message);
+            statusDiv.textContent = 'Error: ' + error.message;
+            statusDiv.style.color = 'red';
+        }
+    </script>
+</body>
+</html>

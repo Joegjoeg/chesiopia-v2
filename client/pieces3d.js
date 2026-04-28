@@ -353,18 +353,18 @@ class Pieces3D {
     }
     
     createRook(group, material) {
-        // Load GLB model for rook
-        this.loadPieceModel(group, 'rook', material);
+        // Use geometric rook directly (no GLB file exists)
+        this.createGeometricRook(group, material);
     }
     
     createKnight(group, material) {
-        // Load GLB model for knight
-        this.loadPieceModel(group, 'knight', material);
+        // Use geometric knight directly (no GLB file exists)
+        this.createGeometricKnight(group, material);
     }
     
     createBishop(group, material) {
-        // Load GLB model for bishop
-        this.loadPieceModel(group, 'bishop', material);
+        // Use geometric bishop directly (case mismatch with Bishop.glb)
+        this.createGeometricBishop(group, material);
     }
     
     createQueen(group, material) {
@@ -468,28 +468,28 @@ class Pieces3D {
     }
 
     createGeometricPiece(pieceType, group, material) {
-        // Fallback to original geometric pieces
+        // Fallback to geometric pieces (no model loading)
         switch (pieceType) {
             case 'pawn':
-                this.createPawn(group, material);
+                this.createGeometricPawn(group, material);
                 break;
             case 'rook':
-                this.createRook(group, material);
+                this.createGeometricRook(group, material);
                 break;
             case 'knight':
-                this.createKnight(group, material);
+                this.createGeometricKnight(group, material);
                 break;
             case 'bishop':
-                this.createBishop(group, material);
+                this.createGeometricBishop(group, material);
                 break;
             case 'queen':
-                this.createQueen(group, material);
+                this.createGeometricQueen(group, material);
                 break;
             case 'king':
                 this.createGeometricKing(group, material);
                 break;
             default:
-                this.createPawn(group, material);
+                this.createGeometricPawn(group, material);
         }
     }
 
@@ -545,6 +545,181 @@ class Pieces3D {
         crossHorizontal.castShadow = true;
         crossHorizontal.receiveShadow = true;
         group.add(crossHorizontal);
+    }
+    
+    createGeometricPawn(group, material) {
+        // Simple geometric pawn
+        const baseGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.15, 8);
+        const base = new THREE.Mesh(baseGeometry, material);
+        base.position.y = 0.075;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const bodyGeometry = new THREE.CylinderGeometry(0.25, 0.3, 0.4, 8);
+        const body = new THREE.Mesh(bodyGeometry, material);
+        body.position.y = 0.325;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+        
+        const headGeometry = new THREE.SphereGeometry(0.2, 8, 6);
+        const head = new THREE.Mesh(headGeometry, material);
+        head.position.y = 0.6;
+        head.castShadow = true;
+        head.receiveShadow = true;
+        group.add(head);
+    }
+    
+    createGeometricRook(group, material) {
+        // Geometric rook (castle tower)
+        const baseGeometry = new THREE.CylinderGeometry(0.35, 0.4, 0.2, 8);
+        const base = new THREE.Mesh(baseGeometry, material);
+        base.position.y = 0.1;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const towerGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.6, 8);
+        const tower = new THREE.Mesh(towerGeometry, material);
+        tower.position.y = 0.4;
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        group.add(tower);
+        
+        // Battlements on top
+        const battlementWidth = 0.15;
+        const battlementHeight = 0.1;
+        const battlementDepth = 0.45;
+        
+        for (let i = 0; i < 4; i++) {
+            const angle = (i * Math.PI) / 2;
+            const x = Math.cos(angle) * battlementDepth;
+            const z = Math.sin(angle) * battlementDepth;
+            
+            const battlementGeometry = new THREE.BoxGeometry(battlementWidth, battlementHeight, battlementWidth);
+            const battlement = new THREE.Mesh(battlementGeometry, material);
+            battlement.position.set(x, 0.75, z);
+            battlement.castShadow = true;
+            battlement.receiveShadow = true;
+            group.add(battlement);
+        }
+    }
+    
+    createGeometricKnight(group, material) {
+        // Geometric knight (simplified horse head)
+        const baseGeometry = new THREE.CylinderGeometry(0.35, 0.4, 0.2, 8);
+        const base = new THREE.Mesh(baseGeometry, material);
+        base.position.y = 0.1;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const neckGeometry = new THREE.CylinderGeometry(0.25, 0.3, 0.4, 8);
+        const neck = new THREE.Mesh(neckGeometry, material);
+        neck.position.y = 0.4;
+        neck.castShadow = true;
+        neck.receiveShadow = true;
+        group.add(neck);
+        
+        // Head (simplified horse head shape)
+        const headGeometry = new THREE.BoxGeometry(0.4, 0.3, 0.5);
+        const head = new THREE.Mesh(headGeometry, material);
+        head.position.y = 0.7;
+        head.position.z = 0.2;
+        head.castShadow = true;
+        head.receiveShadow = true;
+        group.add(head);
+        
+        // Ear
+        const earGeometry = new THREE.ConeGeometry(0.08, 0.2, 4);
+        const ear = new THREE.Mesh(earGeometry, material);
+        ear.position.y = 0.95;
+        ear.position.z = 0.35;
+        ear.rotation.x = Math.PI / 6;
+        ear.castShadow = true;
+        ear.receiveShadow = true;
+        group.add(ear);
+    }
+    
+    createGeometricBishop(group, material) {
+        // Geometric bishop (mitre hat)
+        const baseGeometry = new THREE.CylinderGeometry(0.35, 0.4, 0.2, 8);
+        const base = new THREE.Mesh(baseGeometry, material);
+        base.position.y = 0.1;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.5, 8);
+        const body = new THREE.Mesh(bodyGeometry, material);
+        body.position.y = 0.45;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+        
+        // Mitre (bishop hat)
+        const mitreGeometry = new THREE.ConeGeometry(0.25, 0.4, 8);
+        const mitre = new THREE.Mesh(mitreGeometry, material);
+        mitre.position.y = 0.85;
+        mitre.castShadow = true;
+        mitre.receiveShadow = true;
+        group.add(mitre);
+        
+        // Cross on mitre
+        const crossGeometry = new THREE.BoxGeometry(0.05, 0.15, 0.05);
+        const cross = new THREE.Mesh(crossGeometry, material);
+        cross.position.y = 1.1;
+        cross.castShadow = true;
+        cross.receiveShadow = true;
+        group.add(cross);
+    }
+    
+    createGeometricQueen(group, material) {
+        // Geometric queen (crown with multiple points)
+        const baseGeometry = new THREE.CylinderGeometry(0.35, 0.4, 0.2, 8);
+        const base = new THREE.Mesh(baseGeometry, material);
+        base.position.y = 0.1;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.35, 0.5, 8);
+        const body = new THREE.Mesh(bodyGeometry, material);
+        body.position.y = 0.45;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+        
+        // Crown base
+        const crownBaseGeometry = new THREE.CylinderGeometry(0.35, 0.3, 0.15, 8);
+        const crownBase = new THREE.Mesh(crownBaseGeometry, material);
+        crownBase.position.y = 0.775;
+        crownBase.castShadow = true;
+        crownBase.receiveShadow = true;
+        group.add(crownBase);
+        
+        // Crown points (5 points)
+        for (let i = 0; i < 5; i++) {
+            const angle = (i * 2 * Math.PI) / 5;
+            const x = Math.cos(angle) * 0.2;
+            const z = Math.sin(angle) * 0.2;
+            
+            const pointGeometry = new THREE.ConeGeometry(0.08, 0.3, 6);
+            const point = new THREE.Mesh(pointGeometry, material);
+            point.position.set(x, 1.0, z);
+            point.castShadow = true;
+            point.receiveShadow = true;
+            group.add(point);
+        }
+        
+        // Central sphere
+        const sphereGeometry = new THREE.SphereGeometry(0.1, 8, 6);
+        const sphere = new THREE.Mesh(sphereGeometry, material);
+        sphere.position.y = 0.85;
+        sphere.castShadow = true;
+        sphere.receiveShadow = true;
+        group.add(sphere);
     }
 
     updatePiecePosition(pieceMesh, x, z) {

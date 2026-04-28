@@ -76,10 +76,8 @@ class GameState {
             this.players.set(socketId, player);
             console.log('[GameState] Player set in players map successfully');
             
-            console.log('[GameState] About to spawn initial pieces...');
-            // Spawn initial pieces for the player
-            this.spawnInitialPieces(player);
-            console.log('[GameState] Initial pieces spawned successfully');
+            // Pieces should only be created in response to client requests, not automatically
+            console.log('[GameState] Player joined - pieces will be created on client request');
             
             // Notify of player added
             console.log('[GameState] About to call notifyChange for playerAdded:', player.name);
@@ -106,6 +104,28 @@ class GameState {
         }
     }
     
+    isValidSpawnPosition(x, z) {
+        // Check if tile itself is blocked by terrain
+        if (this.terrainGenerator && this.terrainGenerator.isTileBlocked(x, z)) {
+            // Get detailed terrain info to determine if it's actually blocked by a tree or just steep slope
+            const height = this.terrainGenerator.getHeight(x, z);
+            const slope = this.terrainGenerator.calculateSlope ? 
+                this.terrainGenerator.calculateSlope(x, z, height) : 0;
+            
+            // Allow spawning on steep slopes (up to 80°) but block on very steep (>80°) where trees grow
+            if (slope > 80) {
+                console.log(`[GameState] Spawn rejected at (${x}, ${z}): extremely steep slope (${slope.toFixed(1)}°) - likely tree location`);
+                return false;
+            }
+            
+            console.log(`[GameState] Spawn allowed at (${x}, ${z}): steep slope (${slope.toFixed(1)}°) but acceptable for pieces`);
+            return true;
+        }
+        
+        // If no terrain generator, allow any position
+        return true;
+    }
+    
     getNextPlayerColor() {
         const colors = ['white', 'black', 'red', 'blue', 'green', 'yellow'];
         const usedColors = Array.from(this.players.values()).map(p => p.color);
@@ -115,15 +135,14 @@ class GameState {
     spawnInitialPieces(player) {
         console.log('[GameState] Spawning initial pieces for player:', player.name);
         
-        // Find valid spawn positions (not blocked)
+        // Find valid spawn positions (not blocked by trees)
         const validPositions = [];
-        const searchRadius = 15;
+        const searchRadius = 20;
         
         if (this.terrainGenerator) {
             for (let x = -searchRadius; x <= searchRadius; x++) {
                 for (let z = -searchRadius; z <= searchRadius; z++) {
-                    const isBlocked = this.terrainGenerator.isTileBlocked(x, z);
-                    if (!isBlocked) {
+                    if (this.isValidSpawnPosition(x, z) && !this.getPieceAt(x, z)) {
                         validPositions.push({ x, z });
                     }
                 }
@@ -133,47 +152,108 @@ class GameState {
         if (validPositions.length === 0) {
             console.log('[GameState] No valid spawn positions found - using fallback positions');
             // Fallback to random positions if no terrain generator or all blocked
-            for (let i = 0; i < 10; i++) {
-                validPositions.push({
-                    x: Math.floor(Math.random() * 20) - 10,
-                    z: Math.floor(Math.random() * 20) - 10
-                });
+            for (let i = 0; i < 50; i++) {
+                const x = Math.floor(Math.random() * 40) - 20;
+                const z = Math.floor(Math.random() * 40) - 20;
+                if (!this.getPieceAt(x, z)) {
+                    validPositions.push({ x, z });
+                }
             }
         }
         
         console.log(`[GameState] Found ${validPositions.length} valid spawn positions`);
         
-        // Pick a random valid position for the king
+        // Pick a random valid position for the king (ensuring it's on a free square)
         const kingIndex = Math.floor(Math.random() * validPositions.length);
         const kingPos = validPositions[kingIndex];
         validPositions.splice(kingIndex, 1); // Remove used position
         
-        // Spawn King first
+        // Spawn King first on a guaranteed free square
         const king = this.createPiece(player.id, 'king', kingPos.x, kingPos.z);
         player.kingPosition = { x: kingPos.x, z: kingPos.z };
         player.pieces.push(king.id);
         console.log('[GameState] Created king at valid position:', king);
         
-        // Spawn initial army - reduced for testing
+        // Spawn initial army near the king (most valuable piece)
         const initialPieces = [
-            { type: 'pawn' },
-            { type: 'pawn' }
+            { type: 'queen', value: 9 },    // Most valuable after king
+            { type: 'rook', value: 5 },
+            { type: 'bishop', value: 3 },
+            { type: 'knight', value: 3 },
+            { type: 'bishop', value: 3 },
+            { type: 'knight', value: 3 },
+            { type: 'rook', value: 5 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 },
+            { type: 'pawn', value: 1 }
         ];
         
-        initialPieces.forEach(pieceData => {
+        // Sort pieces by value (most valuable first) to spawn near king
+        initialPieces.sort((a, b) => b.value - a.value);
+        
+        initialPieces.forEach((pieceData, pieceIndex) => {
             if (validPositions.length > 0) {
-                const randomIndex = Math.floor(Math.random() * validPositions.length);
-                const position = validPositions[randomIndex];
-                validPositions.splice(randomIndex, 1); // Remove used position
+                // Find best position based on distance to king (most valuable piece)
+                let bestPosition = null;
+                let bestIndex = -1;
+                let bestPriority = -1;
                 
-                const piece = this.createPiece(
-                    player.id,
-                    pieceData.type,
-                    position.x,
-                    position.z
-                );
-                player.pieces.push(piece.id);
-                console.log(`[GameState] Created ${pieceData.type} at valid position (${position.x}, ${position.z}):`, piece);
+                validPositions.forEach((pos, index) => {
+                    const distance = Math.sqrt(
+                        Math.pow(pos.x - kingPos.x, 2) + 
+                        Math.pow(pos.z - kingPos.z, 2)
+                    );
+                    
+                    // Priority system: closer to king is better for valuable pieces
+                    let priority = 0;
+                    
+                    // Highest priority: Very close (1-3 tiles away)
+                    if (distance <= 3) {
+                        priority = 100;
+                    }
+                    // Medium priority: Close (4-6 tiles away)
+                    else if (distance <= 6) {
+                        priority = 50;
+                    }
+                    // Low priority: Far (7+ tiles away)
+                    else {
+                        priority = 10;
+                    }
+                    
+                    // Add small randomness within same priority level
+                    const randomFactor = Math.random() * 0.5;
+                    const adjustedPriority = priority + randomFactor;
+                    
+                    if (adjustedPriority > bestPriority) {
+                        bestPriority = adjustedPriority;
+                        bestPosition = pos;
+                        bestIndex = index;
+                    }
+                });
+                
+                if (bestPosition) {
+                    validPositions.splice(bestIndex, 1); // Remove used position
+                    
+                    const piece = this.createPiece(
+                        player.id,
+                        pieceData.type,
+                        bestPosition.x,
+                        bestPosition.z
+                    );
+                    player.pieces.push(piece.id);
+                    const distance = Math.sqrt(
+                        Math.pow(bestPosition.x - kingPos.x, 2) + 
+                        Math.pow(bestPosition.z - kingPos.z, 2)
+                    );
+                    console.log(`[GameState] Created ${pieceData.type} at distance ${distance.toFixed(1)} from king (${bestPosition.x}, ${bestPosition.z}):`, piece);
+                } else {
+                    console.log(`[GameState] No valid positions left for ${pieceData.type}`);
+                }
             } else {
                 console.log(`[GameState] No valid positions left for ${pieceData.type}`);
             }
@@ -329,28 +409,30 @@ class GameState {
             return null;
         }
         
-        // Search for valid spawn location near king
-        const searchRadius = 3;
+        // Search for valid spawn locations near king (most valuable piece)
+        const searchRadius = 5; // Increased radius for more options
+        const validLocations = [];
+        
         for (let dx = -searchRadius; dx <= searchRadius; dx++) {
             for (let dz = -searchRadius; dz <= searchRadius; dz++) {
                 const x = player.kingPosition.x + dx;
                 const z = player.kingPosition.z + dz;
                 
-                // Check if position is free and not blocked
+                // Check if position is free and valid (not blocked by trees)
                 const isOccupied = this.getPieceAt(x, z);
-                let isBlocked = false;
                 
-                if (this.terrainGenerator) {
-                    isBlocked = this.terrainGenerator.isTileBlocked(x, z);
-                }
-                
-                if (!isOccupied && !isBlocked) {
-                    return { x, z };
+                if (!isOccupied && this.isValidSpawnPosition(x, z)) {
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    validLocations.push({ x, z, distance });
                 }
             }
         }
         
-        return null;
+        // Sort by distance to king (closest first) - spawn near most valuable piece
+        validLocations.sort((a, b) => a.distance - b.distance);
+        
+        // Return the closest valid location
+        return validLocations.length > 0 ? validLocations[0] : null;
     }
     
     setCovering(coveringPieceId, coveredPieceId) {

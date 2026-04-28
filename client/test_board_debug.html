@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Board Debug Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; }
+        #debug { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; max-width: 300px; }
+        #canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="debug">
+        <h3>Board Debug Test</h3>
+        <div id="logs"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const debugDiv = document.getElementById('logs');
+        
+        function log(message) {
+            console.log(message);
+            debugDiv.innerHTML += '<p>' + new Date().toLocaleTimeString() + ': ' + message + '</p>';
+        }
+        
+        log('Starting board debug test...');
+        
+        // Create basic Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas') });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // Add basic lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight.position.set(10, 10, 5);
+        scene.add(directionalLight);
+        
+        // Position camera
+        camera.position.set(0, 10, 20);
+        camera.lookAt(0, 0, 0);
+        
+        // Test basic board creation
+        function createTestBoard() {
+            log('Creating test board...');
+            
+            // Create a simple plane to test visibility
+            const geometry = new THREE.PlaneGeometry(10, 10, 10, 10);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x00ff00,
+                wireframe: false
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.rotation.x = -Math.PI / 2;
+            scene.add(mesh);
+            
+            log('Test board created and added to scene');
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        
+        // Start
+        createTestBoard();
+        animate();
+        
+        log('Board debug test completed - you should see a green plane');
+    </script>
+</body>
+</html>

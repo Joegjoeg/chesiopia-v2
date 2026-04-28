@@ -5,20 +5,55 @@ class SoundManager {
         this.masterVolume = 0.5;
         this.lastGrumbleTime = 0;
         this.grumbleCooldown = 3000; // 3 seconds between grumbles
-        this.footstepCooldown = 200; // 200ms between footsteps
+        this.footstepCooldown = 100; // 100ms between footsteps
         this.lastFootstepTime = 0;
         
         this.initAudioContext();
-        this.createSounds();
     }
     
     initAudioContext() {
         try {
             window.AudioContext = window.AudioContext || window.webkitAudioContext;
             this.audioContext = new AudioContext();
-        } catch (e) {
-            console.warn('Web Audio API not supported:', e);
+            
+            // Check if AudioContext is suspended (browser security)
+            if (this.audioContext.state === 'suspended') {
+                console.log('[SoundManager] AudioContext is suspended, waiting for user interaction...');
+                this.setupUserGestureHandler();
+            } else {
+                this.createSounds();
+            }
+        } catch (error) {
+            console.error('[SoundManager] Failed to initialize AudioContext:', error);
         }
+    }
+    
+    setupUserGestureHandler() {
+        // Set up a one-time event listener to resume AudioContext on user interaction
+        const resumeAudioContext = () => {
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                console.log('[SoundManager] Resuming AudioContext after user gesture');
+                this.audioContext.resume().then(() => {
+                    console.log('[SoundManager] AudioContext resumed successfully');
+                    this.createSounds();
+                    console.log('[SoundManager] Sounds created after AudioContext resume');
+                }).catch(error => {
+                    console.error('[SoundManager] Failed to resume AudioContext:', error);
+                });
+                
+                // Remove the event listeners after first interaction
+                document.removeEventListener('click', resumeAudioContext);
+                document.removeEventListener('keydown', resumeAudioContext);
+                document.removeEventListener('mousedown', resumeAudioContext);
+                document.removeEventListener('touchstart', resumeAudioContext);
+            }
+        };
+        
+        // Add multiple event listeners to catch different types of user interaction
+        document.addEventListener('click', resumeAudioContext, { once: true });
+        document.addEventListener('keydown', resumeAudioContext, { once: true });
+        document.addEventListener('mousedown', resumeAudioContext, { once: true });
+        document.addEventListener('touchstart', resumeAudioContext, { once: true });
     }
     
     createSounds() {
@@ -32,15 +67,18 @@ class SoundManager {
     }
     
     createWalkingSounds() {
+        // Store reference to self for proper binding in arrow functions
+        const self = this;
+        
         // Create simple footstep sounds using oscillators and noise
         this.sounds.footstep = {
             play: (volume = 0.3) => {
-                if (!this.audioContext) return;
+                if (!self.audioContext) return;
                 
-                const now = this.audioContext.currentTime;
-                const oscillator = this.audioContext.createOscillator();
-                const gainNode = this.audioContext.createGain();
-                const filter = this.audioContext.createBiquadFilter();
+                const now = self.audioContext.currentTime;
+                const oscillator = self.audioContext.createOscillator();
+                const gainNode = self.audioContext.createGain();
+                const filter = self.audioContext.createBiquadFilter();
                 
                 // Create a thump sound
                 oscillator.type = 'sine';
@@ -59,7 +97,7 @@ class SoundManager {
                 // Connect and play
                 oscillator.connect(filter);
                 filter.connect(gainNode);
-                gainNode.connect(this.audioContext.destination);
+                gainNode.connect(self.audioContext.destination);
                 
                 oscillator.start(now);
                 oscillator.stop(now + 0.1);
@@ -69,12 +107,12 @@ class SoundManager {
         // Create a slightly different footstep for variety
         this.sounds.footstep2 = {
             play: (volume = 0.3) => {
-                if (!this.audioContext) return;
+                if (!self.audioContext) return;
                 
-                const now = this.audioContext.currentTime;
-                const oscillator = this.audioContext.createOscillator();
-                const gainNode = this.audioContext.createGain();
-                const filter = this.audioContext.createBiquadFilter();
+                const now = self.audioContext.currentTime;
+                const oscillator = self.audioContext.createOscillator();
+                const gainNode = self.audioContext.createGain();
+                const filter = self.audioContext.createBiquadFilter();
                 
                 // Create a slightly different thump
                 oscillator.type = 'triangle';
@@ -90,12 +128,15 @@ class SoundManager {
                 
                 oscillator.connect(filter);
                 filter.connect(gainNode);
-                gainNode.connect(this.audioContext.destination);
+                gainNode.connect(self.audioContext.destination);
                 
                 oscillator.start(now);
                 oscillator.stop(now + 0.08);
             }
         };
+        
+        console.log('[SoundManager] Walking sounds created successfully');
+        console.log('[SoundManager] Available sounds:', Object.keys(this.sounds));
     }
     
     setupGrumbling() {
@@ -225,14 +266,20 @@ class SoundManager {
     
     playFootstep() {
         const now = Date.now();
-        if (now - this.lastFootstepTime < this.footstepCooldown) return;
+        if (now - this.lastFootstepTime < this.footstepCooldown) {
+            console.log(`[SoundManager] Footstep blocked by cooldown (${now - this.lastFootstepTime}ms < ${this.footstepCooldown}ms)`);
+            return;
+        }
         
         this.lastFootstepTime = now;
         
         // Alternate between different footstep sounds
         const footstepSound = Math.random() > 0.5 ? 'footstep' : 'footstep2';
+        console.log(`[SoundManager] Playing footstep sound: ${footstepSound}`);
         if (this.sounds[footstepSound]) {
             this.sounds[footstepSound].play(this.masterVolume * 0.5);
+        } else {
+            console.log(`[SoundManager] Footstep sound '${footstepSound}' not found!`);
         }
     }
     
