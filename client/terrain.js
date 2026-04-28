@@ -75,11 +75,6 @@ class TerrainSystem {
                 loaded: true
             });
             
-            // Update trees if needed
-            if (this.treeSystem) {
-                this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
-            }
-            
             return chunkData;
         } catch (error) {
             console.error(`[Terrain] Error loading chunk ${chunkKey}:`, error);
