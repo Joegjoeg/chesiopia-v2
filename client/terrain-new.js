@@ -143,34 +143,42 @@ class TerrainSystem {
     async loadChunk(chunkX, chunkZ) {
         const chunkKey = `${chunkX},${chunkZ}`;
         
-        // If world is downloaded, chunks should already be cached
-        if (this.worldDownloaded) {
-            if (this.chunks.has(chunkKey)) {
-                // Chunk is already cached, update trees if needed
-                if (this.treeSystem) {
-                    this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
-                }
-                return;
-            } else {
-                console.warn(`[Terrain] Chunk (${chunkX}, ${chunkZ}) not found in cached world data`);
-                return;
-            }
-        }
-        
-        // Fallback: If world not downloaded yet, trigger download
-        console.log(`[Terrain] World not downloaded yet, triggering download for chunk (${chunkX}, ${chunkZ})`);
-        await this.downloadEntireWorld();
-        
-        // After download, try again
+        // Check if already loaded
         if (this.chunks.has(chunkKey)) {
             if (this.treeSystem) {
                 this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
             }
-            return;
+            return this.chunks.get(chunkKey).data;
         }
         
-        // If still not found after download, something is wrong
-        console.error(`[Terrain] Chunk (${chunkX}, ${chunkZ}) still not found after world download attempt.`);
+        // Load from server
+        try {
+            console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
+            const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load chunk ${chunkKey}: ${response.status}`);
+            }
+            
+            const chunkData = await response.json();
+            console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
+            
+            // Cache the chunk
+            this.chunks.set(chunkKey, {
+                data: chunkData,
+                loaded: true
+            });
+            
+            // Update trees if needed
+            if (this.treeSystem) {
+                this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
+            }
+            
+            return chunkData;
+        } catch (error) {
+            console.error(`[Terrain] Error loading chunk ${chunkKey}:`, error);
+            return null;
+        }
     }
     
     updateChunks(cameraChunkX, cameraChunkZ) {

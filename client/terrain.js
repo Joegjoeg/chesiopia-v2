@@ -51,9 +51,13 @@ class TerrainSystem {
         
         // Check if already loaded
         if (this.chunks.has(chunkKey)) {
+            if (this.treeSystem) {
+                this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
+            }
             return this.chunks.get(chunkKey).data;
         }
         
+        // Load from server
         try {
             console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
             const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
@@ -70,6 +74,11 @@ class TerrainSystem {
                 data: chunkData,
                 loaded: true
             });
+            
+            // Update trees if needed
+            if (this.treeSystem) {
+                this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
+            }
             
             return chunkData;
         } catch (error) {
