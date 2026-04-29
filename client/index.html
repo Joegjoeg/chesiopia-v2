@@ -144,19 +144,40 @@
                 <div class="loading-progress"></div>
             </div>
             <div class="loading-text">Loading 3D World...</div>
-        
-        <!-- Loading Screen -->
-        <div id="loadingScreen">
-            <div class="loading-content">
-                <h1>Chessopia</h1>
-                <div class="loading-bar">
-                    <div class="loading-progress"></div>
-                </div>
-                <div class="loading-text">Loading 3D World...</div>
-            </div>
+            <div id="loadingLog" style="margin-top:12px;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;color:#ccc;background:rgba(0,0,0,0.5);border-radius:6px;padding:8px;text-align:left;line-height:1.4;"></div>
         </div>
     </div>
     
+    <!-- Mobile debug logger: mirror console to the loading screen -->
+    <script>
+        (function() {
+            const logEl = document.getElementById('loadingLog');
+            if (!logEl) return;
+            const MAX_LINES = 60;
+            function pushLine(type, args) {
+                const line = document.createElement('div');
+                const text = args.map(a => {
+                    try { return (typeof a === 'object') ? JSON.stringify(a) : String(a); }
+                    catch (e) { return String(a); }
+                }).join(' ');
+                line.textContent = '> ' + text;
+                line.style.color = type === 'error' ? '#ff6b6b' : type === 'warn' ? '#ffcc00' : '#ccc';
+                line.style.wordBreak = 'break-word';
+                logEl.appendChild(line);
+                while (logEl.childElementCount > MAX_LINES) {
+                    logEl.removeChild(logEl.firstChild);
+                }
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+            const origLog = console.log;
+            const origWarn = console.warn;
+            const origErr = console.error;
+            console.log = function(...args) { origLog.apply(console, args); pushLine('log', args); };
+            console.warn = function(...args) { origWarn.apply(console, args); pushLine('warn', args); };
+            console.error = function(...args) { origErr.apply(console, args); pushLine('error', args); };
+        })();
+    </script>
+
     <!-- Three.js and dependencies - using multiple CDN sources with local fallbacks -->
     <script>
         // Load THREE.js with fallback
@@ -730,8 +751,11 @@
         function showError(message) {
             const loadingScreen = document.getElementById('loadingScreen');
             if (loadingScreen) {
-                loadingScreen.innerHTML = `
-                    <div class="loading-content">
+                const content = loadingScreen.querySelector('.loading-content');
+                if (content) {
+                    // Replace content but keep the log area
+                    const logEl = document.getElementById('loadingLog');
+                    content.innerHTML = `
                         <h1>Chessopia</h1>
                         <div style="color: #ff6b6b; margin: 20px 0; text-align: center;">
                             ${message}
@@ -745,8 +769,9 @@
                             cursor: pointer;
                             font-size: 16px;
                         ">Refresh Page</button>
-                    </div>
-                `;
+                    `;
+                    if (logEl) content.appendChild(logEl);
+                }
             }
         }
         
