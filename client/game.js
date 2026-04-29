@@ -196,16 +196,23 @@ class ChessopiaGame {
         this.piecesSystem = new Pieces3D(this.scene, this.terrainSystem);
         
         // Set up chunk loaded callback to regenerate terrain mesh
+        this._lastChunkMeshRebuild = 0;
         this.terrainSystem.onChunkLoaded = (chunkX, chunkZ) => {
-            console.log(`[Game] === CHUNK LOADED CALLBACK === (${chunkX}, ${chunkZ})`);
-            console.log(`[Game] Board system exists: ${!!this.boardSystem}`);
-            console.log(`[Game] Continuous mesh exists: ${!!this.boardSystem?.continuousMesh}`);
-            if (this.boardSystem && this.boardSystem.continuousMesh) {
-                console.log(`[Game] Calling updateDynamicMesh with force=true at camera position: ${this.camera.position.x.toFixed(2)}, ${this.camera.position.z.toFixed(2)}`);
-                this.boardSystem.updateDynamicMesh(this.camera.position, true); // Force regeneration
-            } else {
-                console.log(`[Game] SKIPPING mesh update - boardSystem or continuousMesh is null`);
-            }
+            if (!this.boardSystem || !this.boardSystem.continuousMesh) return;
+            // Only force rebuild if chunk is inside current mesh bounds
+            const mb = this.boardSystem.meshBounds;
+            if (!mb) return;
+            const chunkWorldX = chunkX * this.terrainSystem.chunkSize;
+            const chunkWorldZ = chunkZ * this.terrainSystem.chunkSize;
+            const halfSize = mb.size / 2;
+            const inside = chunkWorldX >= mb.centerX - halfSize && chunkWorldX <= mb.centerX + halfSize &&
+                           chunkWorldZ >= mb.centerZ - halfSize && chunkWorldZ <= mb.centerZ + halfSize;
+            if (!inside) return;
+            // Throttle rebuilds to once per 500ms
+            const now = Date.now();
+            if (now - this._lastChunkMeshRebuild < 500) return;
+            this._lastChunkMeshRebuild = now;
+            this.boardSystem.updateDynamicMesh(this.camera.position, true);
         };
         
         // Update tree system with terrain system reference

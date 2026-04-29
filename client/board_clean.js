@@ -1015,7 +1015,7 @@ class CleanBoardSystem {
         const regenerationThreshold = this.meshBounds.size * 0.3; // Regenerate when 30% from center
 
         if (force || distanceFromCenter > regenerationThreshold) {
-            console.log(`[DYNAMIC MESH] ${force ? 'FORCE' : 'Camera moved'} regenerating mesh (distance: ${distanceFromCenter.toFixed(1)})`);
+            // console.log(`[DYNAMIC MESH] ${force ? 'FORCE' : 'Camera moved'} regenerating mesh (distance: ${distanceFromCenter.toFixed(1)})`);
 
             // Update mesh bounds to follow camera
             this.meshBounds.centerX = cameraPosition.x;
@@ -1035,20 +1035,20 @@ class CleanBoardSystem {
 
             this.lastMeshRegeneration = Date.now();
 
-            console.log(`[DYNAMIC MESH] Mesh regenerated at (${cameraPosition.x.toFixed(1)}, ${cameraPosition.z.toFixed(1)})`);
+            // console.log(`[DYNAMIC MESH] Mesh regenerated at (${cameraPosition.x.toFixed(1)}, ${cameraPosition.z.toFixed(1)})`);
         }
     }
     
     // Create continuous mesh centered on specific position
     // Each tile has 4 unique vertices for per-tile color control (checkerboard + mouse fade)
     createContinuousMeshAround(centerX, centerZ) {
-        console.log(`[DYNAMIC MESH] Creating mesh centered at (${centerX.toFixed(1)}, ${centerZ.toFixed(1)})`);
+        // console.log(`[DYNAMIC MESH] Creating mesh centered at (${centerX.toFixed(1)}, ${centerZ.toFixed(1)})`);
         
         const meshSize = this.meshBounds.size;
         const tileSize = 1;
         const tilesPerSide = meshSize;
         
-        console.log(`[DYNAMIC MESH] Mesh size: ${meshSize}x${meshSize}, Tiles: ${tilesPerSide}x${tilesPerSide}`);
+        // console.log(`[DYNAMIC MESH] Mesh size: ${meshSize}x${meshSize}, Tiles: ${tilesPerSide}x${tilesPerSide}`);
 
         const geometry = new THREE.BufferGeometry();
         const vertices = [];
@@ -1146,7 +1146,7 @@ class CleanBoardSystem {
         mesh.receiveShadow = true;   // Enable receiving shadows from other models
         mesh.castShadow = false;      // Disable self-shadowing to avoid ripple effect
         
-        console.log(`[DYNAMIC MESH] Created mesh with ${vertices.length/3} vertices, ${indices.length/3} triangles`);
+        // console.log(`[DYNAMIC MESH] Created mesh with ${vertices.length/3} vertices, ${indices.length/3} triangles`);
         
         return mesh;
     }
