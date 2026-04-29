@@ -232,8 +232,11 @@ class ChessopiaGame {
         // Generate initial terrain
         await this.terrainSystem.generateInitialTerrain(0, 0, 10);
         
-        // Create initial board - increased radius for proper LOD visibility
-        this.boardSystem.createBoard(0, 0, 3);
+        // Determine mesh size based on device capability
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const meshMultiplier = isMobile ? 6 : 12; // 96 tiles mobile, 192 desktop
+        console.log(`[Game] Device detected: ${isMobile ? 'mobile' : 'desktop'}, mesh size: ${meshMultiplier * this.boardSystem.chunkSize}`);
+        this.boardSystem.createBoard(0, 0, 3, meshMultiplier);
 
         
         // Initialize tree system with initial camera position
@@ -465,7 +468,7 @@ class ChessopiaGame {
     reportOptimizationStatus() {
         const opt = this.boardSystem ? this.boardSystem.optimization : null;
         const lines = [];
-        lines.push(`Mesh: ${this.boardSystem?.continuousMesh ? 'continuous' : 'chunk'} (${this.boardSystem?.meshBounds?.size || '-'}x${this.boardSystem?.meshBounds?.size || '-'})`);
+        lines.push(`Mesh: ${this.boardSystem?.continuousMesh ? 'continuous' : 'chunk'} (${this.boardSystem?.meshBounds?.size || '-'}x${this.boardSystem?.meshBounds?.size || '-'}) mult=${this.boardSystem?.meshMultiplier || '-'}`);
         lines.push(`Shadows: ${this.renderer?.shadowMap?.enabled ? 'ON' : 'OFF'}`);
         lines.push(`Grass: ${this.grassSystem ? 'ON' : 'OFF'}`);
         lines.push(`TexBlend: ${this.textureBlendingSystem ? 'ON' : 'OFF'}`);

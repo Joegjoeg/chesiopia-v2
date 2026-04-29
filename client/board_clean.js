@@ -935,17 +935,20 @@ class CleanBoardSystem {
 
 
 
-    createBoard(centerX, centerZ, radius) {
+    createBoard(centerX, centerZ, radius, meshMultiplier = 12) {
         console.log(`[DYNAMIC MESH] Creating board with dynamic continuous mesh (NO GAPS!)`);
         
         // CLEAR ALL EXISTING CHUNKS - we're using dynamic continuous mesh now
         this.clearAllChunks();
         
+        // Store multiplier for dynamic mesh regeneration
+        this.meshMultiplier = meshMultiplier;
+        
         // Initialize mesh bounds
         this.meshBounds = {
             centerX: centerX,
             centerZ: centerZ,
-            size: this.chunkSize * 12 // 12x12 chunks visible area (increased from 8)
+            size: this.chunkSize * meshMultiplier // configurable: 12 desktop, 6 mobile
         };
         
         // Create the continuous mesh centered on camera position
@@ -957,7 +960,7 @@ class CleanBoardSystem {
         // Store reference for later access
         this.continuousMesh = continuousMesh;
         
-        console.log(`[DYNAMIC MESH] Board created - dynamic mesh with no gaps!`);
+        console.log(`[DYNAMIC MESH] Board created - size=${this.meshBounds.size}, mult=${meshMultiplier}, verts≈${(this.meshBounds.size * this.meshBounds.size * 4 / 1000).toFixed(0)}K`);
         
         return Promise.resolve(); // Return promise for compatibility
     }
@@ -997,7 +1000,7 @@ class CleanBoardSystem {
             this.meshBounds = {
                 centerX: cameraPosition.x,
                 centerZ: cameraPosition.z,
-                size: this.chunkSize * 12 // 12x12 chunks visible area (increased from 8)
+                size: this.chunkSize * (this.meshMultiplier || 12) // use stored multiplier, fallback to 12
             };
             this.lastMeshRegeneration = 0;
             return;
