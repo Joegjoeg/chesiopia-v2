@@ -99,6 +99,7 @@ class ChessopiaGame {
                 console.log('[Game] LOD debug functions exposed - use testLODDistances() or debugSeamlessLOD() in console');
                 
                 console.log('[Game] Game initialization completed successfully!');
+                this.reportOptimizationStatus();
             }, 500);
             
         } catch (error) {
@@ -461,14 +462,35 @@ class ChessopiaGame {
         });
     }
     
+    reportOptimizationStatus() {
+        const opt = this.boardSystem ? this.boardSystem.optimization : null;
+        const lines = [];
+        lines.push(`Mesh: ${this.boardSystem?.continuousMesh ? 'continuous' : 'chunk'} (${this.boardSystem?.meshBounds?.size || '-'}x${this.boardSystem?.meshBounds?.size || '-'})`);
+        lines.push(`Shadows: ${this.renderer?.shadowMap?.enabled ? 'ON' : 'OFF'}`);
+        lines.push(`Grass: ${this.grassSystem ? 'ON' : 'OFF'}`);
+        lines.push(`TexBlend: ${this.textureBlendingSystem ? 'ON' : 'OFF'}`);
+        lines.push(`LOD: ${opt ? 'levels=' + opt.lodLevels.length : 'n/a'}`);
+        lines.push(`Stream: ${opt?.streaming?.enabled ? 'YES' : 'NO'}`);
+        lines.push(`PixelRatio: ${this.renderer?.getPixelRatio?.() || '-'}`);
+        lines.push(`Chunks cached: ${this.terrainSystem?.chunks?.size || 0}`);
+        const el = document.getElementById('optStatus');
+        if (el) el.textContent = lines.join('\n');
+    }
+
     startGameLoop() {
         let lastTime = 0;
+        let lastOptReport = 0;
 
         const animate = (currentTime) => {
             requestAnimationFrame(animate);
 
             const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
             lastTime = currentTime;
+
+            if (currentTime - lastOptReport > 3000) {
+                this.reportOptimizationStatus();
+                lastOptReport = currentTime;
+            }
 
             // console.log('[Game DEBUG] Game loop running, deltaTime:', deltaTime);
 
@@ -529,11 +551,10 @@ class ChessopiaGame {
 
             // Update dev tools section with vertex/triangle counts every 10 frames
             if (Math.floor(currentTime / 16) % 10 === 0) {
-                const debugEl = document.getElementById('connectionDebug');
-                if (debugEl) {
-                    debugEl.innerHTML = `Vertices: ${(totalVertices / 1000).toFixed(1)}K | Triangles: ${(totalTriangles / 1000).toFixed(1)}K`;
-                    debugEl.style.color = '#66ff66';
-                }
+                const vEl = document.getElementById('vertexCount');
+                const tEl = document.getElementById('triangleCount');
+                if (vEl) vEl.textContent = `${(totalVertices / 1000).toFixed(1)}K`;
+                if (tEl) tEl.textContent = `${(totalTriangles / 1000).toFixed(1)}K`;
             }
 
             // Render
