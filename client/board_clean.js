@@ -140,7 +140,6 @@ class CleanBoardSystem {
                 this.currentMouseY = event.touches[0].clientY;
                 this.needsFadeUpdate = true;
             }
-                console.log(`[TOUCH DEBUG] Raw touch: ${this.currentMouseX}, ${this.currentMouseY}`);
         }, { passive: true });
 
         window.addEventListener('touchstart', (event) => {
