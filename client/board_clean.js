@@ -987,9 +987,9 @@ class CleanBoardSystem {
     
     // DYNAMIC MESH REGENERATION - Create new vertices as camera scrolls, remove old ones
     updateDynamicMesh(cameraPosition, force = false) {
-        console.log(`[Board] === updateDynamicMesh CALLED === force=${force}`);
-        console.log(`[Board] Camera position: ${cameraPosition.x.toFixed(2)}, ${cameraPosition.z.toFixed(2)}`);
-        console.log(`[Board] Mesh bounds: ${this.meshBounds ? 'EXISTS' : 'NULL'}`);
+        // console.log(`[Board] === updateDynamicMesh CALLED === force=${force}`);
+        // console.log(`[Board] Camera position: ${cameraPosition.x.toFixed(2)}, ${cameraPosition.z.toFixed(2)}`);
+        // console.log(`[Board] Mesh bounds: ${this.meshBounds ? 'EXISTS' : 'NULL'}`);
         
         // Initialize mesh bounds if not set
         if (!this.meshBounds) {
@@ -1230,7 +1230,7 @@ class CleanBoardSystem {
 
 
             this.mouseWorldPosition.copy(intersects[0].point);
-            console.log(`[MOUSE WORLD] Intersect hit: ${this.mouseWorldPosition.x.toFixed(2)}, ${this.mouseWorldPosition.z.toFixed(2)}`);
+            // console.log(`[MOUSE WORLD] Intersect hit: ${this.mouseWorldPosition.x.toFixed(2)}, ${this.mouseWorldPosition.z.toFixed(2)}`);
 
 
 
@@ -1267,7 +1267,7 @@ class CleanBoardSystem {
 
 
     updateStreaming(cameraPosition, camera = null) {
-        console.log(`[STREAMING ENTRY] camera=${camera ? 'YES' : 'NULL'}, cameraPosition=${cameraPosition.x.toFixed(2)},${cameraPosition.z.toFixed(2)}`);
+        // console.log(`[STREAMING ENTRY] camera=${camera ? 'YES' : 'NULL'}, cameraPosition=${cameraPosition.x.toFixed(2)},${cameraPosition.z.toFixed(2)}`);
         // DYNAMIC CONTINUOUS MESH SYSTEM
         if (this.continuousMesh) {
             // Update mouse position

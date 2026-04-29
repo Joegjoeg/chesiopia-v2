@@ -450,8 +450,8 @@ class DecorativeVisualsSystem {
             Math.pow(sprite.position.z - mouseWorldPos.z, 2)
         );
         
-        // Debug: Log distance check (only log occasionally to avoid spam)
-        if (Math.random() < 0.01) { // Log 1% of the time
+        // Debug: Log distance check (disabled - too spammy even at 1%)
+        if (false && Math.random() < 0.01) { // Log 1% of the time
             console.log('[DEBUG] Mouse avoidance check:', {
                 mousePos: `(${mouseWorldPos.x.toFixed(2)}, ${mouseWorldPos.z.toFixed(2)})`,
                 spritePos: `(${sprite.position.x.toFixed(2)}, ${sprite.position.z.toFixed(2)})`,
