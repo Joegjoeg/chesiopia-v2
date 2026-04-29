@@ -118,8 +118,7 @@ class ChessopiaGame {
         
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.enabled = false; // Disabled for Android performance
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.5;  // Increased from 0.5 for brighter scene
         
@@ -194,6 +193,19 @@ class ChessopiaGame {
         this.terrainSystem = new TerrainSystem(this.scene, this.treeSystem);
         this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem, this.treeSystem, this);
         this.piecesSystem = new Pieces3D(this.scene, this.terrainSystem);
+        
+        // Set up chunk loaded callback to regenerate terrain mesh
+        this.terrainSystem.onChunkLoaded = (chunkX, chunkZ) => {
+            console.log(`[Game] === CHUNK LOADED CALLBACK === (${chunkX}, ${chunkZ})`);
+            console.log(`[Game] Board system exists: ${!!this.boardSystem}`);
+            console.log(`[Game] Continuous mesh exists: ${!!this.boardSystem?.continuousMesh}`);
+            if (this.boardSystem && this.boardSystem.continuousMesh) {
+                console.log(`[Game] Calling updateDynamicMesh with force=true at camera position: ${this.camera.position.x.toFixed(2)}, ${this.camera.position.z.toFixed(2)}`);
+                this.boardSystem.updateDynamicMesh(this.camera.position, true); // Force regeneration
+            } else {
+                console.log(`[Game] SKIPPING mesh update - boardSystem or continuousMesh is null`);
+            }
+        };
         
         // Update tree system with terrain system reference
         this.treeSystem.terrainSystem = this.terrainSystem;
@@ -439,6 +451,13 @@ class ChessopiaGame {
         
         this.networkManager.on('connectionStatus', (status) => {
             this.updateConnectionStatus(status);
+        });
+        
+        this.networkManager.on('timeSync', (data) => {
+            console.log('[Game] Time sync received:', data);
+            if (this.boardSystem) {
+                this.boardSystem.updateServerGameTime(data.elapsedTime, data.dayLength);
+            }
         });
     }
     

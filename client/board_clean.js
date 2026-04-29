@@ -34,6 +34,14 @@ class CleanBoardSystem {
 
 
 
+        // Game time sync (server-side authoritative time)
+        this.serverGameTime = 0;
+        this.serverDayLength = 60000; // 60 seconds per day
+        this.lastTimeSyncTimestamp = 0; // When the last server time sync was received
+        this.frameCount = 0; // For throttling DOM updates
+
+
+
         
 
 
@@ -463,6 +471,10 @@ class CleanBoardSystem {
             flareOpacity: 0.6,
             horizonFadeDistance: 20
         };
+
+        // Ambient light for atmospheric scattering at dusk/dawn (purple twilight)
+        this.ambientLight = new THREE.AmbientLight(0x8b5cf6, 0); // Purple atmospheric color, starts at 0 intensity
+        this.scene.add(this.ambientLight);
         
         // Create directional light (sun-like, parallel rays)
         this.sun.light = new THREE.DirectionalLight(
@@ -470,14 +482,7 @@ class CleanBoardSystem {
             this.sun.intensity
         );
         this.sun.light.position.set(0, this.sun.height, 0);
-        this.sun.light.castShadow = true;
-
-        // Configure shadow map for better shadow quality
-        this.sun.light.shadow.mapSize.width = 4096;
-        this.sun.light.shadow.mapSize.height = 4096;
-        this.sun.light.shadow.camera.near = 0.5;
-        this.sun.light.shadow.camera.far = 500;
-        this.sun.light.shadow.bias = -0.0001;
+        this.sun.light.castShadow = false; // Shadows disabled for Android performance
 
         this.scene.add(this.sun.light);
 
@@ -738,13 +743,25 @@ class CleanBoardSystem {
 
         this.scene.fog.color.setRGB(fogColor.r / 255, fogColor.g / 255, fogColor.b / 255);
     }
-    
-    // Update sun and moon position and effects
-    updateSunSystem(cameraPosition) {
-        if (!this.sun) return;
 
-        // Update orbit angle (rises and sets)
-        this.sun.angle += this.sun.orbitSpeed;
+    updateSunPosition(cameraPosition) {
+        // Update sun angle based on server game time
+        if (this.serverGameTime > 0) {
+            // Interpolate time locally between server syncs for smooth movement
+            let currentGameTime = this.serverGameTime;
+            if (this.lastTimeSyncTimestamp > 0) {
+                // Add elapsed time since last sync to get smooth continuous movement
+                const elapsedSinceSync = Date.now() - this.lastTimeSyncTimestamp;
+                currentGameTime += elapsedSinceSync;
+            }
+            
+            // Use interpolated time: angle = (elapsedTime / dayLength) * 2PI
+            this.sun.angle = (currentGameTime / this.serverDayLength) * (2 * Math.PI);
+        } else {
+            // Fallback to local frame-based increments if no server time yet
+            this.sun.angle += this.sun.orbitSpeed;
+            console.log('[Board] Sun angle using local fallback');
+        }
         this.moon.angle = this.sun.angle + Math.PI;  // Moon is opposite to sun
 
         // Calculate sun height based on angle (vertical orbit)
@@ -775,20 +792,30 @@ class CleanBoardSystem {
         const lightIntensity = Math.max(0, sunElevation) * this.sun.intensity;
         this.sun.light.intensity = lightIntensity;
 
-        // Change sun color based on elevation (warm at sunrise/sunset, white at noon)
-        if (sunElevation > 0.5) {
-            // Noon - white light
-            this.sun.light.color.setHex(0xffffff);
-        } else if (sunElevation > 0.2) {
-            // Mid-day - warm yellow
-            this.sun.light.color.setHex(0xfffacd);  // Lemon chiffon
-        } else if (sunElevation > 0) {
-            // Sunrise/sunset - orange/red
-            this.sun.light.color.setHex(0xff6347);  // Tomato orange
+        // Smooth sun color transition based on elevation
+        // Define color keyframes for different elevations
+        const sunriseColor = new THREE.Color(0xff6347);  // Tomato orange
+        const midDayColor = new THREE.Color(0xfffacd);    // Lemon chiffon
+        const noonColor = new THREE.Color(0xffffff);      // White
+        const sunNightColor = new THREE.Color(0x000000);  // Black (below horizon)
+
+        let sunColor;
+        if (sunElevation <= 0) {
+            // Below horizon
+            sunColor = sunNightColor;
+        } else if (sunElevation < 0.2) {
+            // Sunrise/sunset to mid-day transition
+            const t = sunElevation / 0.2;
+            sunColor = sunriseColor.clone().lerp(midDayColor, t);
+        } else if (sunElevation < 0.5) {
+            // Mid-day to noon transition
+            const t = (sunElevation - 0.2) / 0.3;
+            sunColor = midDayColor.clone().lerp(noonColor, t);
         } else {
-            // Below horizon - dim
-            this.sun.light.color.setHex(0x000000);
+            // Noon
+            sunColor = noonColor;
         }
+        this.sun.light.color.copy(sunColor);
 
         // Update sky background color based on sun elevation
         this.updateSkyColor(sunElevation);
@@ -812,6 +839,61 @@ class CleanBoardSystem {
         // Fade moon light intensity when moon is below horizon
         const moonIntensity = Math.max(0, moonElevation) * this.moon.intensity;
         this.moon.light.intensity = moonIntensity;
+
+        // Smooth moon color transition based on elevation
+        const moonRiseColor = new THREE.Color(0x4a5568);   // Dim bluish-gray
+        const moonZenithColor = new THREE.Color(0xe2e8f0);  // Bright silver
+        const moonNightColor = new THREE.Color(0x000000);    // Black (below horizon)
+
+        let moonColor;
+        if (moonElevation <= 0) {
+            // Below horizon
+            moonColor = moonNightColor;
+        } else if (moonElevation < 0.5) {
+            // Moonrise to zenith transition
+            const t = moonElevation / 0.5;
+            moonColor = moonRiseColor.clone().lerp(moonZenithColor, t);
+        } else {
+            // Zenith
+            moonColor = moonZenithColor;
+        }
+        this.moon.light.color.copy(moonColor);
+
+        // Update ambient light intensity for atmospheric scattering at dusk/dawn
+        // Represents sunlight bouncing off atmosphere when sun is at low angles and after sunset
+        let ambientIntensity = 0;
+        if (sunElevation < 0.3 && sunElevation > 0) {
+            // Sun at low angles before sunset - start fading in (atmospheric scattering)
+            const t = (0.3 - sunElevation) / 0.3; // 0 at 0.3 elevation, 1 at 0 elevation
+            ambientIntensity = t * 0.4; // Max 0.4 intensity at sunset
+        } else if (sunElevation <= 0 && moonElevation < 0.2) {
+            // Sun below horizon, moon not yet risen - peak twilight period
+            const sunDepth = Math.min(1, Math.abs(sunElevation)); // 0 at horizon, 1 at lowest
+            ambientIntensity = 0.4 + (sunDepth * 0.1); // Peak around 0.5 when sun is deep below
+        } else if (moonElevation >= 0.2 && moonElevation < 0.4) {
+            // Moon rising - fade out ambient light
+            const t = (moonElevation - 0.2) / 0.2; // 0 at 0.2, 1 at 0.4
+            ambientIntensity = 0.5 * (1 - t);
+        }
+        this.ambientLight.intensity = ambientIntensity;
+
+        // Update dev console light stats (throttled to every 30 frames)
+        this.frameCount++;
+        if (this.frameCount % 30 === 0 && typeof document !== 'undefined') {
+            const sunIntEl = document.getElementById('sunIntensity');
+            const sunColorEl = document.getElementById('sunColor');
+            const moonIntEl = document.getElementById('moonIntensity');
+            const moonColorEl = document.getElementById('moonColor');
+            const ambientIntEl = document.getElementById('ambientIntensity');
+            const ambientColorEl = document.getElementById('ambientColor');
+
+            if (sunIntEl) sunIntEl.textContent = this.sun.light.intensity.toFixed(2);
+            if (sunColorEl) sunColorEl.textContent = '#' + this.sun.light.color.getHexString();
+            if (moonIntEl) moonIntEl.textContent = this.moon.light.intensity.toFixed(2);
+            if (moonColorEl) moonColorEl.textContent = '#' + this.moon.light.color.getHexString();
+            if (ambientIntEl) ambientIntEl.textContent = this.ambientLight.intensity.toFixed(2);
+            if (ambientColorEl) ambientColorEl.textContent = '#' + this.ambientLight.color.getHexString();
+        }
 
         // Update sun sprite position (Sprite always faces camera automatically)
         this.sun.sprite.position.set(sunX, sunY, sunZ);
@@ -842,9 +924,14 @@ class CleanBoardSystem {
             flare.position.z += (cameraPosition.z - sunZ) * 0.01 * offset;
         });
     }
-
-
-
+    
+    // Update server game time (called from network manager)
+    updateServerGameTime(elapsedTime, dayLength) {
+        this.serverGameTime = elapsedTime;
+        this.serverDayLength = dayLength;
+        this.lastTimeSyncTimestamp = Date.now(); // Track when we received this sync
+        console.log(`[Board] Server time sync: ${elapsedTime}ms elapsed, day length: ${dayLength}ms`);
+    }
         
 
 
@@ -900,9 +987,14 @@ class CleanBoardSystem {
     }
     
     // DYNAMIC MESH REGENERATION - Create new vertices as camera scrolls, remove old ones
-    updateDynamicMesh(cameraPosition) {
+    updateDynamicMesh(cameraPosition, force = false) {
+        console.log(`[Board] === updateDynamicMesh CALLED === force=${force}`);
+        console.log(`[Board] Camera position: ${cameraPosition.x.toFixed(2)}, ${cameraPosition.z.toFixed(2)}`);
+        console.log(`[Board] Mesh bounds: ${this.meshBounds ? 'EXISTS' : 'NULL'}`);
+        
         // Initialize mesh bounds if not set
         if (!this.meshBounds) {
+            console.log(`[Board] INITIALIZING mesh bounds`);
             this.meshBounds = {
                 centerX: cameraPosition.x,
                 centerZ: cameraPosition.z,
@@ -920,8 +1012,8 @@ class CleanBoardSystem {
 
         const regenerationThreshold = this.meshBounds.size * 0.3; // Regenerate when 30% from center
 
-        if (distanceFromCenter > regenerationThreshold) {
-            console.log(`[DYNAMIC MESH] Camera moved ${distanceFromCenter.toFixed(1)} units, regenerating mesh`);
+        if (force || distanceFromCenter > regenerationThreshold) {
+            console.log(`[DYNAMIC MESH] ${force ? 'FORCE' : 'Camera moved'} regenerating mesh (distance: ${distanceFromCenter.toFixed(1)})`);
 
             // Update mesh bounds to follow camera
             this.meshBounds.centerX = cameraPosition.x;
@@ -1198,7 +1290,7 @@ class CleanBoardSystem {
             this.updateDynamicMesh(cameraPosition);
             
             // Update sun system
-            this.updateSunSystem(cameraPosition);
+            this.updateSunPosition(cameraPosition);
             
             return; // Skip all chunk processing
         }
@@ -2670,8 +2762,15 @@ class CleanBoardSystem {
     
     getBoardMeshes() {
         const meshes = [];
+        // Return continuous mesh if it exists (new system)
+        if (this.continuousMesh) {
+            return [this.continuousMesh];
+        }
+        // Fallback to old chunk-based system
         for (const chunk of this.chunks.values()) {
-            meshes.push(chunk.mesh);
+            if (chunk.mesh) {
+                meshes.push(chunk.mesh);
+            }
         }
         return meshes;
     }

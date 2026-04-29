@@ -354,8 +354,10 @@ class GameState {
     }
     
     purchasePiece(playerId, pieceType) {
+        console.log('[GameState] purchasePiece called:', playerId, pieceType);
         const player = this.players.get(playerId);
         if (!player) {
+            console.log('[GameState] purchasePiece failed: Player not found');
             return { success: false, reason: 'Player not found' };
         }
         
@@ -370,14 +372,19 @@ class GameState {
         
         const cost = pieceCosts[pieceType];
         if (!cost) {
+            console.log('[GameState] purchasePiece failed: Invalid piece type');
             return { success: false, reason: 'Invalid piece type' };
         }
         
+        console.log('[GameState] Player points:', player.points.total, 'Cost:', cost);
         if (player.points.total < cost) {
+            console.log('[GameState] purchasePiece failed: Insufficient points');
             return { success: false, reason: 'Insufficient points' };
         }
         
+        console.log('[GameState] Player pieces count:', player.pieces.length);
         if (player.pieces.length >= 20) {
+            console.log('[GameState] purchasePiece failed: Maximum pieces reached');
             return { success: false, reason: 'Maximum pieces reached' };
         }
         
@@ -385,14 +392,20 @@ class GameState {
         player.points.total -= cost;
         
         // Find spawn location near king
+        console.log('[GameState] Finding spawn location near king, kingPosition:', player.kingPosition);
         const spawnPos = this.findSpawnLocation(player);
         if (!spawnPos) {
+            console.log('[GameState] purchasePiece failed: No valid spawn location');
             return { success: false, reason: 'No valid spawn location' };
         }
+        
+        console.log('[GameState] Spawn location found:', spawnPos);
         
         // Create new piece
         const newPiece = this.createPiece(playerId, pieceType, spawnPos.x, spawnPos.z);
         player.pieces.push(newPiece.id);
+        
+        console.log('[GameState] Piece created:', newPiece);
         
         // Notify of piece purchased
         this.notifyChange('piecePurchased', { piece: newPiece, player });
@@ -405,18 +418,30 @@ class GameState {
     }
     
     findSpawnLocation(player) {
-        if (!player.kingPosition) {
-            return null;
+        let centerX = 0;
+        let centerZ = 0;
+        let searchRadius = 5;
+        
+        // If player has a king, spawn near it
+        if (player.kingPosition) {
+            centerX = player.kingPosition.x;
+            centerZ = player.kingPosition.z;
+            searchRadius = 5;
+        } else {
+            // Fallback: spawn near origin (0,0) with larger search radius
+            console.log('[GameState] No king position, searching near origin');
+            centerX = 0;
+            centerZ = 0;
+            searchRadius = 15;
         }
         
-        // Search for valid spawn locations near king (most valuable piece)
-        const searchRadius = 5; // Increased radius for more options
+        // Search for valid spawn locations
         const validLocations = [];
         
         for (let dx = -searchRadius; dx <= searchRadius; dx++) {
             for (let dz = -searchRadius; dz <= searchRadius; dz++) {
-                const x = player.kingPosition.x + dx;
-                const z = player.kingPosition.z + dz;
+                const x = centerX + dx;
+                const z = centerZ + dz;
                 
                 // Check if position is free and valid (not blocked by trees)
                 const isOccupied = this.getPieceAt(x, z);
@@ -428,8 +453,10 @@ class GameState {
             }
         }
         
-        // Sort by distance to king (closest first) - spawn near most valuable piece
+        // Sort by distance to center (closest first)
         validLocations.sort((a, b) => a.distance - b.distance);
+        
+        console.log('[GameState] Found', validLocations.length, 'valid spawn locations');
         
         // Return the closest valid location
         return validLocations.length > 0 ? validLocations[0] : null;

@@ -60,9 +60,9 @@
                     Test Server Error
                 </button>
                 <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
-                    <div>Vertices: <span id="vertexCount">0</span></div>
-                    <div>Chunks: <span id="chunkCount">0</span> / <span id="totalChunks">0</span></div>
-                    <div>Reduction: <span id="reductionPercent">0%</span></div>
+                    <div>Sun: <span id="sunIntensity">0</span> <span id="sunColor">#ffffff</span></div>
+                    <div>Moon: <span id="moonIntensity">0</span> <span id="moonColor">#87ceeb</span></div>
+                    <div>Ambient: <span id="ambientIntensity">0</span> <span id="ambientColor">#ffa07a</span></div>
                 </div>
             </div>
             
@@ -753,13 +753,6 @@
         // Test if JavaScript is working
         console.log('[HTML] JavaScript is running!');
         window.testJS = true;
-        
-        // Add visual indicator that page loaded
-        const indicator = document.createElement('div');
-        indicator.id = 'js-test';
-        indicator.style.cssText = 'position: fixed; top: 10px; right: 10px; background: green; color: white; padding: 5px; border-radius: 3px; z-index: 9999;';
-        indicator.textContent = 'JS LOADED';
-        document.body.appendChild(indicator);
         
         // Start loading process
         waitForThreeJS();

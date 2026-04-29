@@ -207,6 +207,12 @@ class NetworkManager {
             this.triggerEvent('coveringFailed', data);
         });
         
+        // Game time sync from server
+        this.socket.on('timeSync', (data) => {
+            console.log('[Network] Received timeSync event:', data);
+            this.triggerEvent('timeSync', data);
+        });
+        
         // Error events
         this.socket.on('error', (error) => {
             console.log('[Network] Received error event:', error);

@@ -36,6 +36,10 @@ class ChessopiaServer {
         this.worldSeed = null;
         this.terrainCache = new Map(); // Cache terrain chunks in memory
         
+        // Game time tracker (server-side authoritative time)
+        this.gameStartTime = Date.now();
+        this.dayLength = 60000; // 60 seconds per full day/night cycle
+        
         // Error forwarding system
         this.setupErrorInterceptor();
         
@@ -249,6 +253,9 @@ class ChessopiaServer {
     setupSocketHandlers() {
         this.io.on('connection', (socket) => {
             console.log(`Player connected: ${socket.id}`);
+            
+            // Send current game time on connection
+            socket.emit('timeSync', this.getGameTime());
             
             // Handle player joining
             socket.on('joinGame', (playerData) => {
@@ -799,12 +806,31 @@ class ChessopiaServer {
             // Enable console debugging commands
             this.setupConsoleCommands();
             
+            // Start periodic time sync broadcasts
+            this.startTimeSync();
+            
             // Test console forwarding after 5 seconds
             setTimeout(() => {
                 console.log('\n[Server] === TESTING CONSOLE FORWARDING ===');
                 this.requestConsoleLogs();
             }, 5000);
         });
+    }
+    
+    getGameTime() {
+        // Return current game time in milliseconds since game start
+        return {
+            elapsedTime: Date.now() - this.gameStartTime,
+            dayLength: this.dayLength
+        };
+    }
+    
+    startTimeSync() {
+        // Broadcast game time every 5 seconds
+        setInterval(() => {
+            const gameTime = this.getGameTime();
+            this.io.emit('timeSync', gameTime);
+        }, 5000);
     }
 }
 

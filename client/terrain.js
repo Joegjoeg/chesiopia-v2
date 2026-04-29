@@ -4,14 +4,16 @@ console.log('[Terrain] === NEW VERSION LOADED ===');
 
 class TerrainSystem {
     constructor(scene, treeSystem = null) {
-        console.log('[Terrain] LOADING TERRAIN.JS v2 - SUPER AGGRESSIVE CACHE BUSTING');
+        console.log('[Terrain] LOADING TERRAIN.JS');
         this.scene = scene;
         this.treeSystem = treeSystem;
         this.chunks = new Map();
+        this.loadingChunks = new Set(); // Track chunks currently being loaded
         this.chunkSize = 16;
         this.loadDistance = 6; // Expanded for wider camera cone (96 units / 16 chunk size)
         this.lastCameraChunk = { x: 0, z: 0 };
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
+        this.onChunkLoaded = null; // Callback when a chunk is loaded
         
         // Terrain colors for different biomes
         this.biomeColors = {
@@ -75,6 +77,11 @@ class TerrainSystem {
                 loaded: true
             });
             
+            // Notify callback that chunk was loaded
+            if (this.onChunkLoaded) {
+                this.onChunkLoaded(chunkX, chunkZ);
+            }
+            
             return chunkData;
         } catch (error) {
             console.error(`[Terrain] Error loading chunk ${chunkKey}:`, error);
@@ -119,7 +126,7 @@ class TerrainSystem {
         }
     }
     
-    updateChunks(cameraChunkX, cameraChunkZ) {
+    async updateChunks(cameraChunkX, cameraChunkZ) {
         console.log(`[Terrain] Updating chunks for camera at: ${cameraChunkX},${cameraChunkZ}`);
         
         const chunksToLoad = [];
@@ -163,14 +170,9 @@ class TerrainSystem {
             }
         }
         
-        // Load new chunks
-        let chunksLoaded = 0;
-        chunksToLoad.forEach(chunk => {
-            this.loadChunk(chunk.x, chunk.z);
-            chunksLoaded++;
-        });
-        
-        console.log(`[Terrain] Loaded ${chunksLoaded} new chunks`);
+        // Load new chunks asynchronously
+        const chunkPromises = chunksToLoad.map(chunk => this.loadChunk(chunk.x, chunk.z));
+        await Promise.all(chunkPromises);
         
         // Unload distant chunks
         chunksToUnload.forEach(chunkKey => {
@@ -227,10 +229,13 @@ class TerrainSystem {
         
         const chunk = this.chunks.get(chunkKey);
         if (!chunk || !chunk.data) {
-            console.warn(`[Terrain] No chunk data for (${x}, ${y}) - chunk (${chunkX}, ${chunkZ}) not found in cached world`);
-            console.log(`[Terrain] CRITICAL DEBUG: Looking for chunkKey "${chunkKey}" in cache of ${this.chunks.size} chunks`);
-            console.log(`[Terrain] CRITICAL DEBUG: First 10 available chunk keys:`, Array.from(this.chunks.keys()).slice(0, 10));
-            console.log(`[Terrain] CRITICAL DEBUG: World downloaded flag: ${this.worldDownloaded}`);
+            // Trigger chunk loading in background if not already loading
+            if (!this.loadingChunks.has(chunkKey)) {
+                this.loadingChunks.add(chunkKey);
+                this.loadChunk(chunkX, chunkZ).then(() => {
+                    this.loadingChunks.delete(chunkKey);
+                });
+            }
             return 0; // Default height if chunk not found
         }
         
@@ -241,7 +246,6 @@ class TerrainSystem {
         
         const tile = chunk.data[tileIndex];
         if (!tile) {
-            console.warn(`[Terrain] No tile data for (${x}, ${y}) in chunk (${chunkX}, ${chunkZ})`);
             return 0; // Default height if tile not found
         }
         

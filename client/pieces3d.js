@@ -21,8 +21,52 @@ class Pieces3D {
         
         // Animation settings
         this.moveAnimations = new Map();
+
+        // Create blob shadow texture
+        this.blobShadowTexture = this.createBlobShadowTexture();
     }
-    
+
+    createBlobShadowTexture() {
+        // Create a radial gradient texture for blob shadows
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        // Radial gradient from dark center to transparent edge
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.6)'); // Dark center
+        gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); // Transparent edge
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 128, 128);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    createBlobShadow() {
+        // Create a simple plane for the blob shadow
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshBasicMaterial({
+            map: this.blobShadowTexture,
+            transparent: true,
+            opacity: 0.8,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+
+        const shadow = new THREE.Mesh(geometry, material);
+        shadow.userData.isBlobShadow = true;
+        shadow.rotation.x = -Math.PI / 2; // Lay flat on ground
+        shadow.position.y = 0.01; // Slightly above ground to avoid z-fighting
+        shadow.scale.set(0.8, 0.8, 0.8); // Scale for piece size
+
+        return shadow;
+    }
+
     isTerrainBlocked(x, z) {
         if (!this.terrainSystem) {
             console.warn(`[Pieces3D] No terrain system available to check blocked status at (${x}, ${z})`);
@@ -201,70 +245,85 @@ class Pieces3D {
         group.userData.pieceId = pieceData.id;
         group.userData.pieceType = pieceData.type;
         
-        // Create the piece geometry AFTER terrain info is stored
-        switch (pieceData.type) {
-            case 'pawn':
-                this.createPawn(group, material);
-                break;
-            case 'rook':
-                this.createRook(group, material);
-                break;
-            case 'knight':
-                this.createKnight(group, material);
-                break;
-            case 'bishop':
-                this.createBishop(group, material);
-                break;
-            case 'queen':
-                this.createQueen(group, material);
-                break;
-            case 'king':
-                this.createKing(group, material);
-                break;
-            default:
-                this.createPawn(group, material); // Default to pawn
-        }
-        
         console.log(`[Pieces3D] DEBUG: Piece creation complete - userData still available: hasNormal=${!!group.userData.terrainNormal}, hasHeight=${group.userData.terrainHeight !== undefined}`);
-        
-        // Apply initial terrain rotation
+
+        // Apply terrain rotation + base rotation at MESH level (static, set once)
+        // This keeps group's local Y aligned with world Y for proper facing rotation
         console.log(`[Pieces3D] DEBUG: Checking terrain normal - exists: ${!!group.userData.terrainNormal}`);
         if (group.userData.terrainNormal) {
-            console.log(`[Pieces3D] DEBUG: Applying initial terrain rotation`);
+            console.log(`[Pieces3D] DEBUG: Applying terrain + base rotation at MESH level`);
             console.log(`[Pieces3D] DEBUG: Terrain normal:`, group.userData.terrainNormal);
-            console.log(`[Pieces3D] DEBUG: Before rotation - quaternion: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
-            this.applyTerrainRotation(group, group.userData.terrainNormal);
-            console.log(`[Pieces3D] DEBUG: After rotation - quaternion: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
+            this.applyTerrainRotationToModel(group, group.userData.terrainNormal);
         } else {
             console.log(`[Pieces3D] DEBUG: No terrain normal available - piece will spawn vertical`);
+            // Still apply base rotation even without terrain
+            this.applyBaseRotationToModel(group);
         }
         
         // Check final rotation right before returning
         console.log(`[Pieces3D] DEBUG: Final quaternion before return: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
-        
+
+        // Add blob shadow under the piece
+        const blobShadow = this.createBlobShadow();
+        blobShadow.position.set(pieceData.x + 0.5, 0.01, pieceData.z + 0.5);
+        group.add(blobShadow);
+        group.userData.blobShadow = blobShadow;
+
         return group;
     }
     
     applyTerrainRotation(group, terrainNormal) {
         console.log(`[Pieces3D] DEBUG: Applying terrain rotation - normal:`, terrainNormal);
-        
-        // Calculate subtle tilt based on terrain normal (reduced from full alignment)
+
+        // Calculate full terrain alignment
         const upVector = new THREE.Vector3(0, 1, 0);
-        const fullRotation = new THREE.Quaternion().setFromUnitVectors(upVector, terrainNormal);
-        
-        // Extract the Euler angles from the full rotation
-        const euler = new THREE.Euler().setFromQuaternion(fullRotation);
-        
-        // Reduce the rotation intensity to 30% for subtle effect
-        euler.x *= 0.3;
-        euler.y *= 0.3;  // Keep Y rotation minimal for pieces
-        euler.z *= 0.3;
-        
-        // Apply the reduced rotation
-        const subtleRotation = new THREE.Quaternion().setFromEuler(euler);
-        group.quaternion.copy(subtleRotation);
-        
-        console.log(`[Pieces3D] DEBUG: Subtle terrain rotation applied - quaternion: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
+        const terrainQuaternion = new THREE.Quaternion().setFromUnitVectors(upVector, terrainNormal);
+
+        // Apply full terrain rotation (no reduction)
+        group.quaternion.copy(terrainQuaternion);
+
+        console.log(`[Pieces3D] DEBUG: Full terrain rotation applied - quaternion: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
+    }
+
+    applyBaseRotationToModel(group) {
+        // Apply ONLY base rotation to make model upright from face-down default
+        // This is static - set once when model is created
+        let meshCount = 0;
+        group.traverse((child) => {
+            if (child.isMesh && !child.userData.isBlobShadow && child.userData.isGLBModel) {
+                meshCount++;
+                // Apply base rotation (180 X) to flip model upright from face-down position
+                // Plus 90 Y to face the correct direction
+                const baseRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, Math.PI / 2, 0));
+                child.quaternion.copy(baseRotation);
+            }
+        });
+    }
+
+    applyTerrainRotationToModel(group, terrainNormal) {
+        // Apply terrain rotation + base rotation at MESH level (static, set once)
+        // This keeps group's local Y aligned with world Y for proper facing rotation.
+        // Because the group rotates around Y to face movement direction, we must
+        // cancel that Y spin here so the terrain tilt stays aligned to world space.
+        const upVector = new THREE.Vector3(0, 1, 0);
+        const terrainQuaternion = new THREE.Quaternion().setFromUnitVectors(upVector, terrainNormal);
+        const baseRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, Math.PI / 2, 0));
+
+        // Precompute inverse of the group's current Y-facing rotation
+        const inverseGroupY = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -group.rotation.y, 0));
+
+        let meshCount = 0;
+        group.traverse((child) => {
+            if (child.isMesh && !child.userData.isBlobShadow) {
+                meshCount++;
+                // Cancel the group's Y rotation so terrain tilt is world-locked,
+                // then apply terrain alignment and base model rotation.
+                child.quaternion.copy(inverseGroupY).multiply(terrainQuaternion);
+                if (child.userData.isGLBModel) {
+                    child.quaternion.multiply(baseRotation);
+                }
+            }
+        });
     }
 
     deformMeshToTerrain(mesh, terrainNormal, terrainHeight) {
@@ -430,10 +489,10 @@ class Pieces3D {
             
             // Scale and position the model appropriately
             model.scale.set(0.5, 0.5, 0.5); // Consistent scale for all pieces
-            
-            // Fix orientation - rotate -90 degrees from current face-up position for all pieces
-            model.rotation.x = -Math.PI / 2;
-            
+
+            // Base orientation is applied at mesh level in applyTerrainRotationToModel
+            // to avoid double rotation conflicts
+
             // Position model so 0,0 origin touches the square for all pieces
             model.position.set(0, 0, 0); // Origin touches the square
             
@@ -453,12 +512,20 @@ class Pieces3D {
                     // Keep original material with textures, just enable shadows
                     child.castShadow = true;
                     child.receiveShadow = true;
+                    child.userData.isGLBModel = true;
                 }
             });
             
             // Add model to group
             group.add(model);
             console.log(`[Pieces3D] ${pieceType} GLB model loaded with original textures`);
+            
+            // Apply rotation now that model is loaded (initial rotation may have missed it)
+            if (group.userData.terrainNormal) {
+                this.applyTerrainRotationToModel(group, group.userData.terrainNormal);
+            } else {
+                this.applyBaseRotationToModel(group);
+            }
             
         } catch (error) {
             console.error(`[Pieces3D] Failed to load ${pieceType} GLB model:`, error);
@@ -738,34 +805,45 @@ class Pieces3D {
     animatePieceToPosition(pieceMesh, targetX, targetY, targetZ, targetNormal, onCompleteCallback, pieceType = null) {
         const startPos = pieceMesh.position.clone();
         const endPos = new THREE.Vector3(targetX, targetY, targetZ);
-        
+
+        // Get start terrain normal for debugging and interpolation
+        const debugStartNormal = this.getTerrainNormal(startPos.x, startPos.z);
+        const startNormal = debugStartNormal.clone(); // Use actual start normal, not assume upright
+
+        console.log(`[Pieces3D] === MOVEMENT START ===`);
+        console.log(`[Pieces3D] Piece Type: ${pieceType}`);
+        console.log(`[Pieces3D] Start Position: (${startPos.x.toFixed(2)}, ${startPos.y.toFixed(2)}, ${startPos.z.toFixed(2)})`);
+        console.log(`[Pieces3D] End Position: (${endPos.x.toFixed(2)}, ${endPos.y.toFixed(2)}, ${endPos.z.toFixed(2)})`);
+        console.log(`[Pieces3D] Start Normal: (${debugStartNormal.x.toFixed(3)}, ${debugStartNormal.y.toFixed(3)}, ${debugStartNormal.z.toFixed(3)})`);
+        console.log(`[Pieces3D] Target Normal: (${targetNormal.x.toFixed(3)}, ${targetNormal.y.toFixed(3)}, ${targetNormal.z.toFixed(3)})`);
+
         // Revert deformation during movement (make base horizontal)
         pieceMesh.traverse((child) => {
             if (child.isMesh && child.userData.originalGeometry) {
                 this.revertMeshDeformation(child);
             }
         });
-        
+
         // Calculate distance and number of squares to cross
         const distance = Math.sqrt(Math.pow(endPos.x - startPos.x, 2) + Math.pow(endPos.z - startPos.z, 2));
         const squaresToCross = Math.max(Math.floor(distance), 1); // At least 1 step
-        
+
         // Calculate direction to destination for initial turn
         const direction = new THREE.Vector3(endPos.x - startPos.x, 0, endPos.z - startPos.z).normalize();
         let targetRotation = Math.atan2(direction.x, direction.z);
-        
+
         // Normalize rotation to [0, 2*PI] to avoid edge cases
         if (targetRotation < 0) {
             targetRotation += 2 * Math.PI;
         }
-        
+
         // Get current piece rotation and normalize to [0, 2*PI]
         const currentRotation = pieceMesh.rotation.y % (2 * Math.PI);
         const normalizedCurrentRotation = currentRotation < 0 ? currentRotation + 2 * Math.PI : currentRotation;
-        
+
         // Calculate shortest rotation path
         let rotationDelta = targetRotation - normalizedCurrentRotation;
-        
+
         // Choose shortest path (clockwise vs anticlockwise)
         if (Math.abs(rotationDelta) > Math.PI) {
             if (rotationDelta > 0) {
@@ -774,21 +852,18 @@ class Pieces3D {
                 rotationDelta += 2 * Math.PI; // Go clockwise instead
             }
         }
-        
+
         // Check if piece already faces correct direction (within tolerance)
         const rotationTolerance = 0.1; // ~5.7 degrees
         const needsRotation = Math.abs(rotationDelta) > rotationTolerance;
         const skipStartHop = !needsRotation;
-        
-                
+
+
         // Animation phases - adjust duration if no rotation needed
         const turnDuration = skipStartHop ? 0 : 300; // Skip turn phase if already facing direction
         const hopDuration = 600 * squaresToCross; // Time for hopping movement
         const totalDuration = turnDuration + hopDuration;
         const startTime = Date.now();
-        
-        // Store initial rotation for normal interpolation
-        const startNormal = new THREE.Vector3(0, 1, 0); // Assume starting upright
         
         const animate = () => {
             const elapsed = Date.now() - startTime;
@@ -912,38 +987,21 @@ class Pieces3D {
                 const finalTargetRotation = normalizedCurrentRotation + rotationDelta;
                 rotationProgress = finalTargetRotation + (Math.sin(stepCycle * 3) * 0.1);
             }
-            
-            // Sample terrain normal at current position
-            const currentNormal = this.getTerrainNormal(currentX, currentZ);
-            
-            // Calculate subtle terrain rotation (30% intensity)
-            const upVector = new THREE.Vector3(0, 1, 0);
-            const fullRotation = new THREE.Quaternion().setFromUnitVectors(upVector, currentNormal);
-            const euler = new THREE.Euler().setFromQuaternion(fullRotation);
-            
-            euler.x *= 0.3;
-            euler.y *= 0.3;
-            euler.z *= 0.3;
-            
-            const terrainQuaternion = new THREE.Quaternion().setFromEuler(euler);
-            
+
             // Apply transformations
             pieceMesh.position.set(currentX + swayX, currentY, currentZ + swayZ);
             pieceMesh.scale.set(scaleX, scaleY, scaleZ);
-            
-            // Combine terrain alignment with artistic rotation
-            const artisticRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationProgress);
-            pieceMesh.quaternion.multiplyQuaternions(terrainQuaternion, artisticRotation);
-            
-            // Add tilting during hops (but not during final landing)
-            if (progress > 0.2 && progress < 0.95) {
-                const hopPhase = (progress - 0.2) / 0.8;
-                const stepCycle = hopPhase * squaresToCross * Math.PI * 2;
-                const tiltX = Math.sin(stepCycle * 1.5) * 0.03;
-                const tiltZ = Math.cos(stepCycle * 1.5) * 0.03;
-                const tiltQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(tiltX, 0, tiltZ));
-                pieceMesh.quaternion.multiply(tiltQuaternion);
+
+            // Update blob shadow position (stays on ground, follows piece X/Z)
+            if (pieceMesh.userData.blobShadow) {
+                pieceMesh.userData.blobShadow.position.set(currentX + swayX, 0.01, currentZ + swayZ);
             }
+
+            // Apply facing rotation around GROUP'S LOCAL Y-axis
+            // Terrain alignment is already at group level (static)
+            // Base rotation is already at mesh level (static)
+            // Only animate the facing direction
+            pieceMesh.rotation.y = rotationProgress;
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -951,6 +1009,11 @@ class Pieces3D {
                 // Ensure perfect final positioning
                 pieceMesh.position.set(endPos.x, endPos.y, endPos.z);
                 pieceMesh.scale.set(1, 1, 1);
+
+                // Update blob shadow to final position
+                if (pieceMesh.userData.blobShadow) {
+                    pieceMesh.userData.blobShadow.position.set(endPos.x, 0.01, endPos.z);
+                }
                 
                 // Play movement sounds with piece type
                 if (window.soundManager) {
@@ -1023,14 +1086,11 @@ class Pieces3D {
                 pieceMesh.position.y -= bounce * 0.8; // Slightly less down to settle gently
             }
             // Final 10%: no height changes, just spin
-            
-            // Keep piece upright with correct travel direction during flourish (no terrain alignment)
-            if (targetRotation !== null) {
-                // Ensure piece stays upright with correct travel direction
-                pieceMesh.rotation.x = 0;
-                pieceMesh.rotation.z = 0;
-                pieceMesh.rotation.y = targetRotation; // Use exact target rotation
-            }
+
+            // Terrain alignment is already at group level (static)
+            // Base rotation is already at mesh level (static)
+            // No rotation changes needed during flourish
+
             // Scale back to normal with a little pop
             const popScale = 1.0 + (Math.sin(progress * Math.PI) * 0.08);
             pieceMesh.scale.setScalar(popScale);
@@ -1040,38 +1100,17 @@ class Pieces3D {
             } else {
                 // Reset to perfect final position aligned with terrain
                 pieceMesh.scale.setScalar(1);
-                
+
                 // Ensure we're exactly at the target height (no floating)
-                // This should match the targetY from the animation
-                // The flourish should have the targetY passed in, but for now use current position
                 // pieceMesh.position.y should already be correct from the animation
-                
-                // Ensure perfect final rotation - use targetRotation exactly
-                const finalAngleDeg = (targetRotation * 180 / Math.PI + 360) % 360;
-                
-                console.log(`[Pieces3D] === ANIMATION END DEBUG ===`);
-                console.log(`[Pieces3D] Animation end - Setting final rotation to: ${targetRotation.toFixed(3)} (${finalAngleDeg.toFixed(1)}°)`);
-                
-                // Set exact final rotation - no interference
-                pieceMesh.rotation.x = 0;
-                pieceMesh.rotation.y = targetRotation; // Exact target rotation
-                pieceMesh.rotation.z = 0;
-                
-                const finalSetAngleDeg = (pieceMesh.rotation.y * 180 / Math.PI + 360) % 360;
-                console.log(`[Pieces3D] Animation end - Final rotation set: x=${pieceMesh.rotation.x.toFixed(3)}, y=${pieceMesh.rotation.y.toFixed(3)} (${finalSetAngleDeg.toFixed(1)}°), z=${pieceMesh.rotation.z.toFixed(3)}`);
-                
-                // Check if this is the problematic direction
-                if (finalAngleDeg > 44 && finalAngleDeg < 46) {
-                    console.log(`[Pieces3D] *** PROBLEM DIRECTION: 45-degree movement completed ***`);
-                }
-                if (finalAngleDeg > 134 && finalAngleDeg < 136) {
-                    console.log(`[Pieces3D] *** PROBLEM DIRECTION: 135-degree movement completed ***`);
-                }
-                if (finalAngleDeg > 224 && finalAngleDeg < 226) {
-                    console.log(`[Pieces3D] *** PROBLEM DIRECTION: 225-degree movement completed ***`);
-                }
-                if (finalAngleDeg > 314 && finalAngleDeg < 316) {
-                    console.log(`[Pieces3D] *** PROBLEM DIRECTION: 315-degree movement completed ***`);
+
+                // Update mesh rotation to target terrain normal + base rotation
+                // This ensures the piece aligns to the new square's normal after movement
+                if (terrainNormal !== null) {
+                    console.log(`[Pieces3D] Updating mesh rotation to target terrain normal: x=${terrainNormal.x.toFixed(3)}, y=${terrainNormal.y.toFixed(3)}, z=${terrainNormal.z.toFixed(3)}`);
+                    this.applyTerrainRotationToModel(pieceMesh, terrainNormal);
+                } else {
+                    this.applyBaseRotationToModel(pieceMesh);
                 }
             }
         };
