@@ -20,16 +20,6 @@
                 <div id="playerPieces">Pieces: 0</div>
             </div>
             
-            <!-- Game Controls -->
-            <div id="gameControls" class="ui-panel">
-                <h3>Controls</h3>
-                <div>WASD: Move Camera</div>
-                <div>Mouse: Select & Move</div>
-                <div>S: Shop</div>
-                <div>C: Center on King</div>
-                <div>Space: Camera Mode</div>
-            </div>
-            
             <!-- Server Errors -->
             <div id="serverErrors" class="ui-panel" style="background: rgba(255, 0, 0, 0.1); border: 1px solid rgba(255, 0, 0, 0.3); max-height: 200px; overflow-y: auto;">
                 <h3 style="color: #ff0000;">Server Errors</h3>
@@ -41,8 +31,8 @@
                 </button>
             </div>
             
-            <!-- Dev Controls -->
-            <div id="devControls" class="ui-panel" style="background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3);">
+            <!-- Dev Controls (hidden by default, toggle with Space) -->
+            <div id="devControls" class="ui-panel" style="display: none; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2);">
                 <h3 style="color: #ff6666;">Dev Tools</h3>
                 <button id="clearAllPiecesBtn" class="dev-btn" style="background: #ff4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
                     Clear All Pieces
@@ -59,12 +49,36 @@
                 <button id="testServerErrorBtn" class="dev-btn" style="background: #ff0000; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
                     Test Server Error
                 </button>
+                <button id="respawnBtn" class="dev-btn" style="background: #4488ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Respawn (Flying Castle)
+                </button>
+                <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
+                    <div>Wind: <span id="windSpeed">0</span> <span id="windDirArrow">-</span></div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Day Time (<span id="dayTime">12:00</span>):</label><br>
+                        <input type="range" id="dayTimeSlider" min="0" max="24" step="0.1" value="12" style="width: 100%; margin-top: 2px;">
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Day Speed (<span id="daySpeedValue">60s/day</span>):</label><br>
+                        <input type="range" id="daySpeedSlider" min="3" max="240" step="1" value="60" style="width: 100%; margin-top: 2px;">
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Time of Year (<span id="seasonProgress">Spring</span>):</label><br>
+                        <input type="range" id="yearTimeSlider" min="0" max="365" step="1" value="0" style="width: 100%; margin-top: 2px;">
+                    </div>
+                </div>
+                <div id="windCompass" style="margin-top: 10px; width: 30px; height: 30px; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; position: relative; background: rgba(0,0,0,0.2);">
+                    <div id="windArrow" style="position: absolute; top: 50%; left: 50%; width: 0; height: 0; margin-left: -3px; margin-top: -6px; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 10px solid rgba(255,200,100,0.8); transform-origin: 50% 100%; transform: rotate(0deg);"></div>
+                </div>
                 <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
                     <div>Sun: <span id="sunIntensity">0</span> <span id="sunColor">#ffffff</span></div>
                     <div>Moon: <span id="moonIntensity">0</span> <span id="moonColor">#87ceeb</span></div>
                     <div>Ambient: <span id="ambientIntensity">0</span> <span id="ambientColor">#ffa07a</span></div>
                     <div style="margin-top:6px;border-top:1px solid rgba(0,255,0,0.3);padding-top:4px;">Verts: <span id="vertexCount">-</span> | Tris: <span id="triangleCount">-</span></div>
                     <div style="font-size:10px;color:#aaa;margin-top:4px;white-space:pre-wrap;" id="optStatus">Loading...</div>
+                </div>
+                <div id="controlsHint" style="margin-top:8px;padding:4px 8px;background:rgba(0,0,0,0.4);border-radius:4px;font-size:11px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;">
+                    WASD: Move | Mouse: Select & Move | S: Shop | C: Center on King | Space: Toggle Dev Tools
                 </div>
             </div>
             
@@ -316,24 +330,68 @@
                         // Create scene from GLTF data
                         const scene = new THREE.Group();
                         
-                        // Try to parse actual GLTF meshes
+                        // First, create all meshes and store them for later
+                        const meshMap = new Map();
                         if (gltf.meshes && gltf.meshes.length > 0) {
                             console.log('=== PARSING ACTUAL GLTF MESHES ===');
-                            
-                            // Parse first mesh (assuming it's king)
-                            const mesh = gltf.meshes[0];
-                            console.log('Parsing mesh:', mesh);
-                            
-                            // Create mesh from GLTF data
-                            const threeMesh = this.createMeshFromGLTF(mesh, gltf, binaryChunk);
-                            if (threeMesh) {
-                                threeMesh.castShadow = true;
-                                threeMesh.receiveShadow = true;
-                                scene.add(threeMesh);
-                                console.log('Actual GLTF mesh loaded successfully!');
+
+                            // Parse all meshes
+                            for (let i = 0; i < gltf.meshes.length; i++) {
+                                const mesh = gltf.meshes[i];
+                                console.log('Parsing mesh:', mesh);
+
+                                // Create mesh from GLTF data
+                                const threeMesh = this.createMeshFromGLTF(mesh, gltf, binaryChunk);
+                                if (threeMesh) {
+                                    // Preserve the mesh name from GLTF
+                                    threeMesh.name = mesh.name || '';
+                                    threeMesh.castShadow = true;
+                                    threeMesh.receiveShadow = true;
+                                    meshMap.set(i, threeMesh);
+                                    console.log(`Actual GLTF mesh "${mesh.name}" created successfully!`);
+                                } else {
+                                    console.log(`Failed to parse GLTF mesh ${i}, skipping`);
+                                }
+                            }
+
+                            // Now parse nodes and apply transforms
+                            if (gltf.nodes && gltf.nodes.length > 0) {
+                                console.log('=== APPLYING NODE TRANSFORMS ===');
+
+                                for (let i = 0; i < gltf.nodes.length; i++) {
+                                    const node = gltf.nodes[i];
+                                    console.log('Processing node:', node);
+
+                                    if (node.mesh !== undefined && meshMap.has(node.mesh)) {
+                                        const threeMesh = meshMap.get(node.mesh);
+
+                                        // Apply translation
+                                        if (node.translation) {
+                                            threeMesh.position.set(node.translation[0], node.translation[1], node.translation[2]);
+                                            console.log(`Applied translation to "${threeMesh.name}":`, node.translation);
+                                        }
+
+                                        // Apply rotation (quaternion)
+                                        if (node.rotation) {
+                                            threeMesh.rotation.setFromQuaternion(new THREE.Quaternion(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]));
+                                            console.log(`Applied rotation to "${threeMesh.name}":`, node.rotation);
+                                        }
+
+                                        // Apply scale
+                                        if (node.scale) {
+                                            threeMesh.scale.set(node.scale[0], node.scale[1], node.scale[2]);
+                                            console.log(`Applied scale to "${threeMesh.name}":`, node.scale);
+                                        }
+
+                                        scene.add(threeMesh);
+                                    }
+                                }
                             } else {
-                                console.log('Failed to parse GLTF mesh, falling back to placeholder');
-                                this.createPlaceholder(scene);
+                                // Fallback: add meshes directly if no nodes
+                                console.log('No nodes found, adding meshes directly');
+                                meshMap.forEach((mesh) => {
+                                    scene.add(mesh);
+                                });
                             }
                         } else {
                             console.log('No meshes found in GLTF, creating placeholder');
@@ -708,6 +766,8 @@
                 'consoleManager.js',
                 'serverErrorDisplay.js',
                 'terrain-new.js?v=' + Date.now(),
+                'textureAtlasGenerator.js?v=' + Date.now(),
+                'planetMapping.js?v=' + Date.now(),
                 'board_clean.js?v=' + Date.now(),
                 'camera.js',
                 'soundManager.js',
@@ -716,9 +776,18 @@
                 'coveringSystem.js',
                 'visualFeedback.js',
                 'localTreeSystem.js',
+                'terrainTreeSystem.js',
+                'terrainTreeIntegration.js',
+                'debugTreeSystem.js',
+                'shadowSystem.js',
                 'celShaderSimple.js',
+                'grassSystem.js',
                 'textureBlendingSystem.js',
                 'decorativeVisuals.js',
+                'performanceManager.js',
+                'validationTests.js',
+                'parameterSystem.js',
+                'devInterface.js',
                 'game.js?v=' + Date.now()
             ];
             
