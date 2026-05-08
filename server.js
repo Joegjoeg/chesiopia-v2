@@ -283,6 +283,17 @@ class ChessopiaServer {
             socket.on('movePiece', (moveData) => {
                 const { pieceId, fromX, fromZ, toX, toZ } = moveData;
                 
+                // Ownership check: verify piece belongs to this player
+                const piece = this.gameState.pieces.get(pieceId);
+                if (!piece) {
+                    socket.emit('moveInvalid', { reason: 'Piece not found' });
+                    return;
+                }
+                if (piece.playerId !== socket.id) {
+                    socket.emit('moveInvalid', { reason: 'Not your piece' });
+                    return;
+                }
+                
                 // Validate move
                 const isValid = this.moveValidator.validateMove(
                     this.gameState,
@@ -311,6 +322,12 @@ class ChessopiaServer {
             socket.on('purchasePiece', (purchaseData) => {
                 const { pieceType, playerId } = purchaseData;
                 
+                // Ownership check: must match socket.id
+                if (playerId !== socket.id) {
+                    socket.emit('purchaseFailed', { reason: 'Not your account' });
+                    return;
+                }
+                
                 const purchaseResult = this.gameState.purchasePiece(playerId, pieceType);
                 if (purchaseResult.success) {
                     // Change notification handled by general system
@@ -322,6 +339,18 @@ class ChessopiaServer {
             // Handle covering system
             socket.on('setCovering', (coverData) => {
                 const { coveringPieceId, coveredPieceId } = coverData;
+                
+                // Ownership check: both pieces must belong to this player
+                const coveringPiece = this.gameState.pieces.get(coveringPieceId);
+                const coveredPiece = this.gameState.pieces.get(coveredPieceId);
+                if (!coveringPiece || !coveredPiece) {
+                    socket.emit('coveringFailed', { reason: 'Piece not found' });
+                    return;
+                }
+                if (coveringPiece.playerId !== socket.id || coveredPiece.playerId !== socket.id) {
+                    socket.emit('coveringFailed', { reason: 'Can only cover your own pieces' });
+                    return;
+                }
                 
                 const result = this.gameState.setCovering(coveringPieceId, coveredPieceId);
                 if (result.success) {
@@ -564,6 +593,57 @@ class ChessopiaServer {
                 console.log('=== RESET GAME COMPLETE ===');
             });
             
+            // Handle requests for console logs from any client or admin tool
+            socket.on('requestConsoleLogs', () => {
+                console.log(`[Server] Console log request from ${socket.id}, broadcasting to all clients`);
+                this.io.emit('requestConsoleLogs');
+            });
+            
+            // Handle parameter setting commands from admin interface
+            socket.on('setParameter', (data) => {
+                const { name, value, targetClientId } = data;
+                console.log(`[Server] Parameter set request: ${name} = ${value} from ${socket.id}`);
+                
+                if (targetClientId && targetClientId !== 'all') {
+                    // Send to specific client
+                    this.io.to(targetClientId).emit('setParameter', { name, value });
+                    console.log(`[Server] Parameter ${name} sent to client ${targetClientId}`);
+                } else {
+                    // Broadcast to all clients
+                    this.io.emit('setParameter', { name, value });
+                    console.log(`[Server] Parameter ${name} broadcast to all clients`);
+                }
+            });
+            
+            // Handle batch parameter updates
+            socket.on('setParameters', (data) => {
+                const { parameters, targetClientId } = data;
+                console.log(`[Server] Batch parameter set request: ${Object.keys(parameters).length} parameters from ${socket.id}`);
+                
+                if (targetClientId && targetClientId !== 'all') {
+                    // Send to specific client
+                    this.io.to(targetClientId).emit('setParameters', parameters);
+                    console.log(`[Server] ${Object.keys(parameters).length} parameters sent to client ${targetClientId}`);
+                } else {
+                    // Broadcast to all clients
+                    this.io.emit('setParameters', parameters);
+                    console.log(`[Server] ${Object.keys(parameters).length} parameters broadcast to all clients`);
+                }
+            });
+            
+            // Handle parameter request from client
+            socket.on('getParameters', () => {
+                console.log(`[Server] Parameter request from ${socket.id}`);
+                // Send current server-side parameter values (if any)
+                socket.emit('parametersResponse', this.getCurrentParameters());
+            });
+            
+            // Handle admin commands
+            socket.on('adminCommand', (command) => {
+                console.log(`[Server] Admin command from ${socket.id}:`, command);
+                this.handleAdminCommand(command, socket);
+            });
+            
             // Handle console logs from client
             socket.on('consoleLogs', (logsData) => {
                 console.log(`\n=== CONSOLE LOGS FROM CLIENT ${socket.id} ===`);
@@ -613,6 +693,9 @@ class ChessopiaServer {
             // Initialize terrain generator with seed
             this.terrainGenerator.setSeed(this.worldSeed);
             
+            // Generate rivers (carve channels into terrain)
+            this.terrainGenerator.generateRivers(80);
+            
             // Initialize empty world data structure
             this.worldData = {
                 seed: this.worldSeed,
@@ -634,6 +717,7 @@ class ChessopiaServer {
             // Fallback: generate new seed
             this.worldSeed = Math.floor(Math.random() * 1000000);
             this.terrainGenerator.setSeed(this.worldSeed);
+            this.terrainGenerator.generateRivers(80);
             this.worldData = {
                 seed: this.worldSeed,
                 chunks: {},
@@ -702,6 +786,9 @@ class ChessopiaServer {
         // Set seed for deterministic generation
         this.terrainGenerator.setSeed(this.worldSeed);
         
+        // Generate rivers
+        this.terrainGenerator.generateRivers(80);
+        
         // Clear cache
         this.chunkCache.clear();
         
@@ -751,10 +838,9 @@ class ChessopiaServer {
         console.log('[Server] Requesting console logs from clients...');
         
         if (socketId) {
-            // Request from specific client
+            console.log(`[Server] Requesting logs from specific client: ${socketId}`);
             const socket = this.io.sockets.sockets.get(socketId);
             if (socket) {
-                console.log(`[Server] Requesting logs from specific client: ${socketId}`);
                 socket.emit('requestConsoleLogs');
             } else {
                 console.log(`[Server] Client ${socketId} not found`);
@@ -767,10 +853,88 @@ class ChessopiaServer {
         }
     }
     
+    // Parameter management methods
+    getCurrentParameters() {
+        // Return current server-side parameter values
+        return {
+            serverTime: Date.now(),
+            dayLength: this.dayLength,
+            gameStartTime: this.gameStartTime,
+            // Add any server-authoritative parameters here
+        };
+    }
+    
+    setParameter(name, value, targetClientId = 'all') {
+        console.log(`[Server] Setting parameter: ${name} = ${value} for ${targetClientId}`);
+        
+        if (targetClientId && targetClientId !== 'all') {
+            // Send to specific client
+            this.io.to(targetClientId).emit('setParameter', { name, value });
+        } else {
+            // Broadcast to all clients
+            this.io.emit('setParameter', { name, value });
+        }
+    }
+    
+    setParameters(parameters, targetClientId = 'all') {
+        console.log(`[Server] Setting ${Object.keys(parameters).length} parameters for ${targetClientId}`);
+        
+        if (targetClientId && targetClientId !== 'all') {
+            // Send to specific client
+            this.io.to(targetClientId).emit('setParameters', parameters);
+        } else {
+            // Broadcast to all clients
+            this.io.emit('setParameters', parameters);
+        }
+    }
+    
+    handleAdminCommand(command, socket) {
+        const { type, data } = command;
+        
+        switch (type) {
+            case 'setParameter':
+                this.setParameter(data.name, data.value, data.targetClientId);
+                socket.emit('adminResponse', { success: true, message: `Parameter ${data.name} set to ${data.value}` });
+                break;
+                
+            case 'setParameters':
+                this.setParameters(data.parameters, data.targetClientId);
+                socket.emit('adminResponse', { success: true, message: `${Object.keys(data.parameters).length} parameters set` });
+                break;
+                
+            case 'getClients':
+                const clients = Array.from(this.io.sockets.sockets.keys());
+                socket.emit('adminResponse', { success: true, data: { clients } });
+                break;
+                
+            case 'broadcastMessage':
+                this.io.emit('adminMessage', data.message);
+                socket.emit('adminResponse', { success: true, message: 'Message broadcasted' });
+                break;
+                
+            case 'resetGame':
+                this.resetGame();
+                socket.emit('adminResponse', { success: true, message: 'Game reset' });
+                break;
+                
+            default:
+                socket.emit('adminResponse', { success: false, message: `Unknown command type: ${type}` });
+        }
+    }
+    
     // Add console debugging command handler
     setupConsoleCommands() {
-        // Set up stdin listener for console commands
-        process.stdin.setRawMode(true);
+        // Set up stdin listener for console commands (only if TTY available)
+        if (!process.stdin.isTTY) {
+            console.log('[Server] Non-TTY environment detected, skipping raw mode console commands');
+            return;
+        }
+        try {
+            process.stdin.setRawMode(true);
+        } catch (error) {
+            console.log('[Server] Raw mode not available in this environment, skipping console commands');
+            return;
+        }
         process.stdin.resume();
         process.stdin.on('data', (key) => {
             // Ctrl+C to quit
