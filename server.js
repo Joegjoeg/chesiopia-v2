@@ -133,7 +133,22 @@ class ChessopiaServer {
     setupMiddleware() {
         this.app.use(cors());
         this.app.use(express.json());
-        this.app.use(express.static(path.join(__dirname, 'client')));
+        
+        // Configure static file serving with proper MIME types
+        const clientStatic = express.static(path.join(__dirname, 'client'), {
+            setHeaders: (res, filePath) => {
+                const ext = path.extname(filePath);
+                if (ext === '.css') {
+                    res.setHeader('Content-Type', 'text/css');
+                } else if (ext === '.js') {
+                    res.setHeader('Content-Type', 'application/javascript');
+                } else if (ext === '.html') {
+                    res.setHeader('Content-Type', 'text/html');
+                }
+            }
+        });
+        this.app.use(clientStatic);
+        
         this.app.use('/models', express.static(path.join(__dirname, 'models')));
         this.app.use('/Models', express.static(path.join(__dirname, 'Models')));
         this.app.use('/Images', express.static(path.join(__dirname, 'Images')));
@@ -173,9 +188,9 @@ class ChessopiaServer {
             console.log(`[Server] Chunk request received: (${chunkX}, ${chunkZ})`);
             
             // Check cache first
-            if (this.chunkCache.has(chunkKey)) {
+            if (this.terrainCache.has(chunkKey)) {
                 console.log(`[Server] Chunk ${chunkKey} found in cache`);
-                return res.json(this.chunkCache.get(chunkKey));
+                return res.json(this.terrainCache.get(chunkKey));
             }
             
             // Generate chunk on-demand
@@ -183,7 +198,7 @@ class ChessopiaServer {
             console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${chunkX}, ${chunkZ})`);
             
             // Cache the chunk
-            this.chunkCache.set(chunkKey, chunkData);
+            this.terrainCache.set(chunkKey, chunkData);
             
             res.json(chunkData);
         });
