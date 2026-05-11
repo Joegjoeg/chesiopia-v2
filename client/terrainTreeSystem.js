@@ -16,7 +16,7 @@ class TerrainTreeSystem {
         this.windField = new Map(); // Map<"x,z", float> wind multiplier per terrain square
 
         // Height smoothing buffer to match terrain mesh rubber sheet effect
-        this._heightSmoothingFactor = 0.06;
+        this._heightSmoothingFactor = 0.25;
         this._currentHeights = null;
 
         // Color palette pulled from the aerial-forest reference image
@@ -34,7 +34,7 @@ class TerrainTreeSystem {
         // Wind shader uniforms (shared across all materials via onBeforeCompile closure)
         this.windUniforms = {
             uTime:          { value: 0 },
-            uWindStrength:  { value: 0.6 },
+            uWindStrength:  { value: 0.3 },
             uWindDirection: { value: new THREE.Vector2(1, 0) }
         };
 
@@ -47,78 +47,20 @@ class TerrainTreeSystem {
         this._scratchQuat   = new THREE.Quaternion();
         this._scratchScale  = new THREE.Vector3();
         this._scratchEuler  = new THREE.Euler();
+        this._scratchOffset = new THREE.Vector3();
+        this._scratchMatrixFinal = new THREE.Matrix4();
 
         console.log('[TerrainTreeSystem] Initialized with 6-part instanced canopy (capacity ' + this.maxTrees + ')');
     }
 
-    updateTreeHeights() {
-        // Smooth tree heights toward terrain mesh heights to match rubber sheet effect
-        if (!this._currentHeights || !this.terrainSystem) return;
-
-        const board = window.game && window.game.boardSystem;
-        if (!board || typeof board.getSmoothedTerrainHeight !== 'function') return;
-
-        for (let i = 0; i < this.treeCount; i++) {
-            const tree = this.treeData[i];
-            const targetHeight = board.getSmoothedTerrainHeight(tree.x, tree.z);
-            const currentHeight = this._currentHeights[i];
-            const newHeight = currentHeight + (targetHeight - currentHeight) * this._heightSmoothingFactor;
-            this._currentHeights[i] = newHeight;
-
-            // Update the Y position in the tree data
-            tree.y = newHeight;
-
-            // Update the instance matrix for this tree
-            this.updateTreeInstanceMatrix(i, tree);
-        }
-    }
-
-    updateTreeInstanceMatrix(i, tree) {
-        const scale = tree.scale;
-        const rotY = tree.rotY;
-        const cosR = Math.cos(rotY);
-        const sinR = Math.sin(rotY);
-        const height = tree.y;
-
-        this._scratchEuler.set(0, rotY, 0);
-        this._scratchQuat.setFromEuler(this._scratchEuler);
-
-        for (const part of this.parts) {
-            const ox = part.offset.x * scale;
-            const oy = part.offset.y * scale;
-            const oz = part.offset.z * scale;
-            const rotatedX = ox * cosR - oz * sinR;
-            const rotatedZ = ox * sinR + oz * cosR;
-
-            this._scratchPos.set(
-                tree.x + rotatedX,
-                height + oy,
-                tree.z + rotatedZ
-            );
-            this._scratchScale.set(scale, scale, scale);
-
-            this._scratchMatrix.compose(
-                this._scratchPos,
-                this._scratchQuat,
-                this._scratchScale
-            );
-            part.mesh.setMatrixAt(i, this._scratchMatrix);
-        }
-    }
 
     _createParts() {
         const parts = [];
         const texSummer = this.seasonTextures.get('summer');
 
         // --- TRUNK ---
-        const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 6);
-        const trunkMat = new THREE.MeshStandardMaterial({
-            color: this.colors.trunk,
-            roughness: 0.95,
-            metalness: 0.0,
-            flatShading: true
-        });
-        this._injectWindShader(trunkMat, 0.02); // trunk sways very little
+        const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 6, 4); // 4 height segments for rings
+        const trunkMat = this._createTrunkShaderMaterial();
         parts.push({
             name: 'trunk',
             mesh: this._makeInstancedMesh(trunkGeo, trunkMat, true),
@@ -139,7 +81,7 @@ class TerrainTreeSystem {
 
         for (const blob of blobs) {
             const geo = new THREE.SphereGeometry(blob.radius, 8, 6);
-            const mat = this._createCanopyShaderMaterial(texSummer, blob.color, 0.09);
+            const mat = this._createCanopyShaderMaterial(texSummer, blob.color, 0.045);
             const canopyMesh = this._makeInstancedMesh(geo, mat, true);
             canopyMesh.renderOrder = 1; // draw after horizon so foliage isn't overwritten
             parts.push({
@@ -154,17 +96,82 @@ class TerrainTreeSystem {
         return parts;
     }
 
+    _createTrunkShaderMaterial() {
+        return new THREE.ShaderMaterial({
+            uniforms: {
+                color: { value: this.colors.trunk },
+                lightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
+                ambient: { value: 0.65 },
+                uTime: this.windUniforms.uTime,
+                uWindStrength: this.windUniforms.uWindStrength,
+                uWindDirection: this.windUniforms.uWindDirection,
+                uSwayMult: { value: 0.015 },
+                uSunIntensity: { value: 1.0 }
+            },
+            vertexShader: `
+                attribute float aWindPhase;
+                attribute float aWindMultiplier;
+
+                uniform float uTime;
+                uniform float uWindStrength;
+                uniform vec2 uWindDirection;
+                uniform float uSwayMult;
+
+                uniform vec3 lightDir;
+                uniform float ambient;
+
+                varying vec3 vNormal;
+                varying vec3 vWorldPos;
+                varying vec3 vViewPos;
+
+                void main() {
+                    mat4 localToWorld = modelMatrix * instanceMatrix;
+                    vNormal = normalize(mat3(localToWorld) * normal);
+                    vec4 wp = localToWorld * vec4(position, 1.0);
+                    float h = max(0.0, wp.y);
+                    float phase = aWindPhase + position.x * 0.5 + position.z * 0.3;
+                    wp.x += sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.15 * uSwayMult * aWindMultiplier;
+                    wp.z += cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.10 * uSwayMult * aWindMultiplier;
+                    vWorldPos = wp.xyz;
+                    gl_Position = projectionMatrix * viewMatrix * wp;
+                    vViewPos = -wp.xyz;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 color;
+                uniform vec3 lightDir;
+                uniform float ambient;
+                uniform float uSunIntensity;
+
+                varying vec3 vNormal;
+                varying vec3 vWorldPos;
+                varying vec3 vViewPos;
+
+                void main() {
+                    vec3 normal = normalize(vNormal);
+                    vec3 lightDirNorm = normalize(lightDir);
+                    float diff = max(dot(normal, lightDirNorm), 0.0);
+                    vec3 lighting = color * (ambient + diff * 0.5) * uSunIntensity;
+                    gl_FragColor = vec4(lighting, 1.0);
+                }
+            `
+        });
+    }
+
     _createCanopyShaderMaterial(texture, color, swayMult) {
         return new THREE.ShaderMaterial({
             uniforms: {
                 map:           { value: texture },
                 lightDir:      { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
                 ambient:       { value: 0.65 },
-                edgeSoftness:  { value: 2.2 },
-                edgeStrength:  { value: 0.88 },
+                edgeSoftness:  { value: 10.2 },
+                edgeStrength:  { value: 0.0 },
+                falloffPower:  { value: 1.5 },
+                falloffStrength: { value: 0.0 },
                 uTime:         this.windUniforms.uTime,
                 uWindStrength: this.windUniforms.uWindStrength,
-                uSwayMult:     { value: swayMult }
+                uSwayMult:     { value: swayMult },
+                uSunIntensity: { value: 1.0 }
             },
             vertexShader: `
                 attribute float aWindPhase;
@@ -177,9 +184,11 @@ class TerrainTreeSystem {
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
                 varying vec3 vWorldPos;
+                varying vec3 vLocalPos;
 
                 void main() {
                     vUv = uv;
+                    vLocalPos = position;
                     mat4 localToWorld = modelMatrix * instanceMatrix;
                     vWorldNormal = normalize(mat3(localToWorld) * normal);
                     vec4 wp = localToWorld * vec4(position, 1.0);
@@ -195,28 +204,44 @@ class TerrainTreeSystem {
                 uniform sampler2D map;
                 uniform vec3 lightDir;
                 uniform float ambient;
+                uniform float uSunIntensity;
                 uniform float edgeSoftness;
                 uniform float edgeStrength;
+                uniform float falloffPower;
+                uniform float falloffStrength;
 
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
                 varying vec3 vWorldPos;
+                varying vec3 vLocalPos;
 
                 void main() {
                     vec4 texel = texture2D(map, vUv);
                     if (texel.a < 0.05) discard;
                     vec3 n = normalize(vWorldNormal);
                     float diff = max(dot(n, lightDir), 0.0);
-                    vec3 litColor = texel.rgb * (ambient + diff * (1.0 - ambient));
+                    vec3 litColor = texel.rgb * (ambient + diff * (1.0 - ambient)) * uSunIntensity;
                     vec3 viewDir = normalize(cameraPosition - vWorldPos);
+                    
+                    // Fresnel-based edge transparency
                     float fresnel = pow(1.0 - abs(dot(n, viewDir)), edgeSoftness);
                     float edgeAlpha = 1.0 - (fresnel * edgeStrength);
-                    gl_FragColor = vec4(litColor, texel.a * edgeAlpha);
+                    
+                    // Distance-from-center falloff for softer foliage edges
+                    float distFromCenter = length(vLocalPos);
+                    float normalizedDist = clamp(distFromCenter, 0.0, 1.0);
+                    float centerFalloff = pow(1.0 - normalizedDist, falloffPower);
+                    float falloffAlpha = 1.0 - ((1.0 - centerFalloff) * falloffStrength);
+                    
+                    // Combine both transparency effects
+                    float finalAlpha = texel.a * edgeAlpha * falloffAlpha;
+                    
+                    gl_FragColor = vec4(litColor, finalAlpha);
                 }
             `,
             transparent: true,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: true
         });
     }
 
@@ -256,7 +281,7 @@ class TerrainTreeSystem {
         const i = this.treeCount;
 
         // Per-tree variation
-        const scale  = 0.85 + Math.random() * 0.45; // 0.85 - 1.30
+        const scale  = (0.85 + Math.random() * 0.45 *2); // 0.85 - 1.30
         const rotY   = Math.random() * Math.PI * 2;
         const cosR   = Math.cos(rotY);
         const sinR   = Math.sin(rotY);
@@ -342,7 +367,7 @@ class TerrainTreeSystem {
                 // Server uses (x, y) for grid; that maps to world (x, z) here.
                 const wx = t.x;
                 const wz = t.y;
-                const height = board.getUnifiedTerrainHeight(wx, wz);
+                const height = board.getUnifiedTerrainHeight(wx + 0.5, wz + 0.5);
 
                 if (height < waterCutoff) { underwater++; continue; }
 
@@ -395,86 +420,170 @@ class TerrainTreeSystem {
     }
 
     computeWindField() {
+        // Use board's shared wind field computation
         const board = window.game && window.game.boardSystem;
-        if (!board) {
-            console.warn('[TerrainTreeSystem] No boardSystem for wind field computation');
+        if (!board || !board.computeTreeWindField) {
+            console.warn('[TerrainTreeSystem] No board wind field computation available');
             return;
         }
 
-        const waterLevel = board.waterLevel || -1.5;
-        this.windField.clear();
+        // Pass tree data to board for wind field computation
+        board.computeTreeWindField(this.treeData, this.windField);
+        console.log('[TerrainTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
+    }
 
-        // Build a grid of tree counts for density calculation
-        const densityGrid = new Map();
-        for (const t of this.treeData) {
-            const tx = Math.floor(t.x);
-            const tz = Math.floor(t.z);
-            const key = `${tx},${tz}`;
-            densityGrid.set(key, (densityGrid.get(key) || 0) + 1);
+    updateTreeHeights() {
+        // Update tree heights using terrain system or square heights depending on distance
+        if (this.treeCount === 0 || !this._currentHeights) {
+            return;
         }
 
-        // Compute wind multiplier for each tile that has a tree
-        for (const t of this.treeData) {
-            const tx = Math.floor(t.x);
-            const tz = Math.floor(t.z);
-            const key = `${tx},${tz}`;
-            if (this.windField.has(key)) continue;
+        const board = window.game && window.game.boardSystem;
+        const camera = window.game && window.game.camera;
+        if (!board || !camera) {
+            console.warn('[TerrainTreeSystem] No board or camera available');
+            return;
+        }
 
-            let windMult = 1.0;
+        const meshExtent = 96; // ±96 units from camera (192x192 vertex grid)
+        const waterCutoff = (board.waterLevel != null ? board.waterLevel : -1.5) + 0.05;
 
-            // Surface smoothness: check height variance in 3x3 area
-            let variance = 0;
-            let sum = 0;
-            let count = 0;
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dz = -1; dz <= 1; dz++) {
-                    const h = board.getUnifiedTerrainHeight(tx + dx, tz + dz);
-                    if (isFinite(h)) {
-                        sum += h;
-                        count++;
-                    }
-                }
-            }
-            if (count > 0) {
-                const avg = sum / count;
-                for (let dx = -1; dx <= 1; dx++) {
-                    for (let dz = -1; dz <= 1; dz++) {
-                        const h = board.getUnifiedTerrainHeight(tx + dx, tz + dz);
-                        if (isFinite(h)) {
-                            variance += (h - avg) ** 2;
+        if (Math.random() < 0.02) {
+            console.log('[TerrainTreeSystem] updateTreeHeights called, treeCount:', this.treeCount, 'camera pos:', camera.position.x, camera.position.z);
+        }
+
+        let treesInRippleRange = 0;
+
+        for (let i = 0; i < this.treeCount; i++) {
+            const tree = this.treeData[i];
+
+            // Check if tree is within mesh range
+            const dx = Math.abs(tree.x - camera.position.x);
+            const dz = Math.abs(tree.z - camera.position.z);
+
+            let targetHeight;
+            if (dx <= meshExtent && dz <= meshExtent) {
+                // Within mesh range: use terrain system (synchronous)
+                targetHeight = board.getUnifiedTerrainHeight(tree.x, tree.z);
+            } else {
+                // Outside mesh range: use square heights (async - skip this frame if not ready)
+                // For now, keep current height to avoid jarring updates
+                targetHeight = this._currentHeights[i] || tree.y;
+
+                // Trigger async update in background using square heights
+                if (typeof board.getSquareHeights === 'function') {
+                    board.getSquareHeights(tree.x, tree.z).then(height => {
+                        // Discard underwater height updates
+                        if (height < waterCutoff) return;
+                        // Update height when server response arrives
+                        if (this._currentHeights && this._currentHeights[i] !== undefined) {
+                            this._currentHeights[i] = height;
+                            tree.y = height;
+                            this.updateTreeInstanceMatrix(i, tree);
                         }
-                    }
-                }
-                const smoothness = 1.0 / (1.0 + variance * 2);
-                windMult *= 0.7 + smoothness * 0.6;
-            }
-
-            // Water boost (extra smooth surface)
-            const height = board.getUnifiedTerrainHeight(tx, tz);
-            if (Math.abs(height - waterLevel) < 0.3) {
-                windMult *= 1.4;
-            }
-
-            // Obstacle density (more trees = less wind)
-            let nearbyCount = 0;
-            for (let dx = -2; dx <= 2; dx++) {
-                for (let dz = -2; dz <= 2; dz++) {
-                    const nKey = `${tx+dx},${tz+dz}`;
-                    nearbyCount += densityGrid.get(nKey) || 0;
+                    });
                 }
             }
-            windMult *= Math.max(0.5, 1.0 - nearbyCount * 0.05);
 
-            // Elevation (higher = more wind, less ground friction)
-            windMult *= 1.0 + Math.max(0, height) * 0.02;
+            // Never let an already-placed tree sink below the water line
+            if (targetHeight < waterCutoff) {
+                continue;
+            }
 
-            // Clamp to reasonable range
-            windMult = Math.max(0.3, Math.min(2.0, windMult));
+            const currentHeight = this._currentHeights[i];
+            const newHeight = currentHeight + (targetHeight - currentHeight) * this._heightSmoothingFactor;
+            this._currentHeights[i] = newHeight;
 
-            this.windField.set(key, windMult);
+            // Get terrain normal at tree position (includes ripple effects)
+            let finalHeight = newHeight;
+            let rippleTiltX = 0;
+            let rippleTiltZ = 0;
+
+            if (board.getTerrainNormal) {
+                const normal = board.getTerrainNormal(tree.x, tree.z);
+
+                // Convert normal to tilt angles
+                // Normal (nx, ny, nz) → tilt angles
+                // pitch = atan2(nx, ny) (tilt forward/back)
+                // roll = atan2(-nz, ny) (tilt left/right)
+                rippleTiltX = Math.atan2(normal.x, normal.y);
+                rippleTiltZ = Math.atan2(-normal.z, normal.y);
+
+                if (Math.random() < 0.02) {
+                    console.log('[TerrainTreeSystem] Tree', i, 'normal:', normal.x.toFixed(3), normal.y.toFixed(3), normal.z.toFixed(3), 'tiltX:', rippleTiltX.toFixed(4), 'tiltZ:', rippleTiltZ.toFixed(4));
+                }
+            }
+
+            // Update the Y position in the tree data
+            tree.y = finalHeight;
+
+            // Update the instance matrix for this tree (with terrain tilt)
+            this.updateTreeInstanceMatrix(i, tree, rippleTiltX, rippleTiltZ);
         }
 
-        console.log('[TerrainTreeSystem] Wind field computed for', this.windField.size, 'tiles');
+        if (Math.random() < 0.02) {
+            console.log('[TerrainTreeSystem] Trees in ripple range (<5.0 from water):', treesInRippleRange, '/', this.treeCount);
+        }
+    }
+
+    updateTreeInstanceMatrix(i, tree, rippleTiltX = 0, rippleTiltZ = 0) {
+        const scale = tree.scale;
+        const rotY = tree.rotY;
+        const cosR = Math.cos(rotY);
+        const sinR = Math.sin(rotY);
+        const height = tree.y;
+
+        // Apply ripple tilt to the rotation (pitch and roll on top of Y rotation)
+        // The ripple tilt should rotate the entire tree as a unit around its base
+        this._scratchEuler.set(rippleTiltX, rotY, rippleTiltZ);
+        this._scratchQuat.setFromEuler(this._scratchEuler);
+
+        if (Math.abs(rippleTiltX) > 0.001 || Math.abs(rippleTiltZ) > 0.001) {
+            if (Math.random() < 0.05) {
+                console.log('[TerrainTreeSystem] updateTreeInstanceMatrix tree', i, 'tilt applied:', rippleTiltX.toFixed(4), rippleTiltZ.toFixed(4), 'euler:', this._scratchEuler.x.toFixed(4), this._scratchEuler.y.toFixed(4), this._scratchEuler.z.toFixed(4));
+            }
+        }
+
+        // Create rotation matrix for transforming positions around tree base
+        this._scratchMatrix.makeRotationFromQuaternion(this._scratchQuat);
+
+        for (const part of this.parts) {
+            // Calculate part offset in tree's local space (Y rotation only)
+            const ox = part.offset.x * scale;
+            const oy = part.offset.y * scale;
+            const oz = part.offset.z * scale;
+
+            // Rotate offset by Y rotation only (to get part position in tree space)
+            const rotatedX = ox * cosR - oz * sinR;
+            const rotatedZ = ox * sinR + oz * cosR;
+
+            // Position relative to tree base
+            this._scratchOffset.set(rotatedX, oy, rotatedZ);
+
+            // Transform offset by the full rotation (ripple tilt + Y rotation) around tree base
+            this._scratchOffset.applyMatrix4(this._scratchMatrix);
+
+            // Final position is tree base plus rotated offset
+            this._scratchPos.set(
+                tree.x + this._scratchOffset.x,
+                height + this._scratchOffset.y,
+                tree.z + this._scratchOffset.z
+            );
+            this._scratchScale.set(scale, scale, scale);
+
+            // Apply the rotation to the instance (for orientation)
+            this._scratchMatrixFinal.compose(
+                this._scratchPos,
+                this._scratchQuat,
+                this._scratchScale
+            );
+            part.mesh.setMatrixAt(i, this._scratchMatrixFinal);
+        }
+
+        // Mark instance matrices for GPU update
+        for (const part of this.parts) {
+            part.mesh.instanceMatrix.needsUpdate = true;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -579,6 +688,27 @@ class TerrainTreeSystem {
         }
         console.log('[TerrainTreeSystem] Season set to', season);
     }
+    
+    debugDepthWrite() {
+        console.log('[TerrainTreeSystem] Debug depthWrite on canopy materials:');
+        for (const part of this.parts) {
+            if (part.isCanopy && part.mesh.material) {
+                const mat = part.mesh.material;
+                console.log(`  ${part.name}: depthWrite = ${mat.depthWrite}`);
+            }
+        }
+    }
+    
+    setDepthWrite(value) {
+        console.log(`[TerrainTreeSystem] Setting depthWrite to ${value} on canopy materials`);
+        for (const part of this.parts) {
+            if (part.isCanopy && part.mesh.material) {
+                const mat = part.mesh.material;
+                mat.depthWrite = value;
+                mat.needsUpdate = true;
+            }
+        }
+    }
 
     // ------------------------------------------------------------------
     // WIND SHADER (injected via onBeforeCompile)
@@ -615,10 +745,10 @@ class TerrainTreeSystem {
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
                 `#include <begin_vertex>
-                float h = max(0.0, transformed.y);
-                float phase = aWindPhase + transformed.x * 0.5 + transformed.z * 0.3;
-                float s1 = sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.06 * uSwayMult * aWindMultiplier;
-                float s2 = cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.04 * uSwayMult * aWindMultiplier;
+                float h = max(0.0, position.y);
+                float phase = aWindPhase + position.x * 0.5 + position.z * 0.3;
+                float s1 = sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.15 * uSwayMult * aWindMultiplier;
+                float s2 = cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.10 * uSwayMult * aWindMultiplier;
                 transformed.x += s1;
                 transformed.z += s2;`
             );
@@ -643,12 +773,40 @@ class TerrainTreeSystem {
 
     update(timeSec, windStrength, windDirection) {
         this.windUniforms.uTime.value = timeSec;
-        this.windUniforms.uWindStrength.value = windStrength != null ? windStrength : 0.6;
+        this.windUniforms.uWindStrength.value = (windStrength != null ? windStrength : 0.6) * 0.5;
         if (windDirection != null) {
             this.windUniforms.uWindDirection.value.set(
                 windDirection.x || 1,
                 windDirection.y || 0
             );
         }
+
+        // Update tree lighting uniforms from board system day/night cycle
+        const bs = window.boardSystem;
+        if (bs && bs.sun && bs.sun.light && bs.moon && bs.moon.light) {
+            const sunInt = bs.sun.light.intensity;
+            const moonInt = bs.moon.light.intensity;
+            const totalIntensity = Math.max(0.15, sunInt + moonInt * 0.4);
+
+            // Choose active light direction (sun when above horizon, else moon)
+            const sunElev = Math.sin(bs.sun.angle);
+            const lightPos = sunElev > 0 ? bs.sun.light.position : bs.moon.light.position;
+            const lightDir = lightPos.clone().normalize();
+
+            // Ambient: higher during day, lower at night
+            const ambient = sunElev > 0 ? 0.55 : 0.2;
+
+            for (const part of this.parts) {
+                const mat = part.mesh.material;
+                if (mat && mat.uniforms) {
+                    if (mat.uniforms.uSunIntensity) mat.uniforms.uSunIntensity.value = totalIntensity;
+                    if (mat.uniforms.lightDir) mat.uniforms.lightDir.value.copy(lightDir);
+                    if (mat.uniforms.ambient) mat.uniforms.ambient.value = ambient;
+                }
+            }
+        }
+
+        // Update tree heights using terrain system or square heights
+        this.updateTreeHeights();
     }
 }

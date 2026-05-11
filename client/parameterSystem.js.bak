@@ -1,0 +1,749 @@
+/**
+ * Master Parameter System for Chessopia
+ * Provides reciprocal editing capabilities for all world parameters
+ * Prevents override by extant logic through intercept pattern
+ */
+class ParameterSystem {
+    constructor() {
+        this.parameters = new Map();
+        this.interceptors = new Map();
+        this.serverCommands = new Map();
+        this.isInitialized = false;
+        
+        // Initialize all world parameters
+        this.initializeParameters();
+        
+        // Setup server command listeners
+        this.setupServerCommandListeners();
+        
+        // Setup property interceptors after systems are available
+        this.setupPropertyInterceptors();
+        
+        console.log('[ParameterSystem] Master parameter system initialized');
+    }
+    
+    initializeParameters() {
+        // Board/Terrain Parameters
+        this.registerParameter('waterLevel', {
+            value: -1.5,
+            type: 'number',
+            min: -10,
+            max: 10,
+            step: 0.1,
+            category: 'terrain',
+            description: 'Water level height',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('beachWidth', {
+            value: 4,
+            type: 'number',
+            min: 1,
+            max: 20,
+            step: 1,
+            category: 'terrain',
+            description: 'Beach width in tiles',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('chunkSize', {
+            value: 16,
+            type: 'number',
+            min: 4,
+            max: 32,
+            step: 1,
+            category: 'terrain',
+            description: 'Chunk size for terrain',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('meshMultiplier', {
+            value: 12,
+            type: 'number',
+            min: 4,
+            max: 24,
+            step: 1,
+            category: 'terrain',
+            description: 'Mesh multiplication factor',
+            system: 'boardSystem'
+        });
+        
+        // LOD Parameters
+        this.registerParameter('lodHighDistance', {
+            value: 15,
+            type: 'number',
+            min: 5,
+            max: 30,
+            step: 1,
+            category: 'lod',
+            description: 'High detail LOD distance',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('lodMediumDistance', {
+            value: 30,
+            type: 'number',
+            min: 15,
+            max: 45,
+            step: 1,
+            category: 'lod',
+            description: 'Medium detail LOD distance',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('lodLowDistance', {
+            value: 45,
+            type: 'number',
+            min: 30,
+            max: 60,
+            step: 1,
+            category: 'lod',
+            description: 'Low detail LOD distance',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('lodVeryLowDistance', {
+            value: 60,
+            type: 'number',
+            min: 45,
+            max: 100,
+            step: 1,
+            category: 'lod',
+            description: 'Very low detail LOD distance',
+            system: 'boardSystem'
+        });
+        
+        // Lighting Parameters
+        this.registerParameter('sunIntensity', {
+            value: 1,
+            type: 'number',
+            min: 0,
+            max: 2,
+            step: 0.1,
+            category: 'lighting',
+            description: 'Sun light intensity',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('sunColor', {
+            value: '#ffffff',
+            type: 'color',
+            category: 'lighting',
+            description: 'Sun light color',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('moonIntensity', {
+            value: 0.5,
+            type: 'number',
+            min: 0,
+            max: 2,
+            step: 0.1,
+            category: 'lighting',
+            description: 'Moon light intensity',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('moonColor', {
+            value: '#87ceeb',
+            type: 'color',
+            category: 'lighting',
+            description: 'Moon light color',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('ambientIntensity', {
+            value: 0.3,
+            type: 'number',
+            min: 0,
+            max: 1,
+            step: 0.05,
+            category: 'lighting',
+            description: 'Ambient light intensity',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('ambientColor', {
+            value: '#ffa07a',
+            type: 'color',
+            category: 'lighting',
+            description: 'Ambient light color',
+            system: 'boardSystem'
+        });
+        
+        // Time Parameters
+        this.registerParameter('dayTime', {
+            value: 12,
+            type: 'number',
+            min: 0,
+            max: 24,
+            step: 0.1,
+            category: 'time',
+            description: 'Current time of day (hours)',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('daySpeed', {
+            value: 60,
+            type: 'number',
+            min: 3,
+            max: 240,
+            step: 1,
+            category: 'time',
+            description: 'Day length in seconds',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('yearTime', {
+            value: 0,
+            type: 'number',
+            min: 0,
+            max: 365,
+            step: 1,
+            category: 'time',
+            description: 'Day of year',
+            system: 'boardSystem'
+        });
+        
+        // Wind Parameters
+        this.registerParameter('windSpeed', {
+            value: 0,
+            type: 'number',
+            min: 0,
+            max: 50,
+            step: 1,
+            category: 'environment',
+            description: 'Wind speed',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('windDirection', {
+            value: 0,
+            type: 'number',
+            min: 0,
+            max: 360,
+            step: 1,
+            category: 'environment',
+            description: 'Wind direction (degrees)',
+            system: 'boardSystem'
+        });
+        
+        // Fog Parameters
+        this.registerParameter('fogNear', {
+            value: 10,
+            type: 'number',
+            min: 1,
+            max: 50,
+            step: 1,
+            category: 'environment',
+            description: 'Fog near distance',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('fogFar', {
+            value: 100,
+            type: 'number',
+            min: 20,
+            max: 200,
+            step: 1,
+            category: 'environment',
+            description: 'Fog far distance',
+            system: 'boardSystem'
+        });
+        
+        // Shadow Parameters
+        this.registerParameter('shadowMapSize', {
+            value: 1024,
+            type: 'number',
+            min: 512,
+            max: 4096,
+            step: 512,
+            category: 'graphics',
+            description: 'Shadow map resolution',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('shadowCameraSize', {
+            value: 400,
+            type: 'number',
+            min: 100,
+            max: 800,
+            step: 50,
+            category: 'graphics',
+            description: 'Shadow camera coverage',
+            system: 'boardSystem'
+        });
+        
+        // Performance Parameters
+        this.registerParameter('maxRenderDistance', {
+            value: 80,
+            type: 'number',
+            min: 40,
+            max: 200,
+            step: 10,
+            category: 'performance',
+            description: 'Maximum render distance',
+            system: 'boardSystem'
+        });
+        
+        this.registerParameter('vertexReduction', {
+            value: 0.8,
+            type: 'number',
+            min: 0,
+            max: 0.9,
+            step: 0.1,
+            category: 'performance',
+            description: 'Maximum vertex reduction',
+            system: 'boardSystem'
+        });
+        
+        console.log(`[ParameterSystem] Registered ${this.parameters.size} parameters`);
+    }
+    
+    registerParameter(name, config) {
+        this.parameters.set(name, {
+            ...config,
+            lastModified: Date.now(),
+            modifiedBy: 'system'
+        });
+        
+        // Create interceptor for this parameter
+        this.createInterceptor(name);
+    }
+    
+    createInterceptor(name) {
+        const param = this.parameters.get(name);
+        if (!param) return;
+        
+        // Create interceptor with override protection
+        this.interceptors.set(name, {
+            get: () => param.value,
+            set: (newValue, source = 'console') => {
+                if (param.type === 'number') {
+                    newValue = parseFloat(newValue);
+                    if (param.min !== undefined) newValue = Math.max(param.min, newValue);
+                    if (param.max !== undefined) newValue = Math.min(param.max, newValue);
+                }
+                
+                const oldValue = param.value;
+                param.value = newValue;
+                param.lastModified = Date.now();
+                param.modifiedBy = source;
+                
+                // Apply to actual system with override protection
+                this.applyParameterToSystemWithProtection(name, newValue, param.system);
+                
+                console.log(`[ParameterSystem] ${name} changed from ${oldValue} to ${newValue} by ${source}`);
+                
+                // Update UI if available
+                this.updateParameterUI(name, newValue);
+            },
+            
+            // Override protection flag
+            isLocked: false,
+            lock: () => { this.interceptors.get(name).isLocked = true; },
+            unlock: () => { this.interceptors.get(name).isLocked = false; }
+        });
+        
+        // Setup override protection for the target system
+        this.setupOverrideProtection(name, param.system);
+    }
+    
+    setupOverrideProtection(name, systemName) {
+        const system = systemName === 'boardSystem' ? window.boardSystem : window.game;
+        if (!system) return;
+        
+        // Create property descriptors that prevent external override
+        const interceptor = this.interceptors.get(name);
+        
+        switch (name) {
+            case 'waterLevel':
+                // Store original value
+                const originalWaterLevel = system.waterLevel;
+                
+                Object.defineProperty(system, 'waterLevel', {
+                    get: () => {
+                        // Always return our controlled value
+                        return interceptor.get();
+                    },
+                    set: (value) => {
+                        // Allow our system to set, but block external changes when locked
+                        if (!interceptor.isLocked) {
+                            interceptor.set(value, 'system');
+                        } else {
+                            console.warn(`[ParameterSystem] Blocked override attempt on ${name} (locked)`);
+                        }
+                    },
+                    configurable: true
+                });
+                
+                // Initialize with our parameter value
+                system.waterLevel = interceptor.get();
+                break;
+                
+            case 'beachWidth':
+                const originalBeachWidth = system.beachWidth;
+                
+                Object.defineProperty(system, 'beachWidth', {
+                    get: () => interceptor.get(),
+                    set: (value) => {
+                        if (!interceptor.isLocked) {
+                            interceptor.set(value, 'system');
+                        } else {
+                            console.warn(`[ParameterSystem] Blocked override attempt on ${name} (locked)`);
+                        }
+                    },
+                    configurable: true
+                });
+                
+                system.beachWidth = interceptor.get();
+                break;
+                
+            case 'sunIntensity':
+                if (system.sun && system.sun.light) {
+                    // Store original descriptor before overriding
+                    const originalDescriptor = Object.getOwnPropertyDescriptor(system.sun.light, 'intensity');
+                    
+                    Object.defineProperty(system.sun.light, 'intensity', {
+                        get: () => interceptor.get(),
+                        set: (value) => {
+                            if (!interceptor.isLocked) {
+                                interceptor.set(value, 'system');
+                                // Apply to the actual Three.js light using original descriptor
+                                if (originalDescriptor && originalDescriptor.set) {
+                                    originalDescriptor.set.call(system.sun.light, value);
+                                }
+                            } else {
+                                console.warn(`[ParameterSystem] Blocked override attempt on ${name} (locked)`);
+                            }
+                        },
+                        configurable: true
+                    });
+                    
+                    system.sun.light.intensity = interceptor.get();
+                }
+                break;
+                
+            case 'moonIntensity':
+                if (system.moon && system.moon.light) {
+                    const originalDescriptor = Object.getOwnPropertyDescriptor(system.moon.light, 'intensity');
+                    
+                    Object.defineProperty(system.moon.light, 'intensity', {
+                        get: () => interceptor.get(),
+                        set: (value) => {
+                            if (!interceptor.isLocked) {
+                                interceptor.set(value, 'system');
+                                if (originalDescriptor && originalDescriptor.set) {
+                                    originalDescriptor.set.call(system.moon.light, value);
+                                }
+                            } else {
+                                console.warn(`[ParameterSystem] Blocked override attempt on ${name} (locked)`);
+                            }
+                        },
+                        configurable: true
+                    });
+                    
+                    system.moon.light.intensity = interceptor.get();
+                }
+                break;
+                
+            case 'ambientIntensity':
+                if (system.ambientLight) {
+                    const originalDescriptor = Object.getOwnPropertyDescriptor(system.ambientLight, 'intensity');
+                    
+                    Object.defineProperty(system.ambientLight, 'intensity', {
+                        get: () => interceptor.get(),
+                        set: (value) => {
+                            if (!interceptor.isLocked) {
+                                interceptor.set(value, 'system');
+                                if (originalDescriptor && originalDescriptor.set) {
+                                    originalDescriptor.set.call(system.ambientLight, value);
+                                }
+                            } else {
+                                console.warn(`[ParameterSystem] Blocked override attempt on ${name} (locked)`);
+                            }
+                        },
+                        configurable: true
+                    });
+                    
+                    system.ambientLight.intensity = interceptor.get();
+                }
+                break;
+        }
+    }
+    
+    applyParameterToSystemWithProtection(name, value, systemName) {
+        const interceptor = this.interceptors.get(name);
+        if (!interceptor) return;
+        
+        // Temporarily unlock to allow our changes
+        const wasLocked = interceptor.isLocked;
+        interceptor.isLocked = false;
+        
+        // Apply the parameter
+        this.applyParameterToSystem(name, value, systemName);
+        
+        // Restore lock state
+        interceptor.isLocked = wasLocked;
+    }
+    
+    applyParameterToSystem(name, value, systemName) {
+        const system = systemName === 'boardSystem' ? window.boardSystem : window.game;
+        if (!system) return;
+        
+        // Apply parameter to the actual system through the protected properties
+        switch (name) {
+            case 'waterLevel':
+                // The property interceptor will handle this
+                if (system.createWaterPlane) {
+                    system.createWaterPlane();
+                }
+                break;
+                
+            case 'beachWidth':
+                // The property interceptor will handle this
+                if (system.createBoard) {
+                    system.createBoard(0, 0, 3, system.meshMultiplier || 12);
+                }
+                break;
+                
+            case 'sunColor':
+                if (system.sun && system.sun.light) {
+                    system.sun.light.color.setHex(parseInt(value.replace('#', '0x')));
+                }
+                break;
+                
+            case 'moonColor':
+                if (system.moon && system.moon.light) {
+                    system.moon.light.color.setHex(parseInt(value.replace('#', '0x')));
+                }
+                break;
+                
+            case 'ambientColor':
+                if (system.ambientLight) {
+                    system.ambientLight.color.setHex(parseInt(value.replace('#', '0x')));
+                }
+                break;
+                
+            case 'dayTime':
+                if (system.setTimeOfDay) {
+                    system.setTimeOfDay(value);
+                }
+                break;
+                
+            case 'daySpeed':
+                if (system.setDaySpeed) {
+                    system.setDaySpeed(value);
+                }
+                break;
+                
+            case 'fogNear':
+            case 'fogFar':
+                if (system.scene && system.scene.fog) {
+                    if (name === 'fogNear') system.scene.fog.near = value;
+                    if (name === 'fogFar') system.scene.fog.far = value;
+                }
+                break;
+                
+            case 'shadowMapSize':
+                if (system.sun && system.sun.light && system.sun.light.shadow) {
+                    system.sun.light.shadow.mapSize.width = value;
+                    system.sun.light.shadow.mapSize.height = value;
+                    system.sun.light.shadow.map?.dispose();
+                    system.sun.light.shadow.map = null;
+                    system.sun.light.shadow.needsUpdate = true;
+                }
+                break;
+                
+            case 'shadowCameraSize':
+                if (system.sun && system.sun.light && system.sun.light.shadow) {
+                    const halfSize = value / 2;
+                    system.sun.light.shadow.camera.left = -halfSize;
+                    system.sun.light.shadow.camera.right = halfSize;
+                    system.sun.light.shadow.camera.top = halfSize;
+                    system.sun.light.shadow.camera.bottom = -halfSize;
+                    system.sun.light.shadow.camera.updateProjectionMatrix();
+                    system.sun.light.shadow.needsUpdate = true;
+                }
+                break;
+                
+            // LOD distances
+            case 'lodHighDistance':
+            case 'lodMediumDistance':
+            case 'lodLowDistance':
+            case 'lodVeryLowDistance':
+                if (system.lodConfig && system.lodConfig.lodLevels) {
+                    const lodIndex = name.includes('High') ? 0 : 
+                                   name.includes('Medium') ? 1 : 
+                                   name.includes('Low') ? 2 : 3;
+                    system.lodConfig.lodLevels[lodIndex].distance = value;
+                    if (system.initializeLODLevels) system.initializeLODLevels();
+                }
+                break;
+        }
+    }
+    
+    updateParameterUI(name, value) {
+        // Update any UI elements that display this parameter, but avoid interfering with user interaction
+        const elements = document.querySelectorAll(`[data-parameter="${name}"]`);
+        elements.forEach(el => {
+            if (el.type === 'color') {
+                el.value = value;
+            } else if (el.type === 'range') {
+                // Only update if user is not currently interacting
+                if (!el.matches(':focus') && !el.matches(':active')) {
+                    el.value = value;
+                    const valueDisplay = el.parentElement?.querySelector('span');
+                    if (valueDisplay) valueDisplay.textContent = value;
+                    const numberInput = el.parentElement?.querySelector('input[type="number"]');
+                    if (numberInput && !numberInput.matches(':focus')) {
+                        numberInput.value = value;
+                    }
+                }
+            } else if (el.type === 'number') {
+                // Only update if user is not currently interacting
+                if (!el.matches(':focus')) {
+                    el.value = value;
+                    const slider = el.parentElement?.querySelector('input[type="range"]');
+                    if (slider && !slider.matches(':focus')) {
+                        slider.value = value;
+                    }
+                    const valueDisplay = el.parentElement?.querySelector('span');
+                    if (valueDisplay) valueDisplay.textContent = value;
+                }
+            } else if (el.tagName === 'SPAN') {
+                // Only update span elements, not DIV containers
+                el.textContent = value;
+            }
+            // NOTE: Don't update DIV containers as they contain the slider controls
+        });
+    }
+    
+    setupPropertyInterceptors() {
+        // Wait for board system to be available
+        const checkBoardSystem = () => {
+            if (window.boardSystem) {
+                console.log('[ParameterSystem] Setting up property interceptors for board system...');
+                
+                // Set up interceptors for all parameters that need them
+                this.parameters.forEach((param, name) => {
+                    if (param.system === 'boardSystem') {
+                        this.setupOverrideProtection(name, 'boardSystem');
+                    }
+                });
+                
+                console.log('[ParameterSystem] Property interceptors established');
+            } else {
+                // Retry after delay
+                setTimeout(checkBoardSystem, 500);
+            }
+        };
+        
+        checkBoardSystem();
+    }
+    
+    setupServerCommandListeners() {
+        // Wait for network manager to be available
+        const checkNetworkManager = () => {
+            if (window.game && window.game.networkManager) {
+                const networkManager = window.game.networkManager;
+                
+                // Listen for server parameter commands
+                networkManager.socket.on('setParameter', (data) => {
+                    const { name, value } = data;
+                    console.log(`[ParameterSystem] Server command: set ${name} = ${value}`);
+                    if (this.parameters.has(name)) {
+                        const interceptor = this.interceptors.get(name);
+                        if (interceptor) {
+                            interceptor.set(value, 'server');
+                        }
+                    }
+                });
+                
+                // Listen for batch parameter updates
+                networkManager.socket.on('setParameters', (data) => {
+                    console.log(`[ParameterSystem] Server batch command: ${Object.keys(data).length} parameters`);
+                    Object.entries(data).forEach(([name, value]) => {
+                        if (this.parameters.has(name)) {
+                            const interceptor = this.interceptors.get(name);
+                            if (interceptor) {
+                                interceptor.set(value, 'server');
+                            }
+                        }
+                    });
+                });
+                
+                // Listen for parameter requests
+                networkManager.socket.on('getParameters', () => {
+                    networkManager.socket.emit('parametersResponse', this.getAllParameters());
+                });
+                
+                console.log('[ParameterSystem] Server command listeners established');
+            } else {
+                // Retry after delay
+                setTimeout(checkNetworkManager, 1000);
+            }
+        };
+        
+        checkNetworkManager();
+    }
+    
+    // Console interface
+    getParameter(name) {
+        const interceptor = this.interceptors.get(name);
+        return interceptor ? interceptor.get() : undefined;
+    }
+    
+    setParameter(name, value) {
+        const interceptor = this.interceptors.get(name);
+        if (interceptor) {
+            interceptor.set(value, 'console');
+            return true;
+        }
+        return false;
+    }
+    
+    getAllParameters() {
+        const result = {};
+        this.parameters.forEach((param, name) => {
+            result[name] = {
+                value: param.value,
+                type: param.type,
+                category: param.category,
+                description: param.description,
+                min: param.min,
+                max: param.max,
+                step: param.step
+            };
+        });
+        return result;
+    }
+    
+    getParametersByCategory(category) {
+        const result = {};
+        this.parameters.forEach((param, name) => {
+            if (param.category === category) {
+                result[name] = {
+                    value: param.value,
+                    type: param.type,
+                    description: param.description,
+                    min: param.min,
+                    max: param.max,
+                    step: param.step
+                };
+            }
+        });
+        return result;
+    }
+}
+
+// Global parameter system instance
+window.parameterSystem = new ParameterSystem();
+
+// Console commands
+window.getParam = (name) => window.parameterSystem.getParameter(name);
+window.setParam = (name, value) => window.parameterSystem.setParameter(name, value);
+window.getAllParams = () => window.parameterSystem.getAllParameters();
+window.getParamsByCategory = (category) => window.parameterSystem.getParametersByCategory(category);
+
+console.log('[ParameterSystem] Console commands available: getParam(), setParam(), getAllParams(), getParamsByCategory()');

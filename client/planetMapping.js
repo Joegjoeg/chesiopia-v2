@@ -15,8 +15,8 @@ class PlanetMapping {
             centerZ: 0,
             wrapRadiusX: 128,
             wrapRadiusZ: 128,
-            sphereRadius: 1000,
-            atmosphereRadius: 1020
+            sphereRadius: 300,
+            atmosphereRadius: 320
         }];
 
         this.activePlanet = this.planets[0];

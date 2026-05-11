@@ -8,6 +8,8 @@ class DecorativeVisualsSystem {
         this.daisies = new Map(); // Map of daisy data by position key
         this.maxDaisies = 200; // Maximum number of daisies
         this.daisySpawnRadius = 50; // Spawn radius around camera
+        this.daisySpawnCenter = new THREE.Vector3(0, 0, 0); // Last position daisies were spawned around
+        this.daisyRehomeDistance = 25; // Clear and respawn when camera moves this far
         
         // Bird system
         this.birdPool = []; // Object pool for birds
@@ -19,7 +21,31 @@ class DecorativeVisualsSystem {
         
         // Camera position for fade calculations
         this.cameraPosition = new THREE.Vector3(0, 0, 0);
-        
+
+        // Global wind system (Ghost of Yōtei style)
+        this.windTime = 0; // Time variable for wind simulation
+        this.windAngle = Math.random() * Math.PI * 2; // Slowly wandering wind heading
+        this.windTargetAngle = this.windAngle;
+        this.windDirection = new THREE.Vector2(1, 0.3).normalize();
+        this.windSpeed = 2.0; // Base wind speed (cycles per second)
+        this.windGustStrength = 1.0;
+
+        // Gust system (simplified - temporary wind speed boosts)
+        this.gustIntensity = 0.0; // Current gust multiplier (1.0 = no gust, >1.0 = gusting)
+        this.gustTargetIntensity = 0.0; // Target gust intensity
+        this.gustDecayRate = 0.5; // How fast gusts decay
+        this.gustSpawnTimer = 0; // Timer for spawning new gusts
+        this.gustSpawnInterval = 8.0; // Average time between gust spawns (seconds)
+
+        // Shared flower texture
+        this.flowerTexture = this.createFlowerTexture();
+        this.flowerMaterial = new THREE.MeshBasicMaterial({
+            map: this.flowerTexture,
+            transparent: true,
+            alphaTest: 0.3,
+            side: THREE.DoubleSide
+        });
+
         // Initialize panic sound variations
         this.panicSounds = [
             'hu?', 'oop!', 'yelp!', 'eep!', 'ah!', 'oh!', 'wa!', 'yi!', 'ee!', 'oo!'
@@ -37,87 +63,98 @@ class DecorativeVisualsSystem {
     }
     
     spawnInitialDaisies() {
-        // Spawn initial daisies in random positions
+        // Spawn daisies around current camera position
+        const cx = this.cameraPosition.x;
+        const cz = this.cameraPosition.z;
         for (let i = 0; i < this.maxDaisies; i++) {
-            const x = (Math.random() - 0.5) * this.daisySpawnRadius * 2;
-            const z = (Math.random() - 0.5) * this.daisySpawnRadius * 2;
+            const x = cx + (Math.random() - 0.5) * this.daisySpawnRadius * 2;
+            const z = cz + (Math.random() - 0.5) * this.daisySpawnRadius * 2;
             this.spawnDaisy(x, z);
         }
-        console.log(`[DecorativeVisuals] Spawned ${this.daisies.size} initial daisies`);
+        console.log(`[DecorativeVisuals] Spawned ${this.daisies.size} initial daisies around camera`);
     }
     
+    createFlowerTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        // Clear transparent
+        ctx.clearRect(0, 0, 64, 64);
+        // Draw white petals
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 5; i++) {
+            const angle = (i / 5) * Math.PI * 2;
+            const px = 32 + Math.cos(angle) * 18;
+            const py = 32 + Math.sin(angle) * 18;
+            ctx.beginPath();
+            ctx.ellipse(px, py, 10, 6, angle, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Yellow center
+        ctx.fillStyle = '#ffe600';
+        ctx.beginPath();
+        ctx.arc(32, 32, 8, 0, Math.PI * 2);
+        ctx.fill();
+        // Tiny dark center
+        ctx.fillStyle = '#cc9900';
+        ctx.beginPath();
+        ctx.arc(32, 32, 3, 0, Math.PI * 2);
+        ctx.fill();
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        return tex;
+    }
+
     spawnDaisy(x, z) {
         const key = `${Math.round(x)},${Math.round(z)}`;
         if (this.daisies.has(key)) {
-            return; // Daisy already exists at this position
+            return;
         }
-        
-        // Get terrain height
+
         const height = this.terrainSystem ? this.terrainSystem.getHeight(x, z) : 0;
         
-        // Create daisy group
+        // Skip water tiles - daisies don't grow underwater
+        if (height < -1.5) {
+            return;
+        }
+
+        // Create daisy group at world position, oriented to terrain normal
         const daisyGroup = new THREE.Group();
-        
-        // Create tiny pixel flower petals (simplified as small spheres)
-        const petalGeometry = new THREE.SphereGeometry(0.05, 4, 3); // Very small, low poly
-        
-        // White petals arranged in circle
-        const petalPositions = [
-            { x: 0.1, z: 0 }, { x: -0.1, z: 0 },
-            { x: 0, z: 0.1 }, { x: 0, z: -0.1 },
-            { x: 0.07, z: 0.07 }, { x: -0.07, z: 0.07 },
-            { x: 0.07, z: -0.07 }, { x: -0.07, z: -0.07 }
-        ];
-        
-        const petalMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffffff, // White petals
+        daisyGroup.position.set(x, height, z);
+
+        if (this.terrainSystem && typeof this.terrainSystem.getNormal === 'function') {
+            const normal = this.terrainSystem.getNormal(x, z);
+            if (normal) {
+                const up = new THREE.Vector3(0, 1, 0);
+                daisyGroup.quaternion.setFromUnitVectors(up, normal);
+            }
+        }
+
+        // Billboarded flower sprite (always faces camera, 4 verts vs 8 for plane+stem)
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.flowerTexture,
             transparent: true,
             opacity: 0.9
         });
-        
-        // Add petals
-        for (const pos of petalPositions) {
-            const petal = new THREE.Mesh(petalGeometry, petalMaterial);
-            petal.position.set(pos.x, height + 0.1, pos.z);
-            petal.renderOrder = 1000; // Render on top
-            daisyGroup.add(petal);
-        }
-        
-        // Yellow center
-        const centerGeometry = new THREE.SphereGeometry(0.03, 6, 4);
-        const centerMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffff00, // Yellow center
-            transparent: true,
-            opacity: 1.0
-        });
-        const center = new THREE.Mesh(centerGeometry, centerMaterial);
-        center.position.set(0, height + 0.1, 0);
-        center.renderOrder = 1001; // Render on top of petals
-        daisyGroup.add(center);
-        
-        // Add tiny stem
-        const stemGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.1, 3);
-        const stemMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x2d5016, // Dark green stem
-            transparent: true,
-            opacity: 0.8
-        });
-        const stem = new THREE.Mesh(stemGeometry, stemMaterial);
-        stem.position.set(0, height + 0.05, 0);
-        daisyGroup.add(stem);
-        
-        // Random rotation for variety
-        daisyGroup.rotation.y = Math.random() * Math.PI * 2;
-        
-        // Add to scene
+        const flowerSprite = new THREE.Sprite(spriteMat);
+        flowerSprite.position.set(0, 0.22, 0);
+        flowerSprite.scale.set(0.3, 0.3, 1);
+        flowerSprite.renderOrder = 1000;
+        flowerSprite.userData.isDecorative = true;
+        daisyGroup.add(flowerSprite);
+
         this.scene.add(daisyGroup);
-        
-        // Store daisy data
+
         this.daisies.set(key, {
             group: daisyGroup,
+            flowerSprite: flowerSprite,
             position: { x, z, height },
             baseOpacity: 0.8,
-            currentOpacity: 0.8
+            currentOpacity: 0.8,
+            windPhase: Math.random() * Math.PI * 2,
+            windStrength: 0.5 + Math.random() * 0.5
         });
     }
     
@@ -188,6 +225,7 @@ class DecorativeVisualsSystem {
         // Create sprite
         const sprite = new THREE.Sprite(spriteMaterial);
         sprite.scale.set(0.125, 0.125, 1); // Size of sprite (reduced by half again)
+        sprite.userData.isDecorative = true; // Mark as decorative for vertex profiling
 
         // Hide initially (in pool)
         sprite.visible = false;
@@ -302,39 +340,160 @@ class DecorativeVisualsSystem {
     }
     
     update(deltaTime) {
-        this.updateDaisies();
+        // Update wind time (controls all wind animations)
+        this.windTime += deltaTime * 1.2;
+
+        // Wander wind direction slowly using multi-frequency angular drift
+        const angleNoise = Math.sin(this.windTime * 0.08) * 0.5 + Math.sin(this.windTime * 0.023) * 0.3 + Math.sin(this.windTime * 0.004) * 0.2;
+        this.windAngle += angleNoise * deltaTime * 0.15;
+        this.windDirection.set(Math.cos(this.windAngle), Math.sin(this.windAngle));
+
+        // Wind speed also drifts (1.0 - 3.5 range)
+        const speedNoise = Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4;
+        this.windSpeed = 2.0 + speedNoise;
+
+        // Update gust system
+        this.updateGusts(deltaTime);
+
+        // Calculate effective wind speed (base + gust)
+        const effectiveWindSpeed = this.windSpeed * this.gustIntensity;
+
+        // Update wind compass UI
+        const windArrow = document.getElementById('windArrow');
+        if (windArrow) {
+            const windAngle = Math.atan2(this.windDirection.y, this.windDirection.x);
+            // Get camera rotation (yaw) to make wind direction relative to viewport
+            let cameraYaw = 0;
+            if (this.game && this.game.camera) {
+                // Get camera's forward direction projected onto XZ plane
+                const forward = new THREE.Vector3(0, 0, -1);
+                forward.applyQuaternion(this.game.camera.quaternion);
+                cameraYaw = Math.atan2(forward.z, forward.x);
+            }
+            // Wind direction relative to camera: subtract camera yaw from wind angle
+            const relativeAngle = windAngle - cameraYaw;
+            const degrees = relativeAngle * (180 / Math.PI);
+            // Scale arrow size based on effective wind speed (origin at tip, so scale from top)
+            const scale = Math.max(0.5, Math.min(2.0, effectiveWindSpeed / 2.0));
+            windArrow.style.transform = `rotate(${degrees}deg) scale(${scale})`;
+        }
+        const windSpeedEl = document.getElementById('windSpeed');
+        if (windSpeedEl) {
+            windSpeedEl.textContent = effectiveWindSpeed.toFixed(1);
+        }
+
+        this.updateDaisies(deltaTime);
         this.updateBirds(deltaTime);
         this.maintainBookPopulation();
     }
+
+    updateGusts(deltaTime) {
+        // Decay current gust intensity toward target
+        if (this.gustIntensity > this.gustTargetIntensity) {
+            this.gustIntensity -= this.gustDecayRate * deltaTime;
+            if (this.gustIntensity < this.gustTargetIntensity) {
+                this.gustIntensity = this.gustTargetIntensity;
+            }
+        } else if (this.gustIntensity < this.gustTargetIntensity) {
+            this.gustIntensity += this.gustDecayRate * deltaTime;
+            if (this.gustIntensity > this.gustTargetIntensity) {
+                this.gustIntensity = this.gustTargetIntensity;
+            }
+        }
+
+        // Spawn new gusts periodically
+        this.gustSpawnTimer += deltaTime;
+        if (this.gustSpawnTimer >= this.gustSpawnInterval) {
+            this.gustSpawnTimer = 0;
+            // Randomize next interval (gusts are irregular)
+            this.gustSpawnInterval = 5.0 + Math.random() * 8.0; // 5-13 seconds between gusts
+
+            // 40% chance to spawn a gust
+            if (Math.random() < 0.4) {
+                this.spawnGust();
+            }
+        }
+    }
+
+    spawnGust() {
+        // Random gust intensity: 1.5x to 3.5x wind speed
+        const gustMultiplier = 1.5 + Math.random() * 2.0;
+        this.gustTargetIntensity = gustMultiplier;
+
+        // Gust lasts 2-5 seconds before starting to decay
+        const gustDuration = 2.0 + Math.random() * 3.0;
+        setTimeout(() => {
+            this.gustTargetIntensity = 1.0; // Return to normal
+        }, gustDuration * 1000);
+
+        console.log(`[GUST] Spawned gust: ${gustMultiplier.toFixed(2)}x intensity, duration ${gustDuration.toFixed(1)}s`);
+    }
     
-    updateDaisies() {
-        // Update daisy opacity based on distance from camera
-        const fadeDistance = 8; // Start fading at 8 units
-        const fadeCompleteDistance = 15; // Fully faded at 15 units
-        
+    updateDaisies(deltaTime) {
+        // Rehome all daisies when camera has wandered far from last spawn center
+        const cameraDistFromSpawn = Math.sqrt(
+            Math.pow(this.cameraPosition.x - this.daisySpawnCenter.x, 2) +
+            Math.pow(this.cameraPosition.z - this.daisySpawnCenter.z, 2)
+        );
+        if (cameraDistFromSpawn > this.daisyRehomeDistance) {
+            for (const [key, daisy] of this.daisies) {
+                this.scene.remove(daisy.group);
+            }
+            this.daisies.clear();
+            this.daisySpawnCenter.set(this.cameraPosition.x, 0, this.cameraPosition.z);
+        }
+
+        const fadeDistance = 8;
+        const fadeCompleteDistance = 15;
+
+        // Build animated wind vector (sum of sine waves for organic gusts)
+        const t = this.windTime;
+        const wx = this.windDirection.x * (Math.sin(t) * 0.6 + Math.sin(t * 2.3) * 0.3 + Math.sin(t * 0.7) * 0.1);
+        const wz = this.windDirection.y * (Math.sin(t * 1.2) * 0.6 + Math.sin(t * 3.1) * 0.3 + Math.sin(t * 0.5) * 0.1);
+
         for (const [key, daisy] of this.daisies) {
             const distance = Math.sqrt(
                 Math.pow(daisy.position.x - this.cameraPosition.x, 2) +
                 Math.pow(daisy.position.z - this.cameraPosition.z, 2)
             );
-            
+
             let opacity = daisy.baseOpacity;
-            
             if (distance > fadeDistance) {
                 const fadeProgress = Math.min((distance - fadeDistance) / (fadeCompleteDistance - fadeDistance), 1);
                 opacity = daisy.baseOpacity * (1 - fadeProgress);
             }
-            
             daisy.currentOpacity = opacity;
-            
-            // Update opacity for all parts of the daisy
+
+            // Update opacity (handle both Mesh and Sprite materials)
             daisy.group.traverse((child) => {
-                if (child.isMesh && child.material) {
+                if ((child.isMesh || child.isSprite) && child.material) {
                     child.material.opacity = opacity;
                     child.material.transparent = opacity < 1.0;
                     child.material.needsUpdate = true;
                 }
             });
+
+            // Wind bobbing: sway flower sprite in local space (sprites auto-face camera)
+            const phase = daisy.windPhase;
+            const strength = daisy.windStrength;
+            const swayX = wx * strength * Math.sin(t * 1.5 + phase);
+            const swayZ = wz * strength * Math.cos(t * 1.1 + phase);
+            if (daisy.flowerSprite) {
+                daisy.flowerSprite.position.x = swayX * 0.15;
+                daisy.flowerSprite.position.z = swayZ * 0.15;
+                // Subtle scale pulse with wind
+                const pulse = 1.0 + Math.sin(t * 2 + phase) * 0.05 * strength;
+                daisy.flowerSprite.scale.set(0.3 * pulse, 0.3 * pulse, 1);
+            }
+        }
+
+        // Respawn new daisies near camera to maintain population
+        const cx = this.cameraPosition.x;
+        const cz = this.cameraPosition.z;
+        while (this.daisies.size < this.maxDaisies) {
+            const x = cx + (Math.random() - 0.5) * this.daisySpawnRadius * 2;
+            const z = cz + (Math.random() - 0.5) * this.daisySpawnRadius * 2;
+            this.spawnDaisy(x, z);
         }
     }
     

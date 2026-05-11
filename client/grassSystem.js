@@ -33,6 +33,24 @@ class GrassSystem {
         console.log('[Grass] Professional sprite system initialized');
     }
     
+    // Get seasonal grass color from board system
+    getSeasonalGrassColor() {
+        if (this.boardSystem && this.boardSystem.currentSeason && this.boardSystem.seasonConfig) {
+            const seasonConfig = this.boardSystem.seasonConfig[this.boardSystem.currentSeason];
+            if (seasonConfig && seasonConfig.treeColor) {
+                // Convert seasonal tree color to grass color (more green, less saturated)
+                const [r, g, b] = seasonConfig.treeColor;
+                return new THREE.Color(
+                    r * 0.6,  // Darken red component for grass
+                    g * 1.2,  // Enhance green for grass
+                    b * 0.4   // Reduce blue for more natural grass
+                );
+            }
+        }
+        // Default green color if no seasonal data available
+        return new THREE.Color(0.3, 0.6, 0.2);
+    }
+    
     // Create procedural grass texture atlas
     createGrassAtlas() {
         const canvas = document.createElement('canvas');
@@ -70,15 +88,17 @@ class GrassSystem {
         const windOffset = Math.sin(frame * 0.5) * 2;
         ctx.rotate(windOffset * Math.PI / 180);
         
-        // Draw grass blades based on type
+        // Get seasonal grass color and create variations
+        const seasonalColor = this.getSeasonalGrassColor();
         const colors = [
-            '#2d5016', // Dark green
-            '#3a6b1f', // Medium green  
-            '#4a7c28', // Light green
-            '#5a8d35'  // Bright green
+            seasonalColor.clone().multiplyScalar(0.7), // Darker
+            seasonalColor.clone().multiplyScalar(0.85), // Medium-dark
+            seasonalColor.clone(), // Base seasonal color
+            seasonalColor.clone().multiplyScalar(1.15)  // Lighter
         ];
         
-        ctx.fillStyle = colors[grassType];
+        const color = colors[grassType];
+        ctx.fillStyle = `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
         ctx.strokeStyle = '#1a3009';
         ctx.lineWidth = 1;
         
@@ -340,6 +360,23 @@ class GrassSystem {
                 this.removeGrassForChunk(chunkKey);
             }
         }
+    }
+    
+    // Update grass textures for seasonal changes
+    updateSeasonalTextures() {
+        // Recreate grass texture atlas with new seasonal colors
+        if (this.grassTexture) {
+            this.grassTexture.dispose();
+        }
+        this.grassTexture = this.createGrassAtlas();
+        
+        // Update grass material with new texture
+        if (this.grassMaterial && this.grassTexture) {
+            this.grassMaterial.map = this.grassTexture;
+            this.grassMaterial.needsUpdate = true;
+        }
+        
+        console.log('[Grass] Updated seasonal textures for season:', this.boardSystem?.currentSeason);
     }
     
     // Clean up all grass

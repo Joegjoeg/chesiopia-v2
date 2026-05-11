@@ -143,7 +143,8 @@ class ParameterSystem {
             category: 'terrain', type: 'number', default: 12, min: 4, max: 24, step: 1,
             description: 'Mesh density multiplier (regenerates board)',
             apply: (v, sys) => {
-                if (sys.createBoard) sys.createBoard(0, 0, 3, v);
+                // DISABLED automatic board creation - handled by game.js
+                // if (sys.createBoard) sys.createBoard(0, 0, 3, v);
             }
         });
 
@@ -160,7 +161,7 @@ class ParameterSystem {
 
         // --- Planet ---
         reg('planetSphereRadius', {
-            category: 'planet', type: 'number', default: 1000, min: 100, max: 5000, step: 10,
+            category: 'planet', type: 'number', default: 300, min: 50, max: 5000, step: 10,
             description: 'Planet sphere radius for deformation',
             apply: (v, sys) => {
                 if (sys.planetMapping && sys.planetMapping.activePlanet) {
@@ -179,7 +180,7 @@ class ParameterSystem {
             }
         });
         reg('deformStartHeight', {
-            category: 'planet', type: 'number', default: 50, min: 10, max: 200, step: 1,
+            category: 'planet', type: 'number', default: 20, min: 5, max: 200, step: 1,
             description: 'Camera height where spherical deformation begins',
             apply: (v, sys) => {
                 if (sys.textureBlendingSystem && sys.textureBlendingSystem.shaderMaterial) {
@@ -202,6 +203,24 @@ class ParameterSystem {
             apply: (v, sys) => {
                 if (sys.planetMapping) {
                     sys.planetMapping.setEnabled(v);
+                }
+            }
+        });
+        reg('enableSpherical', {
+            category: 'planet', type: 'boolean', default: true,
+            description: 'Enable spherical curvature in shader',
+            apply: (v, sys) => {
+                if (sys.textureBlendingSystem) {
+                    sys.textureBlendingSystem.sphericalEnabled = v;
+                }
+            }
+        });
+        reg('debugForceSpherical', {
+            category: 'planet', type: 'boolean', default: false,
+            description: 'DEBUG: force full curvature regardless of height',
+            apply: (v, sys) => {
+                if (sys.textureBlendingSystem && sys.textureBlendingSystem.shaderMaterial) {
+                    sys.textureBlendingSystem.shaderMaterial.uniforms.uDebugForceSpherical.value = v ? 1.0 : 0.0;
                 }
             }
         });

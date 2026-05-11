@@ -299,7 +299,22 @@ class DevInterface {
             paramRow.appendChild(label);
             
             // Compact controls
-            if (config.type === 'color') {
+            if (config.type === 'boolean') {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = !!config.value;
+                checkbox.dataset.parameter = name;
+                checkbox.style.cssText = `
+                    width: 14px;
+                    height: 14px;
+                    cursor: pointer;
+                    accent-color: #00ff00;
+                `;
+                checkbox.addEventListener('change', (e) => {
+                    this.parameterSystem.setParameter(name, e.target.checked);
+                });
+                paramRow.appendChild(checkbox);
+            } else if (config.type === 'color') {
                 const control = document.createElement('input');
                 control.type = 'color';
                 control.value = config.value;

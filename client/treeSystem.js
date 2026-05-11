@@ -137,9 +137,16 @@ class TreeSystem {
         topLeaf.position.set(0, 0.65, 0);
         topLeaf.scale.set(0.8, 1.1, 0.8);
         tree.add(topLeaf);
-        
+
+        // Store base positions and sway phases on foliage leaves for wind animation
+        for (let i = 1; i < tree.children.length; i++) {
+            const leaf = tree.children[i];
+            leaf.userData.basePosition = leaf.position.clone();
+            leaf.userData.swayPhase = Math.random() * Math.PI * 2;
+        }
+
         // Random rotation will be handled by terrain alignment, not random override
-        
+
         // Add subtle animation
         tree.userData = {
             type: 'tree',
@@ -167,57 +174,37 @@ class TreeSystem {
         // Remove existing tree if present
         this.removeTreeFromTile(x, z);
         
-        // Get terrain height at this position (same logic as pieces)
+        // Get terrain height at tile center by averaging four corners
+        // (tree sits at center x+0.5,z+0.5, not at corner x,z)
         let terrainHeight = 0;
-        console.log(`[TreeSystem] Getting terrain height for (${x}, ${z})`);
-        console.log(`[TreeSystem] Terrain system available: ${!!this.terrainSystem}`);
-        console.log(`[TreeSystem] getHeight method available: ${!!(this.terrainSystem && typeof this.terrainSystem.getHeight === 'function')}`);
-        
-        // Use exact same terrain height method as pieces
-        if (window.game && window.game.boardSystem) {
-            terrainHeight = window.game.boardSystem.getTerrainHeight(x, z);
-            console.log(`[TreeSystem] Board system terrain height: ${terrainHeight}`);
-        } else if (this.terrainSystem && typeof this.terrainSystem.getHeight === 'function') {
-            terrainHeight = this.terrainSystem.getHeight(x, z);
-            console.log(`[TreeSystem] Direct terrain height: ${terrainHeight}`);
-        } else {
-            console.warn('[TreeSystem] No terrain system available, using default height 0');
-        }
-        
+        const getH = (hx, hz) => {
+            if (window.game && window.game.boardSystem) {
+                return window.game.boardSystem.getTerrainHeight(hx, hz);
+            } else if (this.terrainSystem && typeof this.terrainSystem.getHeight === 'function') {
+                return this.terrainSystem.getHeight(hx, hz);
+            }
+            return 0;
+        };
+        const h00 = getH(x,     z    );
+        const h10 = getH(x + 1, z    );
+        const h01 = getH(x,     z + 1);
+        const h11 = getH(x + 1, z + 1);
+        terrainHeight = (h00 + h10 + h01 + h11) * 0.25;
+
         // Create new tree
         const tree = this.createNintendoishTree(x, z);
-        
-        // Get terrain normal exactly like pieces do
-        let terrainNormal = null;
-        console.log(`[TreeSystem] DEBUG: Getting terrain normal for (${x}, ${z})`);
-        console.log(`[TreeSystem] DEBUG: terrainSystem exists: ${!!this.terrainSystem}`);
-        console.log(`[TreeSystem] DEBUG: getNormal method exists: ${!!(this.terrainSystem && typeof this.terrainSystem.getNormal === 'function')}`);
-        
-        if (this.terrainSystem && typeof this.terrainSystem.getNormal === 'function') {
-            // Try both coordinate orders to see which works
-            terrainNormal = this.terrainSystem.getNormal(x, z);
-            console.log(`[TreeSystem] DEBUG: Terrain system normal for (${x}, ${z}):`, terrainNormal);
-            
-            // If no normal or flat terrain, try swapped coordinates
-            if (!terrainNormal || terrainNormal.y >= 0.999) {
-                console.log(`[TreeSystem] DEBUG: Trying swapped coordinates (${z}, ${x})`);
-                const swappedNormal = this.terrainSystem.getNormal(z, x);
-                if (swappedNormal && swappedNormal.y < 0.999) {
-                    terrainNormal = swappedNormal;
-                    console.log(`[TreeSystem] DEBUG: Using swapped coordinates normal:`, terrainNormal);
-                }
-            }
-            
-            if (terrainNormal) {
-                console.log(`[TreeSystem] DEBUG: Normal magnitude: ${terrainNormal.length().toFixed(4)}, Y component: ${terrainNormal.y.toFixed(4)}`);
-                console.log(`[TreeSystem] DEBUG: Should apply rotation: ${terrainNormal.y < 0.999}`);
-            }
-        } else {
-            console.warn(`[TreeSystem] DEBUG: No terrain normal method available`);
-        }
-        
+
+        // Compute terrain normal from adjacent tile heights (centered on tile)
+        const hRight  = getH(x + 1, z);
+        const hLeft   = getH(x - 1, z);
+        const hUp     = getH(x, z + 1);
+        const hDown   = getH(x, z - 1);
+        const dx = (hRight - hLeft) * 0.5;
+        const dz = (hUp - hDown) * 0.5;
+        const terrainNormal = new THREE.Vector3(-dx, 1.0, -dz).normalize();
+
         // Position tree so trunk base (at y=-0.75) touches ground + small offset
-        const trunkBaseHeight = terrainHeight + 0.02 + 0.75; // Add trunk bottom offset
+        const trunkBaseHeight = terrainHeight + 0.02 + 0.75;
         tree.position.set(x + 0.5, trunkBaseHeight, z + 0.5);
         console.log(`[TreeSystem] DEBUG: Tree positioned at (${tree.position.x.toFixed(3)}, ${tree.position.y.toFixed(3)}, ${tree.position.z.toFixed(3)})`);
         
@@ -265,9 +252,37 @@ class TreeSystem {
         }
     }
 
-    updateTrees(deltaTime) {
-        // Animation disabled to preserve terrain rotation
-        // Trees now follow terrain normals exactly like pieces
+    updateTrees(windDirection, windTime, windSpeed, camera) {
+        if (!this.trees || !windDirection) return;
+        const windLen = windDirection.length();
+        if (windLen < 0.01 || windSpeed < 0.01) return;
+
+        const windNorm = windDirection.clone().normalize();
+        const baseAmp = 0.08 * Math.min(windSpeed, 3.0); // cap amplitude
+        const t = windTime;
+
+        for (const tree of this.trees.values()) {
+            // Skip trunk (child 0), animate foliage spheres (children 1–6)
+            for (let i = 1; i < tree.children.length; i++) {
+                const leaf = tree.children[i];
+                const phase = leaf.userData.swayPhase || 0;
+                // Each leaf gets a unique gust combination
+                const gustX = Math.sin(t * 2.5 + phase * 3.7) * 0.5
+                            + Math.sin(t * 5.1 + phase * 7.3) * 0.3;
+                const gustZ = Math.sin(t * 2.2 + phase * 5.1 + 1.0) * 0.5
+                            + Math.sin(t * 4.7 + phase * 6.9 + 2.3) * 0.3;
+                const gustY = Math.sin(t * 3.0 + phase * 4.4 + 0.5) * 0.25;
+
+                // Wind pushes leaves primarily downwind with cross-wind jitter
+                const dx = (windNorm.x * gustX - windNorm.y * gustZ * 0.4) * baseAmp;
+                const dz = (windNorm.y * gustX + windNorm.x * gustZ * 0.4) * baseAmp;
+                const dy = gustY * baseAmp * 0.5; // less vertical
+
+                leaf.position.x = leaf.userData.basePosition.x + dx;
+                leaf.position.z = leaf.userData.basePosition.z + dz;
+                leaf.position.y = leaf.userData.basePosition.y + dy;
+            }
+        }
     }
 
     clearAllTrees() {

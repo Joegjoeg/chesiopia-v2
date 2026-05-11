@@ -52,6 +52,9 @@ class VisualFeedbackSystem {
         this.animations = [];
         this.pulseTime = 0;
         
+        // Performance tuning
+        this.maxParticles = 100; // Limit particle effects
+        
         // Track when individual move markers are ready for interaction
         this.readyMarkers = new Set();
     }
@@ -800,6 +803,76 @@ class VisualFeedbackSystem {
         };
         
         return cooldowns[pieceType] || 2000;
+    }
+    
+    showWaterSplash(x, z, waterLevel = -1.5) {
+        // Skip if particles disabled
+        if (this.maxParticles <= 0) return;
+        
+        // Simple splash: create a burst of small white particles
+        const particleCount = Math.min(12, this.maxParticles);
+        const particles = new THREE.Group();
+        
+        for (let i = 0; i < particleCount; i++) {
+            const geometry = new THREE.SphereGeometry(0.05, 4, 4);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xccddff,
+                transparent: true,
+                opacity: 0.8
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // Random position around splash center
+            const angle = (Math.PI * 2 * i) / particleCount;
+            const radius = 0.1 + Math.random() * 0.2;
+            mesh.position.set(
+                x + Math.cos(angle) * radius,
+                waterLevel + 0.1,
+                z + Math.sin(angle) * radius
+            );
+            
+            // Store velocity for animation
+            mesh.userData.velocity = new THREE.Vector3(
+                Math.cos(angle) * (0.02 + Math.random() * 0.03),
+                0.05 + Math.random() * 0.08,
+                Math.sin(angle) * (0.02 + Math.random() * 0.03)
+            );
+            mesh.userData.life = 1.0;
+            
+            particles.add(mesh);
+        }
+        
+        particles.position.set(0, 0, 0);
+        this.scene.add(particles);
+        
+        // Animate and remove
+        const startTime = Date.now();
+        const duration = 800;
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = elapsed / duration;
+            
+            if (progress >= 1) {
+                this.scene.remove(particles);
+                particles.children.forEach(child => {
+                    child.geometry.dispose();
+                    child.material.dispose();
+                });
+                return;
+            }
+            
+            particles.children.forEach(mesh => {
+                mesh.position.add(mesh.userData.velocity);
+                mesh.userData.velocity.y -= 0.003; // gravity
+                mesh.material.opacity = 0.8 * (1 - progress);
+                mesh.scale.setScalar(1 - progress * 0.5);
+            });
+            
+            requestAnimationFrame(animate);
+        };
+        
+        animate();
     }
     
     dispose() {

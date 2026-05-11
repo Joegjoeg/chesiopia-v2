@@ -21,6 +21,12 @@ class CameraController {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         
+        // Spherical orbit state (middle mouse drag)
+        this.orbitAzimuth = 0;   // horizontal angle (radians)
+        this.orbitPolar = 0.6;   // vertical angle from top (radians), ~35 degrees
+        this.orbitDistance = 20; // distance from target
+        this.orbitLocked = false;
+        
         // Camera position for panning
         this.cameraX = 0;
         this.cameraZ = 0;
@@ -88,7 +94,7 @@ class CameraController {
         this.keys[event.key.toLowerCase()] = true;
         
         // Prevent default for game keys
-        if (['w', 'a', 's', 'd', 'q', 'e', ' '].includes(event.key.toLowerCase())) {
+        if (['w', 'a', 's', 'd', 'q', 'e'].includes(event.key.toLowerCase())) {
             event.preventDefault();
         }
     }
@@ -100,10 +106,19 @@ class CameraController {
     handleMouseDown(event) {
         if (event.button === 0) { // Left click - now for pieces only
             // Don't handle camera controls here - let game handle pieces
-        } else if (event.button === 1) { // Middle click - camera orientation
+        } else if (event.button === 1) { // Middle click - spherical orbit
             this.middleMouseDown = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
+            
+            // Initialize orbit from current camera position relative to target
+            const offset = new THREE.Vector3().subVectors(this.camera.position, this.target);
+            this.orbitDistance = offset.length();
+            this.orbitAzimuth = Math.atan2(offset.x, offset.z); // angle around Y axis
+            // polar angle from horizontal plane (0 = ground level, PI/2 = straight down)
+            const horizontalDist = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+            this.orbitPolar = Math.atan2(offset.y, horizontalDist);
+            
             event.preventDefault(); // Prevent middle-click behavior
         } else if (event.button === 2) { // Right click - camera position
             this.rightMouseDown = true;
@@ -135,18 +150,15 @@ class CameraController {
             const deltaY = event.clientY - this.lastMouseY;
             
             if (this.mode === 'tactical' || this.mode === 'free') {
-                // Add angular velocity for spin momentum rotation (now middle click)
-                this.angleVelocity -= deltaX * this.rotationSpeed * 100;
+                // Spherical orbit: lock distance, rotate around target
+                const orbitSpeedX = 0.005;
+                const orbitSpeedY = 0.005;
                 
-                // Vertical arc rotation around center point
-                const verticalRotationSpeed = 0.002;
-                const currentVerticalAngle = Math.atan2(this.height - 15, this.distance); // Current vertical angle
-                const newVerticalAngle = currentVerticalAngle + deltaY * verticalRotationSpeed;
+                this.orbitAzimuth -= deltaX * orbitSpeedX;
+                this.orbitPolar += deltaY * orbitSpeedY;
                 
-                // Calculate new height and distance based on vertical arc
-                const arcRadius = Math.sqrt(Math.pow(this.distance, 2) + Math.pow(this.height - 15, 2));
-                this.distance = Math.max(5, Math.min(50, arcRadius * Math.cos(newVerticalAngle)));
-                this.height = 15 + arcRadius * Math.sin(newVerticalAngle);
+                // Clamp polar to avoid flipping past vertical (0 = horizon, PI/2 = straight down)
+                this.orbitPolar = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, this.orbitPolar));
             }
             
             this.lastMouseX = event.clientX;
@@ -160,9 +172,9 @@ class CameraController {
             if (this.mode === 'tactical' || this.mode === 'free') {
                 // Move camera target like WASD keys (now right click)
                 const panSpeed = 0.04; // Reduced sensitivity for more controlled movement
-                const angleRad = this.angle * Math.PI / 180;
+                const angleRad = this.orbitAzimuth; // Use actual camera azimuth (radians)
                 
-                // Calculate movement vectors based on camera angle
+                // Calculate movement vectors based on camera direction
                 const moveVector = new THREE.Vector3();
                 
                 // Horizontal mouse movement (left/right) affects strafing (A/D keys)
@@ -170,8 +182,8 @@ class CameraController {
                 moveVector.z += Math.sin(angleRad) * deltaX * panSpeed;
                 
                 // Vertical mouse movement (up/down) affects forward/backward (W/S keys)
-                moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
-                moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed; // Reversed: Backward/Forward
+                moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed;
+                moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
                 
                 // Apply movement directly to target during dragging for immediate response
                 this.target.add(moveVector);
@@ -210,35 +222,83 @@ class CameraController {
             this.mouseDown = true;
             this.lastMouseX = event.touches[0].clientX;
             this.lastMouseY = event.touches[0].clientY;
+        } else if (event.touches.length === 2) {
+            // Two-finger pan: same as right-click drag
+            this.touchPanning = true;
+            this.lastTouchMidX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+            this.lastTouchMidY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+            
+            // Pinch zoom initial distance
+            const dx = event.touches[0].clientX - event.touches[1].clientX;
+            const dy = event.touches[0].clientY - event.touches[1].clientY;
+            this.lastPinchDist = Math.sqrt(dx * dx + dy * dy);
         }
     }
     
     handleTouchMove(event) {
+        event.preventDefault(); // Prevent page scroll during game interaction
+        
         if (event.touches.length === 1 && this.mouseDown) {
+            // Single finger: spherical orbit (same as middle mouse)
             const deltaX = event.touches[0].clientX - this.lastMouseX;
             const deltaY = event.touches[0].clientY - this.lastMouseY;
             
             if (this.mode === 'tactical' || this.mode === 'free') {
-                this.angleVelocity -= deltaX * this.rotationSpeed * 100;
+                const orbitSpeedX = 0.005;
+                const orbitSpeedY = 0.005;
                 
-                // Vertical arc rotation around center point (same as mouse movement)
-                const verticalRotationSpeed = 0.002;
-                const currentVerticalAngle = Math.atan2(this.height - 15, this.distance);
-                const newVerticalAngle = currentVerticalAngle - deltaY * verticalRotationSpeed; // Reversed for touch
-                
-                // Calculate new height and distance based on vertical arc
-                const arcRadius = Math.sqrt(Math.pow(this.distance, 2) + Math.pow(this.height - 15, 2));
-                this.distance = Math.max(5, Math.min(50, arcRadius * Math.cos(newVerticalAngle)));
-                this.height = 15 + arcRadius * Math.sin(newVerticalAngle);
+                this.orbitAzimuth -= deltaX * orbitSpeedX;
+                this.orbitPolar += deltaY * orbitSpeedY;
+                this.orbitPolar = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, this.orbitPolar));
             }
             
             this.lastMouseX = event.touches[0].clientX;
             this.lastMouseY = event.touches[0].clientY;
+        } else if (event.touches.length === 2 && this.touchPanning) {
+            // Two-finger pan: move camera target (same as right-click drag)
+            const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+            const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+            const deltaX = midX - this.lastTouchMidX;
+            const deltaY = midY - this.lastTouchMidY;
+            
+            if (this.mode === 'tactical' || this.mode === 'free') {
+                const panSpeed = 0.04;
+                const angleRad = this.angle * Math.PI / 180;
+                
+                const moveVector = new THREE.Vector3();
+                moveVector.x -= Math.cos(angleRad) * deltaX * panSpeed;
+                moveVector.z += Math.sin(angleRad) * deltaX * panSpeed;
+                moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed;
+                moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
+                
+                this.target.add(moveVector);
+                this.currentTarget.lerp(this.target, 0.3);
+                this.velocity.set(0, 0, 0);
+            }
+            
+            this.lastTouchMidX = midX;
+            this.lastTouchMidY = midY;
+            
+            // Pinch zoom: move camera forward/back along its local axis (same as mouse wheel)
+            const dx = event.touches[0].clientX - event.touches[1].clientX;
+            const dy = event.touches[0].clientY - event.touches[1].clientY;
+            const pinchDist = Math.sqrt(dx * dx + dy * dy);
+            const pinchDelta = pinchDist - this.lastPinchDist;
+            
+            // Move target forward/back along camera forward direction
+            const forward = new THREE.Vector3();
+            this.camera.getWorldDirection(forward);
+            const zoomStep = 0.05; // Sensitivity
+            this.target.add(forward.multiplyScalar(-pinchDelta * zoomStep));
+            
+            this.lastPinchDist = pinchDist;
         }
     }
     
     handleTouchEnd(event) {
         this.mouseDown = false;
+        this.touchPanning = false;
+        this.lastPinchDist = 0;
     }
     
     update() {
@@ -284,24 +344,25 @@ class CameraController {
     }
     
     updateTacticalMode() {
-        // Similar to strategic but with rotation
+        // WASD movement aligned with camera direction
         const moveVector = new THREE.Vector3();
+        const angleRad = this.orbitAzimuth;
         
         if (this.keys['w']) {
-            moveVector.x -= Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z -= Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x -= Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.cos(angleRad) * this.moveSpeed;
         }
         if (this.keys['s']) {
-            moveVector.x += Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z += Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x += Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z += Math.cos(angleRad) * this.moveSpeed;
         }
         if (this.keys['a']) {
-            moveVector.x -= Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z += Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x -= Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z += Math.sin(angleRad) * this.moveSpeed;
         }
         if (this.keys['d']) {
-            moveVector.x += Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z -= Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x += Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.sin(angleRad) * this.moveSpeed;
         }
         
         this.target.add(moveVector);
@@ -319,24 +380,25 @@ class CameraController {
     }
     
     updateFreeMode() {
-        // Full 3D movement
+        // Full 3D movement aligned with camera direction
         const moveVector = new THREE.Vector3();
+        const angleRad = this.orbitAzimuth;
         
         if (this.keys['w']) {
-            moveVector.x += Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z += Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x += Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z += Math.cos(angleRad) * this.moveSpeed;
         }
         if (this.keys['s']) {
-            moveVector.x -= Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z -= Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x -= Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.cos(angleRad) * this.moveSpeed;
         }
         if (this.keys['a']) {
-            moveVector.x += Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z -= Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x += Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.sin(angleRad) * this.moveSpeed;
         }
         if (this.keys['d']) {
-            moveVector.x -= Math.cos(this.angle * Math.PI / 180) * this.moveSpeed;
-            moveVector.z += Math.sin(this.angle * Math.PI / 180) * this.moveSpeed;
+            moveVector.x -= Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z += Math.sin(angleRad) * this.moveSpeed;
         }
         
         this.target.add(moveVector);
@@ -404,11 +466,11 @@ class CameraController {
             }
         }
         
-        const angleRad = this.currentAngle * Math.PI / 180;
-        
-        // Calculate camera position based on smoothed target and angle
-        const x = this.currentTarget.x + Math.sin(angleRad) * this.distance;
-        const z = this.currentTarget.z + Math.cos(angleRad) * this.distance;
+        // Calculate camera position using spherical coordinates
+        const horizDist = this.orbitDistance * Math.cos(this.orbitPolar);
+        const x = this.currentTarget.x + horizDist * Math.sin(this.orbitAzimuth);
+        const z = this.currentTarget.z + horizDist * Math.cos(this.orbitAzimuth);
+        const yBase = this.currentTarget.y + this.orbitDistance * Math.sin(this.orbitPolar);
         
         // Get terrain height at camera position for collision avoidance
         let terrainHeight = 0;
@@ -416,31 +478,22 @@ class CameraController {
             terrainHeight = window.game.boardSystem.getTerrainHeight(x, z);
         }
         
-        // Calculate desired height
-        let desiredHeight = this.currentTarget.y + this.height;
-        
         // Ensure camera stays above terrain with minimum clearance
+        let desiredHeight = yBase;
         const minHeightAboveTerrain = terrainHeight + this.minCameraHeight;
         if (desiredHeight < minHeightAboveTerrain) {
             desiredHeight = minHeightAboveTerrain;
         }
         
-        // More stable height adjustment to prevent oscillation
+        // Smooth height adjustment to prevent oscillation
         const currentHeight = this.camera.position.y;
         const heightDiff = desiredHeight - currentHeight;
-        
-        // Use different smoothing factors based on the situation
-        let smoothingFactor = 0.15; // Default smooth transition
-        
-        // If we're being pushed up by terrain, use more gradual smoothing
+        let smoothingFactor = 0.15;
         if (desiredHeight > currentHeight && heightDiff > 1.0) {
-            smoothingFactor = 0.05; // Very gradual when terrain is pushing up
+            smoothingFactor = 0.05;
+        } else if (Math.abs(heightDiff) < 0.5) {
+            smoothingFactor = 0.3;
         }
-        // If we're close to target height, use faster smoothing
-        else if (Math.abs(heightDiff) < 0.5) {
-            smoothingFactor = 0.3; // Faster when close to target
-        }
-        
         const smoothHeight = currentHeight + heightDiff * smoothingFactor;
         
         // Check for oscillation and apply failsafe (only when not actively dragging)
@@ -470,7 +523,12 @@ class CameraController {
         
         this.lastPosition.copy(currentPosition);
         this.camera.position.set(x, smoothHeight, z);
-        this.camera.lookAt(this.target);
+        
+        // During right-click drag (panning), lock camera orientation to avoid swing.
+        // Otherwise the camera smoothly tracks the target.
+        if (!this.rightMouseDown) {
+            this.camera.lookAt(this.target);
+        }
     }
     
     cycleMode() {

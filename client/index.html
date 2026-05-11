@@ -70,10 +70,23 @@
                 <div id="windCompass" style="margin-top: 10px; width: 30px; height: 30px; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; position: relative; background: rgba(0,0,0,0.2);">
                     <div id="windArrow" style="position: absolute; top: 50%; left: 50%; width: 0; height: 0; margin-left: -3px; margin-top: -6px; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 10px solid rgba(255,200,100,0.8); transform-origin: 50% 100%; transform: rotate(0deg);"></div>
                 </div>
+                <button id="respawnBtn" class="dev-btn" style="background: #4488ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
+                    Respawn (Flying Castle)
+                </button>
                 <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
-                    <div>Sun: <span id="sunIntensity">0</span> <span id="sunColor">#ffffff</span></div>
-                    <div>Moon: <span id="moonIntensity">0</span> <span id="moonColor">#87ceeb</span></div>
-                    <div>Ambient: <span id="ambientIntensity">0</span> <span id="ambientColor">#ffa07a</span></div>
+                    <div>Wind: <span id="windSpeed">0</span> <span id="windDirArrow">-</span></div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Day Time (<span id="dayTime">12:00</span>):</label><br>
+                        <input type="range" id="dayTimeSlider" min="0" max="24" step="0.1" value="12" style="width: 100%; margin-top: 2px;">
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Day Speed (<span id="daySpeedValue">60s/day</span>):</label><br>
+                        <input type="range" id="daySpeedSlider" min="3" max="240" step="1" value="60" style="width: 100%; margin-top: 2px;">
+                    </div>
+                    <div style="margin-top: 8px;">
+                        <label style="color: #00ff00; font-size: 11px;">Time of Year (<span id="seasonProgress">Spring</span>):</label><br>
+                        <input type="range" id="yearTimeSlider" min="0" max="365" step="1" value="0" style="width: 100%; margin-top: 2px;">
+                    </div>
                     <div style="margin-top:6px;border-top:1px solid rgba(0,255,0,0.3);padding-top:4px;">Verts: <span id="vertexCount">-</span> | Tris: <span id="triangleCount">-</span></div>
                     <div style="font-size:10px;color:#aaa;margin-top:4px;white-space:pre-wrap;" id="optStatus">Loading...</div>
                 </div>
@@ -768,6 +781,7 @@
                 'terrain-new.js?v=' + Date.now(),
                 'textureAtlasGenerator.js?v=' + Date.now(),
                 'planetMapping.js?v=' + Date.now(),
+                'RollingTerrainMesh.js?v=' + Date.now(),
                 'board_clean.js?v=' + Date.now(),
                 'camera.js',
                 'soundManager.js',
@@ -775,8 +789,10 @@
                 'movementBridge.js',
                 'coveringSystem.js',
                 'visualFeedback.js',
-                'localTreeSystem.js',
+                'growingTreeSystem.js',
                 'terrainTreeSystem.js',
+                'poplarTreeSystem.js',
+                'hybridTreeManager.js',
                 'terrainTreeIntegration.js',
                 'debugTreeSystem.js',
                 'shadowSystem.js',

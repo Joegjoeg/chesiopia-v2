@@ -201,7 +201,7 @@ class ChessopiaValidator {
                     const count = pos.count;
                     totalVertices += count;
                     
-                    if (obj.name === 'viewportMesh' || obj.name === 'dynamicContinuousMesh' || obj.name === 'continuousBoardMesh') {
+                    if (obj.name === 'viewportMesh' || obj.name === 'dynamicContinuousMesh' || obj.name === 'continuousBoardMesh' || obj.name === 'rollingTerrain' || obj.name === 'terrainSingleMesh') {
                         counts.terrain += count;
                     } else if (obj.userData?.isTree || obj.parent?.userData?.isTree) {
                         counts.trees += count;

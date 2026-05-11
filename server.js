@@ -805,7 +805,7 @@ class ChessopiaServer {
         this.terrainGenerator.generateRivers(80);
         
         // Clear cache
-        this.chunkCache.clear();
+        this.terrainCache.clear();
         
         // Initialize empty world data structure
         this.worldData = {

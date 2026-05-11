@@ -25,6 +25,57 @@ class TerrainSystem {
             rock: new THREE.Color(0.5, 0.4, 0.3),
             snow: new THREE.Color(0.9, 0.9, 0.9)
         };
+
+        this.debug = {
+            enabled: false,
+            verbose: false,
+            chunkSeq: 0,
+            squareWatch: new Map(),
+        };
+
+        if (typeof window !== 'undefined') {
+            if (!window.__terrainSystems) window.__terrainSystems = [];
+            window.__terrainSystems.push(this);
+            if (!window.TerrainDebug) {
+                const api = {
+                    enable: (on = true) => window.__terrainSystems.forEach(ts => ts.setDebugEnabled(on)),
+                    setVerbose: (on = true) => window.__terrainSystems.forEach(ts => ts.setDebugVerbose(on)),
+                    watchSquare: (x, z) => window.__terrainSystems.forEach(ts => ts.debugWatchSquare(x, z)),
+                    clearWatch: () => window.__terrainSystems.forEach(ts => ts.debugClearWatch()),
+                };
+                window.TerrainDebug = api;
+                console.log('[TerrainDebug] API available: TerrainDebug.enable(on), setVerbose(on), watchSquare(x,z), clearWatch()');
+            }
+        }
+    }
+
+    setDebugEnabled(on) {
+        this.debug.enabled = !!on;
+        if (this.debug.enabled) console.log('[TerrainDebug] enabled');
+    }
+
+    setDebugVerbose(on) {
+        this.debug.verbose = !!on;
+        if (this.debug.enabled) console.log('[TerrainDebug] verbose =', this.debug.verbose);
+    }
+
+    debugWatchSquare(x, z) {
+        const k = `${Math.floor(x)},${Math.floor(z)}`;
+        this.debug.squareWatch.set(k, { x: Math.floor(x), z: Math.floor(z) });
+        if (this.debug.enabled) console.log('[TerrainDebug] watch', k);
+    }
+
+    debugClearWatch() {
+        this.debug.squareWatch.clear();
+        if (this.debug.enabled) console.log('[TerrainDebug] cleared watch list');
+    }
+
+    _debugLog(...args) {
+        if (this.debug.enabled) console.log(...args);
+    }
+
+    _debugLogV(...args) {
+        if (this.debug.enabled && this.debug.verbose) console.log(...args);
     }
     
     async downloadEntireWorld() {
@@ -59,6 +110,9 @@ class TerrainSystem {
         }
         
         try {
+            const seq = ++this.debug.chunkSeq;
+            const dist = Math.max(Math.abs(chunkX - this.lastCameraChunk.x), Math.abs(chunkZ - this.lastCameraChunk.z));
+            this._debugLog('[TerrainDebug] req', { seq, chunkKey, dist, path: 1 });
             console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
             const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
             
@@ -68,6 +122,7 @@ class TerrainSystem {
             
             const chunkData = await response.json();
             console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
+            this._debugLog('[TerrainDebug] loaded', { seq, chunkKey, tiles: chunkData.length, path: 1 });
             
             // Cache the chunk
             this.chunks.set(chunkKey, {
@@ -81,7 +136,6 @@ class TerrainSystem {
             return null;
         }
     }
-    
     async generateInitialTerrain(centerX, centerZ, radius) {
         console.log(`[Terrain] generateInitialTerrain called - worldDownloaded: ${this.worldDownloaded}`);
         // If world not downloaded yet, download it first
@@ -121,12 +175,11 @@ class TerrainSystem {
         
         const chunk = this.chunks.get(chunkKey);
         if (!chunk || !chunk.data) {
-            // Trigger chunk loading in background if not already loading
-            if (!this.loadingChunks.has(chunkKey)) {
-                this.loadingChunks.add(chunkKey);
-                this.loadChunk(chunkX, chunkZ).then(() => {
-                    this.loadingChunks.delete(chunkKey);
-                });
+            // Return default height without triggering chunk loading
+            // Chunk loading should be handled separately, not during height sampling
+            const tk = `${Math.floor(x)},${Math.floor(y)}`;
+            if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+                this._debugLog('[TerrainDebug] getHeight miss', { world: tk, chunkKey });
             }
             return 0; // Default height if chunk not found
         }
@@ -137,6 +190,10 @@ class TerrainSystem {
         const tileIndex = localZ * this.chunkSize + localX;
         
         const tile = chunk.data[tileIndex];
+        const tk = `${Math.floor(x)},${Math.floor(y)}`;
+        if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+            this._debugLog('[TerrainDebug] getHeight', { world: tk, chunkKey, localX, localZ, tileIndex, hasTile: !!tile });
+        }
         if (!tile) {
             return 0; // Default height if tile not found
         }
@@ -144,6 +201,75 @@ class TerrainSystem {
         return tile.height || 0;
     }
     
+    isTileBlocked(x, y) {
+        if (!this.worldDownloaded) {
+            return false;
+        }
+        const chunkX = Math.floor(x / this.chunkSize);
+        const chunkZ = Math.floor(y / this.chunkSize);
+        const chunkKey = `${chunkX},${chunkZ}`;
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk || !chunk.data) {
+            const tk = `${Math.floor(x)},${Math.floor(y)}`;
+            if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+                this._debugLog('[TerrainDebug] isTileBlocked miss', { world: tk, chunkKey });
+            }
+            return false;
+        }
+        const localX = Math.floor(x - (chunkX * this.chunkSize));
+        const localZ = Math.floor(y - (chunkZ * this.chunkSize));
+        const tileIndex = localZ * this.chunkSize + localX;
+        const tile = chunk.data[tileIndex];
+        const tk = `${Math.floor(x)},${Math.floor(y)}`;
+        if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+            this._debugLog('[TerrainDebug] isTileBlocked', { world: tk, chunkKey, localX, localZ, tileIndex, hasTile: !!tile });
+        }
+        return tile ? (tile.isBlocked || false) : false;
+    }
+
+    getTileData(x, y) {
+        if (!this.worldDownloaded) {
+            return null;
+        }
+        const chunkX = Math.floor(x / this.chunkSize);
+        const chunkZ = Math.floor(y / this.chunkSize);
+        const chunkKey = `${chunkX},${chunkZ}`;
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk || !chunk.data) {
+            const tk = `${Math.floor(x)},${Math.floor(y)}`;
+            if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+                this._debugLog('[TerrainDebug] getTileData miss', { world: tk, chunkKey });
+            }
+            return null;
+        }
+        const localX = Math.floor(x - (chunkX * this.chunkSize));
+        const localZ = Math.floor(y - (chunkZ * this.chunkSize));
+        const tileIndex = localZ * this.chunkSize + localX;
+        const tile = chunk.data[tileIndex] || null;
+        const tk = `${Math.floor(x)},${Math.floor(y)}`;
+        if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
+            this._debugLog('[TerrainDebug] getTileData', { world: tk, chunkKey, localX, localZ, tileIndex, hasTile: !!tile });
+        }
+        return tile;
+    }
+
+    getNormal(x, z) {
+        if (!this.worldDownloaded) {
+            return new THREE.Vector3(0, 1, 0);
+        }
+        // Sample adjacent tiles (delta=1) because getHeight floors to tile indices,
+        // so delta<1 always returns the same tile height.
+        const hRight = this.getHeight(x + 1, z);
+        const hLeft  = this.getHeight(x - 1, z);
+        const hUp    = this.getHeight(x, z + 1);
+        const hDown  = this.getHeight(x, z - 1);
+        const dx = (hRight - hLeft) * 0.5;
+        const dz = (hUp - hDown) * 0.5;
+        const normal = new THREE.Vector3(-dx, 1, -dz);
+        normal.normalize();
+        return normal;
+    }
+
     async loadChunk(chunkX, chunkZ) {
         const chunkKey = `${chunkX},${chunkZ}`;
         
@@ -155,8 +281,29 @@ class TerrainSystem {
             return this.chunks.get(chunkKey).data;
         }
         
+        // Deduplicate in-flight loads
+        if (this._loadingPromises && this._loadingPromises.has(chunkKey)) {
+            return this._loadingPromises.get(chunkKey);
+        }
+        
+        const promise = this._doLoadChunk(chunkX, chunkZ);
+        if (!this._loadingPromises) this._loadingPromises = new Map();
+        this._loadingPromises.set(chunkKey, promise);
+        try {
+            return await promise;
+        } finally {
+            this._loadingPromises.delete(chunkKey);
+        }
+    }
+    
+    async _doLoadChunk(chunkX, chunkZ) {
+        const chunkKey = `${chunkX},${chunkZ}`;
+        
         // Load from server
         try {
+            const seq = ++this.debug.chunkSeq;
+            const dist = Math.max(Math.abs(chunkX - this.lastCameraChunk.x), Math.abs(chunkZ - this.lastCameraChunk.z));
+            this._debugLog('[TerrainDebug] req', { seq, chunkKey, dist });
             console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
             const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
             
@@ -166,6 +313,7 @@ class TerrainSystem {
             
             const chunkData = await response.json();
             console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
+            this._debugLog('[TerrainDebug] loaded', { seq, chunkKey, tiles: chunkData.length });
             
             // Cache the chunk
             this.chunks.set(chunkKey, {
@@ -176,6 +324,13 @@ class TerrainSystem {
             // Notify callback that chunk was loaded
             if (this.onChunkLoaded) {
                 this.onChunkLoaded(chunkX, chunkZ);
+            }
+            if (this.debug.enabled && this.debug.squareWatch.size > 0) {
+                for (const [k, pos] of this.debug.squareWatch) {
+                    const cx = Math.floor(pos.x / this.chunkSize);
+                    const cz = Math.floor(pos.z / this.chunkSize);
+                    if (cx === chunkX && cz === chunkZ) this._debugLog('[TerrainDebug] watched square now in chunk', { square: k, chunkKey });
+                }
             }
             
             return chunkData;
@@ -229,12 +384,28 @@ class TerrainSystem {
             }
         }
         
-        // Load new chunks asynchronously
-        const chunkPromises = chunksToLoad.map(chunk => this.loadChunk(chunk.x, chunk.z));
-        await Promise.all(chunkPromises);
+        if (this.debug.enabled) {
+            const list = chunksToLoad.map(c => ({ key: `${c.x},${c.z}`, d: Math.max(Math.abs(c.x - cameraChunkX), Math.abs(c.z - cameraChunkZ)) }));
+            this._debugLog('[TerrainDebug] toLoad', list.slice(0, 24));
+        }
+        
+        // Sort by distance so nearer chunks load first
+        chunksToLoad.sort((a, b) => {
+            const da = Math.max(Math.abs(a.x - cameraChunkX), Math.abs(a.z - cameraChunkZ));
+            const db = Math.max(Math.abs(b.x - cameraChunkX), Math.abs(b.z - cameraChunkZ));
+            return da - db;
+        });
+        
+        // Load new chunks in batches to limit concurrency
+        const batchSize = 6;
+        for (let i = 0; i < chunksToLoad.length; i += batchSize) {
+            const batch = chunksToLoad.slice(i, i + batchSize);
+            await Promise.all(batch.map(chunk => this.loadChunk(chunk.x, chunk.z)));
+        }
         
         // Unload distant chunks
         chunksToUnload.forEach(chunkKey => {
+            if (this.debug.enabled) this._debugLog('[TerrainDebug] unload', { chunkKey });
             this.unloadChunk(chunkKey);
         });
     }
@@ -249,8 +420,14 @@ class TerrainSystem {
         this.chunks.delete(chunkKey);
     }
     
-    updateStreaming() {
-        // For single world download, this method is no-op
-        // All chunks are already cached after world download
+    updateStreaming(cameraPosition) {
+        const cameraChunkX = Math.floor(cameraPosition.x / this.chunkSize);
+        const cameraChunkZ = Math.floor(cameraPosition.z / this.chunkSize);
+
+        // Check if camera moved to a new chunk
+        if (cameraChunkX !== this.lastCameraChunk.x || cameraChunkZ !== this.lastCameraChunk.z) {
+            this.lastCameraChunk = { x: cameraChunkX, z: cameraChunkZ };
+            this.updateChunks(cameraChunkX, cameraChunkZ);
+        }
     }
 }

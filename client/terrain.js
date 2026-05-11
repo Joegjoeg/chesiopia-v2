@@ -229,13 +229,8 @@ class TerrainSystem {
         
         const chunk = this.chunks.get(chunkKey);
         if (!chunk || !chunk.data) {
-            // Trigger chunk loading in background if not already loading
-            if (!this.loadingChunks.has(chunkKey)) {
-                this.loadingChunks.add(chunkKey);
-                this.loadChunk(chunkX, chunkZ).then(() => {
-                    this.loadingChunks.delete(chunkKey);
-                });
-            }
+            // Return default height without triggering chunk loading
+            // Chunk loading should be handled separately, not during height sampling
             return 0; // Default height if chunk not found
         }
         

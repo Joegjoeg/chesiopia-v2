@@ -135,6 +135,123 @@ class Pieces3D {
         });
     }
     
+    createPawn(group, material) {
+        const bodyGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.35, 12);
+        bodyGeo.translate(0, 0.175, 0);
+        const headGeo = new THREE.SphereGeometry(0.14, 12, 10);
+        headGeo.translate(0, 0.42, 0);
+        const collarGeo = new THREE.TorusGeometry(0.13, 0.03, 8, 12);
+        collarGeo.rotateX(Math.PI / 2);
+        collarGeo.translate(0, 0.33, 0);
+        const baseGeo = new THREE.CylinderGeometry(0.22, 0.24, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        [bodyGeo, headGeo, collarGeo, baseGeo].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
+    createRook(group, material) {
+        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        const bodyGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.45, 12);
+        bodyGeo.translate(0, 0.26, 0);
+        const topGeo = new THREE.CylinderGeometry(0.22, 0.16, 0.08, 12);
+        topGeo.translate(0, 0.5, 0);
+        const crenelGeo = new THREE.BoxGeometry(0.4, 0.08, 0.08);
+        crenelGeo.translate(0, 0.56, 0);
+        const crenelGeo2 = new THREE.BoxGeometry(0.08, 0.08, 0.4);
+        crenelGeo2.translate(0, 0.56, 0);
+        [baseGeo, bodyGeo, topGeo, crenelGeo, crenelGeo2].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
+    createKnight(group, material) {
+        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        const bodyGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.4, 12);
+        bodyGeo.translate(0, 0.24, 0);
+        const neckGeo = new THREE.CylinderGeometry(0.1, 0.14, 0.2, 10);
+        neckGeo.translate(0, 0.48, 0);
+        neckGeo.rotateZ(0.3);
+        const headGeo = new THREE.BoxGeometry(0.12, 0.18, 0.22);
+        headGeo.translate(0.08, 0.62, 0);
+        headGeo.rotateZ(0.3);
+        const snoutGeo = new THREE.BoxGeometry(0.1, 0.08, 0.18);
+        snoutGeo.translate(0.18, 0.58, 0);
+        snoutGeo.rotateZ(0.3);
+        [baseGeo, bodyGeo, neckGeo, headGeo, snoutGeo].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
+    createBishop(group, material) {
+        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        const bodyGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.5, 12);
+        bodyGeo.translate(0, 0.29, 0);
+        const collarGeo = new THREE.TorusGeometry(0.13, 0.03, 8, 12);
+        collarGeo.rotateX(Math.PI / 2);
+        collarGeo.translate(0, 0.55, 0);
+        const hatGeo = new THREE.ConeGeometry(0.1, 0.18, 12);
+        hatGeo.translate(0, 0.65, 0);
+        const slitGeo = new THREE.BoxGeometry(0.02, 0.12, 0.12);
+        slitGeo.translate(0, 0.64, 0);
+        [baseGeo, bodyGeo, collarGeo, hatGeo, slitGeo].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
+    createQueen(group, material) {
+        const baseGeo = new THREE.CylinderGeometry(0.26, 0.28, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        const bodyGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.55, 12);
+        bodyGeo.translate(0, 0.31, 0);
+        const collarGeo = new THREE.TorusGeometry(0.14, 0.03, 8, 12);
+        collarGeo.rotateX(Math.PI / 2);
+        collarGeo.translate(0, 0.6, 0);
+        const crownBaseGeo = new THREE.CylinderGeometry(0.18, 0.14, 0.08, 12);
+        crownBaseGeo.translate(0, 0.66, 0);
+        const crownGeo = new THREE.ConeGeometry(0.08, 0.15, 8);
+        crownGeo.translate(0, 0.78, 0);
+        const orbGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        orbGeo.translate(0, 0.88, 0);
+        [baseGeo, bodyGeo, collarGeo, crownBaseGeo, crownGeo, orbGeo].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
+    createKing(group, material) {
+        const baseGeo = new THREE.CylinderGeometry(0.26, 0.28, 0.06, 16);
+        baseGeo.translate(0, 0.03, 0);
+        const bodyGeo = new THREE.CylinderGeometry(0.17, 0.21, 0.55, 12);
+        bodyGeo.translate(0, 0.31, 0);
+        const collarGeo = new THREE.TorusGeometry(0.15, 0.03, 8, 12);
+        collarGeo.rotateX(Math.PI / 2);
+        collarGeo.translate(0, 0.6, 0);
+        const topGeo = new THREE.CylinderGeometry(0.12, 0.16, 0.08, 12);
+        topGeo.translate(0, 0.67, 0);
+        const crossVGeo = new THREE.BoxGeometry(0.04, 0.18, 0.04);
+        crossVGeo.translate(0, 0.8, 0);
+        const crossHGeo = new THREE.BoxGeometry(0.12, 0.04, 0.04);
+        crossHGeo.translate(0, 0.85, 0);
+        [baseGeo, bodyGeo, collarGeo, topGeo, crossVGeo, crossHGeo].forEach(g => {
+            const mesh = new THREE.Mesh(g, material);
+            mesh.userData.isPieceMesh = true;
+            group.add(mesh);
+        });
+    }
+
     addPiece(pieceData) {
         // Check if spawn location is valid (not surrounded by blocked squares)
         if (!this.isValidSpawnLocation(pieceData.x, pieceData.z)) {
@@ -189,76 +306,63 @@ class Pieces3D {
     createPieceModel(pieceData) {
         const group = new THREE.Group();
         const material = this.materials[pieceData.color] || this.materials.white;
-        
+
+        // Inner group holds the actual meshes; outer group handles terrain normal + position
+        const modelGroup = new THREE.Group();
+        group.add(modelGroup);
+        group.userData.modelGroup = modelGroup;
+
         // Store piece type in userData for voice system
         group.userData.pieceType = pieceData.type.toLowerCase();
-        
-                
+        group.userData.isPiece = true; // Mark as piece for vertex profiling
+
         switch (pieceData.type.toLowerCase()) {
             case 'pawn':
-                this.createPawn(group, material);
+                this.createPawn(modelGroup, material);
                 break;
             case 'rook':
-                this.createRook(group, material);
+                this.createRook(modelGroup, material);
                 break;
             case 'knight':
-                this.createKnight(group, material);
+                this.createKnight(modelGroup, material);
                 break;
             case 'bishop':
-                this.createBishop(group, material);
+                this.createBishop(modelGroup, material);
                 break;
             case 'queen':
-                this.createQueen(group, material);
+                this.createQueen(modelGroup, material);
                 break;
             case 'king':
-                this.createKing(group, material);
+                this.createKing(modelGroup, material);
                 break;
             default:
-                this.createPawn(group, material); // Default to pawn
+                this.createPawn(modelGroup, material); // Default to pawn
         }
-        
+
         // Set initial position immediately (no animation for initial placement)
         const height = this.getMedianTerrainHeight(pieceData.x, pieceData.z);
         const normal = this.getTerrainNormal(pieceData.x, pieceData.z);
-        
-        // Position just above terrain surface (similar to selection indicators)
-        const pieceHeight = height + 0.02; // Very small offset, pieces almost touch board surface
+
+        // Position just above terrain surface
+        const pieceHeight = height + 0.02;
         group.position.set(pieceData.x + 0.5, pieceHeight, pieceData.z + 0.5);
-        
-        // Rotate piece to halfway between terrain normal and vertical AND store terrain info BEFORE piece creation
-        if (normal && normal.y < 0.999) { // Apply even on very slight slopes
-            const upVector = new THREE.Vector3(0, 1, 0);
-            const terrainNormal = normal.clone();
-            
-            // Store terrain info for rotation
-            group.userData.terrainNormal = terrainNormal;
-            group.userData.terrainHeight = height;
-            group.userData.useBendModifier = false; // Disable bend modifier
+
+        // Apply terrain normal via quaternion to the outer group (sticks piece to ground)
+        if (normal && normal.y < 0.999) {
+            const up = new THREE.Vector3(0, 1, 0);
+            const terrainQuat = new THREE.Quaternion().setFromUnitVectors(up, normal);
+            group.quaternion.copy(terrainQuat);
         } else {
-            // Use actual terrain system - if it returns flat, that's the real terrain
-            group.userData.terrainNormal = null;
-            group.userData.terrainHeight = height;
-            group.userData.useBendModifier = false; // Disable bend modifier
+            group.quaternion.set(0, 0, 0, 1);
         }
-        
-        // Store reference to piece data BEFORE piece creation
+
+        // Random Y rotation for variety — applied to modelGroup so terrain normal stays intact
+        modelGroup.rotation.y = Math.floor(Math.random() * 4) * (Math.PI / 2);
+
+        // Store reference to piece data
         group.userData.pieceId = pieceData.id;
         group.userData.pieceType = pieceData.type;
-        
-        console.log(`[Pieces3D] DEBUG: Piece creation complete - userData still available: hasNormal=${!!group.userData.terrainNormal}, hasHeight=${group.userData.terrainHeight !== undefined}`);
-
-        // Apply terrain rotation + base rotation at MESH level (static, set once)
-        // This keeps group's local Y aligned with world Y for proper facing rotation
-        console.log(`[Pieces3D] DEBUG: Checking terrain normal - exists: ${!!group.userData.terrainNormal}`);
-        if (group.userData.terrainNormal) {
-            console.log(`[Pieces3D] DEBUG: Applying terrain + base rotation at MESH level`);
-            console.log(`[Pieces3D] DEBUG: Terrain normal:`, group.userData.terrainNormal);
-            this.applyTerrainRotationToModel(group, group.userData.terrainNormal);
-        } else {
-            console.log(`[Pieces3D] DEBUG: No terrain normal available - piece will spawn vertical`);
-            // Still apply base rotation even without terrain
-            this.applyBaseRotationToModel(group);
-        }
+        group.userData.terrainHeight = height;
         
         // Check final rotation right before returning
         console.log(`[Pieces3D] DEBUG: Final quaternion before return: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
@@ -516,17 +620,15 @@ class Pieces3D {
                 }
             });
             
-            // Add model to group
-            group.add(model);
-            console.log(`[Pieces3D] ${pieceType} GLB model loaded with original textures`);
-            
-            // Apply rotation now that model is loaded (initial rotation may have missed it)
-            if (group.userData.terrainNormal) {
-                this.applyTerrainRotationToModel(group, group.userData.terrainNormal);
+            // Add model to inner modelGroup so outer group handles terrain normal
+            const modelGroup = group.userData.modelGroup;
+            if (modelGroup) {
+                modelGroup.add(model);
             } else {
-                this.applyBaseRotationToModel(group);
+                group.add(model);
             }
-            
+            console.log(`[Pieces3D] ${pieceType} GLB model loaded with original textures`);
+
         } catch (error) {
             console.error(`[Pieces3D] Failed to load ${pieceType} GLB model:`, error);
             console.log(`[Pieces3D] Falling back to geometric ${pieceType}`);
@@ -536,27 +638,28 @@ class Pieces3D {
 
     createGeometricPiece(pieceType, group, material) {
         // Fallback to geometric pieces (no model loading)
+        const target = group.userData.modelGroup || group;
         switch (pieceType) {
             case 'pawn':
-                this.createGeometricPawn(group, material);
+                this.createGeometricPawn(target, material);
                 break;
             case 'rook':
-                this.createGeometricRook(group, material);
+                this.createGeometricRook(target, material);
                 break;
             case 'knight':
-                this.createGeometricKnight(group, material);
+                this.createGeometricKnight(target, material);
                 break;
             case 'bishop':
-                this.createGeometricBishop(group, material);
+                this.createGeometricBishop(target, material);
                 break;
             case 'queen':
-                this.createGeometricQueen(group, material);
+                this.createGeometricQueen(target, material);
                 break;
             case 'king':
-                this.createGeometricKing(group, material);
+                this.createGeometricKing(target, material);
                 break;
             default:
-                this.createGeometricPawn(group, material);
+                this.createGeometricPawn(target, material);
         }
     }
 
@@ -837,8 +940,9 @@ class Pieces3D {
             targetRotation += 2 * Math.PI;
         }
 
-        // Get current piece rotation and normalize to [0, 2*PI]
-        const currentRotation = pieceMesh.rotation.y % (2 * Math.PI);
+        // Get current piece rotation from modelGroup and normalize to [0, 2*PI]
+        const modelGroup = pieceMesh.userData.modelGroup;
+        const currentRotation = modelGroup.rotation.y % (2 * Math.PI);
         const normalizedCurrentRotation = currentRotation < 0 ? currentRotation + 2 * Math.PI : currentRotation;
 
         // Calculate shortest rotation path
@@ -997,11 +1101,8 @@ class Pieces3D {
                 pieceMesh.userData.blobShadow.position.set(currentX + swayX, 0.01, currentZ + swayZ);
             }
 
-            // Apply facing rotation around GROUP'S LOCAL Y-axis
-            // Terrain alignment is already at group level (static)
-            // Base rotation is already at mesh level (static)
-            // Only animate the facing direction
-            pieceMesh.rotation.y = rotationProgress;
+            // Apply facing rotation to modelGroup (terrain normal is on outer group)
+            modelGroup.rotation.y = rotationProgress;
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -1104,13 +1205,13 @@ class Pieces3D {
                 // Ensure we're exactly at the target height (no floating)
                 // pieceMesh.position.y should already be correct from the animation
 
-                // Update mesh rotation to target terrain normal + base rotation
-                // This ensures the piece aligns to the new square's normal after movement
+                // Update outer group quaternion to match new terrain normal
                 if (terrainNormal !== null) {
-                    console.log(`[Pieces3D] Updating mesh rotation to target terrain normal: x=${terrainNormal.x.toFixed(3)}, y=${terrainNormal.y.toFixed(3)}, z=${terrainNormal.z.toFixed(3)}`);
-                    this.applyTerrainRotationToModel(pieceMesh, terrainNormal);
+                    const up = new THREE.Vector3(0, 1, 0);
+                    const terrainQuat = new THREE.Quaternion().setFromUnitVectors(up, terrainNormal);
+                    pieceMesh.quaternion.copy(terrainQuat);
                 } else {
-                    this.applyBaseRotationToModel(pieceMesh);
+                    pieceMesh.quaternion.set(0, 0, 0, 1);
                 }
             }
         };
@@ -1190,7 +1291,9 @@ class Pieces3D {
             pieceMesh.scale.copy(scale);
             
             pieceMesh.position.y = startY - progress * 0.5;
-            pieceMesh.rotation.y += progress * Math.PI;
+            if (pieceMesh.userData.modelGroup) {
+                pieceMesh.userData.modelGroup.rotation.y += progress * Math.PI;
+            }
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -1276,9 +1379,36 @@ class Pieces3D {
     getTerrainHeight(x, z) {
         // Use board system for consistent heights with board tiles
         if (window.game && window.game.boardSystem) {
-            return window.game.boardSystem.getTerrainHeight(x, z);
+            const board = window.game.boardSystem;
+            const camera = window.game.camera;
+
+            // Check if point is within mesh range
+            if (camera) {
+                const meshExtent = 96; // ±96 units from camera (192x192 vertex grid)
+                const dx = Math.abs(x - camera.position.x);
+                const dz = Math.abs(z - camera.position.z);
+
+                if (dx <= meshExtent && dz <= meshExtent) {
+                    // Within mesh range: use terrain system (synchronous)
+                    return board.getUnifiedTerrainHeight(x, z);
+                } else {
+                    // Outside mesh range: use server API (async - return cached or current value)
+                    // For pieces, we need synchronous behavior, so use cache or default
+                    if (board._serverHeightCache) {
+                        const cacheKey = `${Math.floor(x)},${Math.floor(z)}`;
+                        if (board._serverHeightCache.has(cacheKey)) {
+                            return board._serverHeightCache.get(cacheKey);
+                        }
+                    }
+                    // Fallback to terrain system (may trigger chunk loading, but pieces are usually near camera)
+                    return board.getUnifiedTerrainHeight(x, z);
+                }
+            } else {
+                // No camera available, use terrain system
+                return board.getUnifiedTerrainHeight(x, z);
+            }
         }
-        
+
         // Fallback - should not happen if game is properly initialized
         console.warn('[Pieces3D] Board system not available, using fallback height calculation');
         return 0;
