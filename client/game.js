@@ -40,6 +40,12 @@ class ChessopiaGame {
             console.log('[Game] Setting up renderer...');
             await this.setupRenderer();
             this.showLoadingProgress(30);
+            this.detectDeviceCapabilities();
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.deviceCapabilities.pixelRatioCap));
+            if (!this.deviceCapabilities.antialias) {
+                // Can't disable antialias after creation, but we log it
+                console.log('[Game] Low-tier device: antialias would be disabled on next load');
+            }
             
             console.log('[Game] Setting up scene...');
             await this.setupScene();
@@ -151,6 +157,88 @@ class ChessopiaGame {
         
         // Set background color
         this.renderer.setClearColor(0x87CEEB, 1);
+    }
+
+    detectDeviceCapabilities() {
+        const caps = {
+            tier: 'medium',
+            gridSize: 128,
+            meshMultiplier: 24,
+            renderDistance: 40,
+            terrainLoadRadius: 20,
+            antialias: true,
+            pixelRatioCap: 2,
+            details: {}
+        };
+
+        try {
+            const gl = this.renderer.getContext();
+            const webglCaps = this.renderer.capabilities;
+
+            caps.details.maxTextureSize = webglCaps.maxTextureSize;
+            caps.details.maxVertexTextures = webglCaps.maxVertexTextures;
+            caps.details.maxTextureImageUnits = webglCaps.maxTextureImageUnits;
+            caps.details.hardwareConcurrency = navigator.hardwareConcurrency || 2;
+            caps.details.deviceMemory = navigator.deviceMemory || 4;
+            caps.details.pixelRatio = window.devicePixelRatio || 1;
+            caps.details.screenWidth = window.screen.width;
+            caps.details.screenHeight = window.screen.height;
+            caps.details.webglRenderer = gl.getParameter(gl.RENDERER);
+            caps.details.webglVendor = gl.getParameter(gl.VENDOR);
+
+            const isMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const lowEndGPU = /(Mali-G3|Mali-T|Adreno 3|Adreno 4|PowerVR)/i.test(caps.details.webglRenderer);
+            const highEndGPU = /(Apple M|RTX|GTX|Radeon RX|Adreno 7|Adreno 8|Mali-G7)/i.test(caps.details.webglRenderer);
+
+            let score = 0;
+
+            if (highEndGPU) score += 3;
+            else if (lowEndGPU) score -= 2;
+
+            if (caps.details.maxTextureSize >= 16384) score += 2;
+            else if (caps.details.maxTextureSize >= 8192) score += 1;
+            else if (caps.details.maxTextureSize < 4096) score -= 1;
+
+            if (caps.details.hardwareConcurrency >= 8) score += 2;
+            else if (caps.details.hardwareConcurrency >= 4) score += 1;
+            else if (caps.details.hardwareConcurrency <= 2) score -= 1;
+
+            if (caps.details.deviceMemory >= 8) score += 2;
+            else if (caps.details.deviceMemory >= 4) score += 1;
+            else if (caps.details.deviceMemory < 4) score -= 1;
+
+            if (isMobileUA) score -= 1;
+
+            if (score >= 5) {
+                caps.tier = 'high';
+                caps.gridSize = 192;
+                caps.meshMultiplier = 36;
+                caps.renderDistance = 60;
+                caps.terrainLoadRadius = 30;
+                caps.pixelRatioCap = 2;
+            } else if (score >= 2) {
+                caps.tier = 'medium';
+                caps.gridSize = 128;
+                caps.meshMultiplier = 24;
+                caps.renderDistance = 40;
+                caps.terrainLoadRadius = 20;
+                caps.pixelRatioCap = 1.5;
+            } else {
+                caps.tier = 'low';
+                caps.gridSize = 96;
+                caps.meshMultiplier = 18;
+                caps.renderDistance = 30;
+                caps.terrainLoadRadius = 15;
+                caps.antialias = false;
+                caps.pixelRatioCap = 1;
+            }
+        } catch (e) {
+            console.warn('[Game] Device detection failed, falling back to medium tier:', e);
+        }
+
+        this.deviceCapabilities = caps;
+        console.log(`[Game] Device tier: ${caps.tier}`, caps.details);
+        return caps;
     }
 
     // Shadow quality is fixed at medium - adaptive system disabled to prevent shadow map corruption
@@ -367,15 +455,15 @@ class ChessopiaGame {
             this.boardSystem.textureBlendingSystem = null;
         }
         
-        // Generate initial terrain
-        await this.terrainSystem.generateInitialTerrain(0, 0, 10);
+        // Generate initial terrain sized to device capability tier
+        const caps = this.deviceCapabilities;
+        await this.terrainSystem.generateInitialTerrain(0, 0, caps.terrainLoadRadius);
         
-        // Determine mesh size based on device capability
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        const meshMultiplier = isMobile ? 6 : 12; // 96 tiles mobile, 192 desktop
-        this.boardSystem.useViewportMesh = true; // Viewport mesh is now the default for all devices
-        console.log(`[Game] Device detected: ${isMobile ? 'mobile' : 'desktop'}, mesh size: ${meshMultiplier * this.boardSystem.chunkSize}, viewportMesh=${this.boardSystem.useViewportMesh}`);
-        this.boardSystem.createBoard(0, 0, 3, meshMultiplier);
+        // Apply detected capability tier to board & streaming
+        this.boardSystem.useViewportMesh = true;
+        this.boardSystem.renderDistance = caps.renderDistance;
+        console.log(`[Game] Device tier: ${caps.tier}, gridSize: ${caps.gridSize}, meshMultiplier: ${caps.meshMultiplier}, renderDistance: ${caps.renderDistance}`);
+        this.boardSystem.createBoard(0, 0, 3, caps.meshMultiplier, caps.gridSize);
 
         
         // Tree population is deferred until after init() completes so that
@@ -1293,6 +1381,17 @@ class ChessopiaGame {
         console.log(`[Game] AFTER DESELECT - selectedPiece:`, this.selectedPiece);
         this.validMoves = [];
         this.visualFeedback.hideSelection();
+    }
+    
+    deselectFromTouchDrag() {
+        // Called by camera.js when touch dragging on empty ground in isometric mode
+        if (this.selectedPiece) {
+            console.log('[Game] Deselecting piece from touch drag on empty ground');
+            this.selectedPiece = null;
+        }
+        this.validMoves = [];
+        this.visualFeedback.hideSelection();
+        this.visualFeedback.clearValidMovesImmediate();
     }
     
     movePiece(piece, toX, toZ) {

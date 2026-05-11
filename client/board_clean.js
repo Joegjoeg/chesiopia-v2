@@ -70,7 +70,7 @@ class CleanBoardSystem {
 
 
 
-        this.renderDistance = 20; // Increased from 8 to allow more LOD levels
+        this.renderDistance = 40; // Fallback; overridden by device capability detection
 
 
 
@@ -1281,7 +1281,7 @@ class CleanBoardSystem {
 
 
 
-    async createBoard(centerX, centerZ, radius, meshMultiplier = 12) {
+    async createBoard(centerX, centerZ, radius, meshMultiplier = 12, gridSize = 128) {
         console.log(`[DYNAMIC MESH] Creating board with dynamic continuous mesh (NO GAPS!)`);
         
         // CLEAR ALL EXISTING CHUNKS - we're using dynamic continuous mesh now
@@ -1294,7 +1294,7 @@ class CleanBoardSystem {
         this.meshBounds = {
             centerX: centerX,
             centerZ: centerZ,
-            size: this.chunkSize * meshMultiplier // configurable: 12 desktop, 6 mobile
+            size: this.chunkSize * meshMultiplier
         };
         
         // Create rolling terrain mesh (fixed grid, ring-buffer updates)
@@ -1306,12 +1306,12 @@ class CleanBoardSystem {
                   });
 
             this.rollingTerrain = new RollingTerrainMesh(this, this.terrainSystem, {
-                gridSize: 64, cellSize: 1, thresholdCells: 29, material
+                gridSize, cellSize: 1, thresholdCells: Math.floor(gridSize * 0.15), material
             });
             await this.rollingTerrain.initAt(centerX, centerZ);
             this.continuousMesh = this.rollingTerrain.mesh;
             this.scene.add(this.continuousMesh);
-            console.log(`[ROLLING TERRAIN] Board created with 64x64 fixed grid`);
+            console.log(`[ROLLING TERRAIN] Board created with ${gridSize}x${gridSize} fixed grid`);
         } else {
             this.continuousMesh = await this.createContinuousMeshAround(centerX, centerZ);
             this.scene.add(this.continuousMesh);
@@ -1341,8 +1341,20 @@ class CleanBoardSystem {
         const waterLevel = this.waterLevel;
         const size = 200; // Large enough to cover view area
 
-        const geometry = new THREE.PlaneGeometry(size, size);
+        const meshSize = (this.meshBounds && this.meshBounds.size)
+            ? this.meshBounds.size
+            : (this.chunkSize * (this.meshMultiplier || 12));
+        const landResolution = (this.useViewportMesh && this.rollingTerrain && this.rollingTerrain.N)
+            ? this.rollingTerrain.N
+            : meshSize;
+        const waterSegments = Math.max(1, Math.floor(landResolution / 2));
+
+        const geometry = new THREE.PlaneGeometry(size, size, waterSegments, waterSegments);
         geometry.rotateX(-Math.PI / 2);
+        if (geometry.attributes.position) {
+            geometry.userData.basePositions = geometry.attributes.position.array.slice();
+            geometry.userData.curved = false;
+        }
 
         // Load sky reflection texture
         const textureLoader = new THREE.TextureLoader();
@@ -1843,6 +1855,8 @@ class CleanBoardSystem {
                 this._waterPlane.material.map.offset.copy(this._waterTextureOffset);
             }
 
+            this._applyWaterSphericalDeformation(cameraPosition);
+
             const terrainHeight = this.getTerrainHeight(cameraPosition.x, cameraPosition.z);
             const waterHeight = this.waterLevel;
 
@@ -1853,6 +1867,82 @@ class CleanBoardSystem {
                 console.log(`[WATER DEBUG] Water plane position: (${this._waterPlane.position.x.toFixed(1)}, ${this._waterPlane.position.y.toFixed(1)}, ${this._waterPlane.position.z.toFixed(1)})`);
             }
         }
+    }
+
+    _applyWaterSphericalDeformation(cameraPosition) {
+        const plane = this._waterPlane;
+        const blendingSystem = this.textureBlendingSystem;
+        if (!plane || !plane.geometry || !plane.geometry.attributes?.position) return;
+
+        const basePositions = plane.geometry.userData?.basePositions;
+        if (!basePositions) return;
+
+        const uniforms = blendingSystem?.shaderMaterial?.uniforms;
+        if (!uniforms) return;
+
+        const enabled = uniforms.uEnableSpherical?.value > 0.5;
+        const sphereRadius = uniforms.uSphereRadius?.value || 0;
+        if (!enabled || sphereRadius <= 0) {
+            this._restoreWaterBasePositions(plane);
+            return;
+        }
+
+        let deformFactor = uniforms.uDebugForceSpherical?.value > 0.5 ? 1.0 : 0.0;
+        if (deformFactor === 0.0 && uniforms.uCameraHeight && uniforms.uDeformStartHeight && uniforms.uDeformEndHeight) {
+            const camHeight = uniforms.uCameraHeight.value || 0;
+            const start = uniforms.uDeformStartHeight.value || 0;
+            const end = uniforms.uDeformEndHeight.value || 1;
+            const denom = end - start;
+            if (denom !== 0) {
+                const t = THREE.MathUtils.clamp((camHeight - start) / denom, 0, 1);
+                deformFactor = t * t * (3 - 2 * t);
+            }
+        }
+
+        if (deformFactor <= 0) {
+            this._restoreWaterBasePositions(plane);
+            return;
+        }
+
+        const posAttr = plane.geometry.attributes.position;
+        const positions = posAttr.array;
+        const planeX = plane.position.x;
+        const planeZ = plane.position.z;
+        const camX = cameraPosition.x;
+        const camZ = cameraPosition.z;
+
+        for (let i = 0; i < positions.length; i += 3) {
+            const baseX = basePositions[i];
+            const baseY = basePositions[i + 1];
+            const baseZ = basePositions[i + 2];
+            const worldX = baseX + planeX;
+            const worldZ = baseZ + planeZ;
+            const dx = worldX - camX;
+            const dz = worldZ - camZ;
+            const distanceXZ = Math.hypot(dx, dz);
+            const curvatureDrop = (distanceXZ * distanceXZ) / (2 * sphereRadius);
+
+            positions[i] = baseX;
+            positions[i + 1] = baseY - curvatureDrop * deformFactor;
+            positions[i + 2] = baseZ;
+        }
+
+        posAttr.needsUpdate = true;
+        plane.geometry.computeVertexNormals();
+        plane.geometry.userData.curved = true;
+    }
+
+    _restoreWaterBasePositions(plane) {
+        if (!plane.geometry?.attributes?.position) return;
+        const base = plane.geometry.userData?.basePositions;
+        if (!base) return;
+        const positions = plane.geometry.attributes.position.array;
+        if (!plane.geometry.userData.curved) return;
+
+        positions.set(base);
+        plane.geometry.attributes.position.needsUpdate = true;
+        plane.geometry.computeVertexNormals();
+        plane.geometry.userData.curved = false;
     }
 
     updateMouseWorldPosition(camera) {

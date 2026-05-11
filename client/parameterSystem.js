@@ -140,7 +140,7 @@ class ParameterSystem {
             gate: { targetOf: sys => sys, prop: 'chunkSize' }
         });
         reg('meshMultiplier', {
-            category: 'terrain', type: 'number', default: 12, min: 4, max: 24, step: 1,
+            category: 'terrain', type: 'number', default: 24, min: 4, max: 72, step: 1,
             description: 'Mesh density multiplier (regenerates board)',
             apply: (v, sys) => {
                 // DISABLED automatic board creation - handled by game.js

@@ -66,7 +66,19 @@ class CameraController {
         this.oscillationCount = 0;
         this.maxOscillationCount = 10;
         
-                
+        // Isometric mode constants
+        this.isometricAzimuth = Math.PI / 4; // 45 degrees for diamond silhouette
+        this.isometricPolar = 0.55;           // ~31.5 degrees elevation
+        this.minOrbitDistance = 12;           // Min zoom: pieces stay tap-friendly
+        this.maxOrbitDistance = 45;           // Max zoom: fills screen edge-to-edge
+        
+        // Touch state for mobile
+        this.touchDragged = false;
+        this.touchOnEmptyGround = false;
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.touchDragThreshold = 10;
+        
         // Setup initial position
         this.updateCameraPosition();
         this.setupEventListeners();
@@ -201,6 +213,16 @@ class CameraController {
     handleWheel(event) {
         event.preventDefault();
         
+        if (this.mode === 'isometric') {
+            // In isometric mode, wheel zooms by changing orbit distance
+            const zoomDelta = event.deltaY > 0 ? 2 : -2;
+            this.orbitDistance = Math.max(
+                this.minOrbitDistance,
+                Math.min(this.maxOrbitDistance, this.orbitDistance + zoomDelta)
+            );
+            return;
+        }
+        
         // Target point zoom system
         const scrollDelta = event.deltaY;
         const zoomDirection = scrollDelta > 0 ? -1 : 1; // Reversed: scroll forward = zoom in
@@ -220,8 +242,20 @@ class CameraController {
     handleTouchStart(event) {
         if (event.touches.length === 1) {
             this.mouseDown = true;
+            this.touchDragged = false;
+            this.touchOnEmptyGround = false;
+            this.touchStartX = event.touches[0].clientX;
+            this.touchStartY = event.touches[0].clientY;
             this.lastMouseX = event.touches[0].clientX;
             this.lastMouseY = event.touches[0].clientY;
+            
+            // In isometric mode, check if touch is on empty ground
+            if (this.mode === 'isometric') {
+                this.touchOnEmptyGround = !this.isTouchOnInteractive(
+                    event.touches[0].clientX,
+                    event.touches[0].clientY
+                );
+            }
         } else if (event.touches.length === 2) {
             // Two-finger pan: same as right-click drag
             this.touchPanning = true;
@@ -239,11 +273,38 @@ class CameraController {
         event.preventDefault(); // Prevent page scroll during game interaction
         
         if (event.touches.length === 1 && this.mouseDown) {
-            // Single finger: spherical orbit (same as middle mouse)
             const deltaX = event.touches[0].clientX - this.lastMouseX;
             const deltaY = event.touches[0].clientY - this.lastMouseY;
+            const totalDelta = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             
-            if (this.mode === 'tactical' || this.mode === 'free') {
+            if (totalDelta > this.touchDragThreshold) {
+                this.touchDragged = true;
+            }
+            
+            if (this.mode === 'isometric') {
+                // Single finger drags pan the target in isometric mode
+                if (this.touchDragged) {
+                    const panSpeed = 0.04;
+                    const angleRad = this.isometricAzimuth;
+                    
+                    const moveVector = new THREE.Vector3();
+                    moveVector.x -= Math.cos(angleRad) * deltaX * panSpeed;
+                    moveVector.z += Math.sin(angleRad) * deltaX * panSpeed;
+                    moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed;
+                    moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
+                    
+                    this.target.add(moveVector);
+                    this.currentTarget.lerp(this.target, 0.3);
+                    this.velocity.set(0, 0, 0);
+                    
+                    // Deselect piece if dragging on empty ground
+                    if (this.touchOnEmptyGround && window.game && window.game.deselectFromTouchDrag) {
+                        window.game.deselectFromTouchDrag();
+                        this.touchOnEmptyGround = false; // Only deselect once
+                    }
+                }
+            } else if (this.mode === 'tactical' || this.mode === 'free') {
+                // Single finger: spherical orbit (same as middle mouse)
                 const orbitSpeedX = 0.005;
                 const orbitSpeedY = 0.005;
                 
@@ -261,9 +322,9 @@ class CameraController {
             const deltaX = midX - this.lastTouchMidX;
             const deltaY = midY - this.lastTouchMidY;
             
-            if (this.mode === 'tactical' || this.mode === 'free') {
+            if (this.mode === 'isometric' || this.mode === 'tactical' || this.mode === 'free') {
                 const panSpeed = 0.04;
-                const angleRad = this.angle * Math.PI / 180;
+                const angleRad = this.mode === 'isometric' ? this.isometricAzimuth : this.orbitAzimuth;
                 
                 const moveVector = new THREE.Vector3();
                 moveVector.x -= Math.cos(angleRad) * deltaX * panSpeed;
@@ -279,25 +340,48 @@ class CameraController {
             this.lastTouchMidX = midX;
             this.lastTouchMidY = midY;
             
-            // Pinch zoom: move camera forward/back along its local axis (same as mouse wheel)
+            // Pinch zoom
             const dx = event.touches[0].clientX - event.touches[1].clientX;
             const dy = event.touches[0].clientY - event.touches[1].clientY;
             const pinchDist = Math.sqrt(dx * dx + dy * dy);
             const pinchDelta = pinchDist - this.lastPinchDist;
             
-            // Move target forward/back along camera forward direction
-            const forward = new THREE.Vector3();
-            this.camera.getWorldDirection(forward);
-            const zoomStep = 0.05; // Sensitivity
-            this.target.add(forward.multiplyScalar(-pinchDelta * zoomStep));
+            if (this.mode === 'isometric') {
+                // In isometric mode, pinch changes orbit distance directly
+                this.orbitDistance = Math.max(
+                    this.minOrbitDistance,
+                    Math.min(this.maxOrbitDistance, this.orbitDistance - pinchDelta * 0.05)
+                );
+            } else {
+                // Move target forward/back along camera forward direction
+                const forward = new THREE.Vector3();
+                this.camera.getWorldDirection(forward);
+                const zoomStep = 0.05;
+                this.target.add(forward.multiplyScalar(-pinchDelta * zoomStep));
+            }
             
             this.lastPinchDist = pinchDist;
         }
     }
     
     handleTouchEnd(event) {
+        // If this was a tap (not a drag) in isometric mode, forward to game for piece selection
+        if (!this.touchDragged && this.mode === 'isometric' && window.game && window.game.onMouseClick) {
+            const rect = window.game.renderer.domElement.getBoundingClientRect();
+            const fakeEvent = {
+                clientX: this.touchStartX,
+                clientY: this.touchStartY,
+                target: window.game.renderer.domElement,
+                preventDefault: () => {},
+                stopPropagation: () => {}
+            };
+            window.game.onMouseClick(fakeEvent);
+        }
+        
         this.mouseDown = false;
         this.touchPanning = false;
+        this.touchDragged = false;
+        this.touchOnEmptyGround = false;
         this.lastPinchDist = 0;
     }
     
@@ -320,6 +404,9 @@ class CameraController {
                 break;
             case 'free':
                 this.updateFreeMode();
+                break;
+            case 'isometric':
+                this.updateIsometricMode();
                 break;
         }
         
@@ -408,6 +495,39 @@ class CameraController {
         if (this.keys['e']) this.height = Math.min(100, this.height + 0.3);
     }
     
+    updateIsometricMode() {
+        // WASD movement in isometric-aligned world space
+        const moveVector = new THREE.Vector3();
+        const angleRad = this.isometricAzimuth;
+        
+        if (this.keys['w']) {
+            moveVector.x -= Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.cos(angleRad) * this.moveSpeed;
+        }
+        if (this.keys['s']) {
+            moveVector.x += Math.sin(angleRad) * this.moveSpeed;
+            moveVector.z += Math.cos(angleRad) * this.moveSpeed;
+        }
+        if (this.keys['a']) {
+            moveVector.x -= Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z += Math.sin(angleRad) * this.moveSpeed;
+        }
+        if (this.keys['d']) {
+            moveVector.x += Math.cos(angleRad) * this.moveSpeed;
+            moveVector.z -= Math.sin(angleRad) * this.moveSpeed;
+        }
+        
+        this.target.add(moveVector);
+        
+        // Q/E for zoom
+        if (this.keys['q']) {
+            this.orbitDistance = Math.max(this.minOrbitDistance, this.orbitDistance - this.zoomSpeed);
+        }
+        if (this.keys['e']) {
+            this.orbitDistance = Math.min(this.maxOrbitDistance, this.orbitDistance + this.zoomSpeed);
+        }
+    }
+    
     updateCameraPosition() {
         // Calculate desired movement direction
         const desiredMovement = new THREE.Vector3().subVectors(this.target, this.currentTarget);
@@ -466,6 +586,12 @@ class CameraController {
             }
         }
         
+        // Lock isometric angles
+        if (this.mode === 'isometric') {
+            this.orbitAzimuth = this.isometricAzimuth;
+            this.orbitPolar = this.isometricPolar;
+        }
+        
         // Calculate camera position using spherical coordinates
         const horizDist = this.orbitDistance * Math.cos(this.orbitPolar);
         const x = this.currentTarget.x + horizDist * Math.sin(this.orbitAzimuth);
@@ -501,7 +627,7 @@ class CameraController {
         const movementDelta = currentPosition.distanceTo(this.lastPosition);
         
         // Skip oscillation detection during mouse dragging to prevent interference with normal camera control
-        if (!this.rightMouseDown && !this.middleMouseDown) {
+        if (!this.rightMouseDown && !this.middleMouseDown && !this.mouseDown && !this.touchPanning) {
             // If we're moving back and forth in a small area, increment oscillation count
             if (movementDelta < 0.1 && this.velocity.length() > 0.01) {
                 this.oscillationCount++;
@@ -526,13 +652,14 @@ class CameraController {
         
         // During right-click drag (panning), lock camera orientation to avoid swing.
         // Otherwise the camera smoothly tracks the target.
-        if (!this.rightMouseDown) {
+        // In isometric mode, always track target even during panning.
+        if (!this.rightMouseDown || this.mode === 'isometric') {
             this.camera.lookAt(this.target);
         }
     }
     
     cycleMode() {
-        const modes = ['strategic', 'tactical', 'follow', 'free'];
+        const modes = ['strategic', 'tactical', 'follow', 'free', 'isometric'];
         const currentIndex = modes.indexOf(this.mode);
         const nextIndex = (currentIndex + 1) % modes.length;
         
@@ -561,6 +688,11 @@ class CameraController {
                 break;
             case 'free':
                 // Keep current position
+                break;
+            case 'isometric':
+                this.orbitAzimuth = this.isometricAzimuth;
+                this.orbitPolar = this.isometricPolar;
+                this.orbitDistance = 25;
                 break;
         }
         
@@ -652,5 +784,25 @@ class CameraController {
         }
         
         return tiles.sort((a, b) => a.distance - b.distance);
+    }
+    
+    isTouchOnInteractive(clientX, clientY) {
+        const raycaster = this.getRaycaster(clientX, clientY);
+        
+        // Check pieces
+        if (window.game && window.game.piecesSystem) {
+            const pieceMeshes = window.game.piecesSystem.getAllPieceMeshes();
+            const pieceIntersects = raycaster.intersectObjects(pieceMeshes, true);
+            if (pieceIntersects.length > 0) return true;
+        }
+        
+        // Check valid move markers
+        if (window.game && window.game.visualFeedback) {
+            const markerMeshes = window.game.visualFeedback.getValidMoveMeshes();
+            const markerIntersects = raycaster.intersectObjects(markerMeshes);
+            if (markerIntersects.length > 0) return true;
+        }
+        
+        return false;
     }
 }

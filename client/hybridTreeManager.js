@@ -1,6 +1,6 @@
 // HybridTreeManager
-// Coordinates TerrainTreeSystem, GrowingTreeSystem, and PoplarTreeSystem with patch-based alternation
-// Uses 3-way chunk distribution cycling through the three tree types
+// Coordinates TerrainTreeSystem, GrowingTreeSystem, PoplarTreeSystem, and CherryTreeSystem with patch-based alternation
+// Uses 4-way chunk distribution cycling through the four tree types
 
 class HybridTreeManager {
     constructor(scene, terrainSystem) {
@@ -8,29 +8,31 @@ class HybridTreeManager {
         this.terrainSystem = terrainSystem;
         this.chunkSize = 16;
 
-        // Initialize all three tree systems
+        // Initialize all four tree systems
         this.terrainTreeSystem = new TerrainTreeSystem(scene, terrainSystem);
         this.growingTreeSystem = new GrowingTreeSystem(scene, terrainSystem);
         this.poplarTreeSystem = new PoplarTreeSystem(scene, terrainSystem);
+        this.cherryTreeSystem = new CherryTreeSystem(scene, terrainSystem);
 
         // Track which trees belong to which system
-        this.treeRegistry = new Map(); // key -> 'terrain', 'growing', or 'poplar'
+        this.treeRegistry = new Map(); // key -> 'terrain', 'growing', 'poplar', or 'cherry'
 
         console.log('[HybridTreeManager] Initialized with patch-based alternation (chunkSize=' + this.chunkSize + ')');
     }
 
     /**
      * Determine which tree system to use based on chunk position
-     * 3-way distribution: chunks cycle through Terrain, Growing, Poplar
+     * 4-way distribution: chunks cycle through Terrain, Growing, Poplar, Cherry
      */
     _getTreeSystemForPosition(worldX, worldZ) {
         const chunkX = Math.floor(worldX / this.chunkSize);
         const chunkZ = Math.floor(worldZ / this.chunkSize);
-        const mod = Math.abs(chunkX + chunkZ * 2) % 3;
+        const mod = Math.abs(chunkX + chunkZ * 2) % 4;
 
         if (mod === 0) return this.terrainTreeSystem;
         if (mod === 1) return this.growingTreeSystem;
-        return this.poplarTreeSystem;
+        if (mod === 2) return this.poplarTreeSystem;
+        return this.cherryTreeSystem;
     }
 
     /**
@@ -47,9 +49,12 @@ class HybridTreeManager {
         } else if (system === this.growingTreeSystem) {
             result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'growing');
-        } else {
+        } else if (system === this.poplarTreeSystem) {
             result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'poplar');
+        } else {
+            result = system.addTree(worldX, worldZ, terrainHeight);
+            this.treeRegistry.set(key, 'cherry');
         }
 
         return result;
@@ -82,6 +87,7 @@ class HybridTreeManager {
             let terrainTrees = 0;
             let growingTrees = 0;
             let poplarTrees = 0;
+            let cherryTrees = 0;
 
             for (const t of list) {
                 const wx = t.x;
@@ -103,19 +109,25 @@ class HybridTreeManager {
                         growingTrees++;
                         this.treeRegistry.set(key, 'growing');
                     }
-                } else {
+                } else if (system === this.poplarTreeSystem) {
                     if (this.poplarTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
                         poplarTrees++;
                         this.treeRegistry.set(key, 'poplar');
+                    }
+                } else {
+                    if (this.cherryTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
+                        cherryTrees++;
+                        this.treeRegistry.set(key, 'cherry');
                     }
                 }
                 placed++;
             }
 
             console.log('[HybridTreeManager] Placed ' + placed + ' trees (' + underwater + ' skipped underwater)');
-            console.log('[HybridTreeManager] Distribution: ' + terrainTrees + ' terrain, ' + growingTrees + ' growing, ' + poplarTrees + ' poplar');
+            console.log('[HybridTreeManager] Distribution: ' + terrainTrees + ' terrain, ' + growingTrees + ' growing, ' + poplarTrees + ' poplar, ' + cherryTrees + ' cherry');
             console.log('[HybridTreeManager] Growing tree count:', this.growingTreeSystem.getTreeCount());
             console.log('[HybridTreeManager] Poplar tree count:', this.poplarTreeSystem.getTreeCount());
+            console.log('[HybridTreeManager] Cherry tree count:', this.cherryTreeSystem.getTreeCount());
 
             // Compute wind field for all systems
             this.terrainTreeSystem.computeWindField();
@@ -123,6 +135,8 @@ class HybridTreeManager {
             this.growingTreeSystem.computeWindField();
             console.log('[HybridTreeManager] Computing wind field for poplar trees...');
             this.poplarTreeSystem.computeWindField();
+            console.log('[HybridTreeManager] Computing wind field for cherry trees...');
+            this.cherryTreeSystem.computeWindField();
             console.log('[HybridTreeManager] Wind field computed for all systems');
         } catch (err) {
             console.error('[HybridTreeManager] populateFromServer failed:', err);
@@ -136,6 +150,7 @@ class HybridTreeManager {
         this.terrainTreeSystem.clear();
         this.growingTreeSystem.clear();
         this.poplarTreeSystem.clear();
+        this.cherryTreeSystem.clear();
         this.treeRegistry.clear();
         console.log('[HybridTreeManager] Cleared all trees');
     }
@@ -150,6 +165,7 @@ class HybridTreeManager {
         this.terrainTreeSystem.update(timeSec, windStrength, windDirection);
         this.growingTreeSystem.update(timeSec, windStrength, windDirection);
         this.poplarTreeSystem.update(timeSec, windStrength, windDirection);
+        this.cherryTreeSystem.update(timeSec, windStrength, windDirection);
     }
 
     /**
@@ -158,7 +174,8 @@ class HybridTreeManager {
     hasTreeAt(worldX, worldZ) {
         return this.terrainTreeSystem.hasTreeAt(worldX, worldZ) ||
                this.growingTreeSystem.hasTreeAt(worldX, worldZ) ||
-               this.poplarTreeSystem.hasTreeAt(worldX, worldZ);
+               this.poplarTreeSystem.hasTreeAt(worldX, worldZ) ||
+               this.cherryTreeSystem.hasTreeAt(worldX, worldZ);
     }
 
     /**
@@ -167,7 +184,8 @@ class HybridTreeManager {
     getTreeCount() {
         return this.terrainTreeSystem.getTreeCount() +
                this.growingTreeSystem.getTreeCount() +
-               this.poplarTreeSystem.getTreeCount();
+               this.poplarTreeSystem.getTreeCount() +
+               this.cherryTreeSystem.getTreeCount();
     }
 
     /**
@@ -177,6 +195,7 @@ class HybridTreeManager {
         this.terrainTreeSystem.dispose();
         this.growingTreeSystem.dispose();
         this.poplarTreeSystem.dispose();
+        this.cherryTreeSystem.dispose();
         this.treeRegistry.clear();
         console.log('[HybridTreeManager] Disposed');
     }
@@ -188,5 +207,6 @@ class HybridTreeManager {
         this.terrainTreeSystem.setSeason(season);
         this.growingTreeSystem.setSeason(season);
         this.poplarTreeSystem.setSeason(season);
+        this.cherryTreeSystem.setSeason(season);
     }
 }
