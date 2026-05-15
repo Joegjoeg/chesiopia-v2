@@ -15,8 +15,8 @@ class PlanetMapping {
             centerZ: 0,
             wrapRadiusX: 128,
             wrapRadiusZ: 128,
-            sphereRadius: 300,
-            atmosphereRadius: 320
+            sphereRadius: 180,
+            atmosphereRadius: 210
         }];
 
         this.activePlanet = this.planets[0];
@@ -36,8 +36,8 @@ class PlanetMapping {
             centerZ: 0,
             wrapRadiusX: 128,
             wrapRadiusZ: 128,
-            sphereRadius: 1000,
-            atmosphereRadius: 1020
+            sphereRadius: 180,
+            atmosphereRadius: 210
         }, config);
         this.planets.push(planet);
         console.log(`[PlanetMapping] Added planet: ${planet.name} at (${planet.centerX}, ${planet.centerZ})`);

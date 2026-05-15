@@ -1,3 +1,6 @@
+var UP = window.UP || new THREE.Vector3(0, 1, 0);
+window.UP = UP;
+
 // GrowingTreeSystem
 // A tree system combining TerrainTreeSystem's instanced mesh performance and wind effects
 // with LocalTreeSystem's foliage textures, featuring shader-based growth animation with
@@ -85,10 +88,9 @@ class GrowingTreeSystem {
             metalness: 0.0,
             side: THREE.DoubleSide
         });
-        this._injectWindShader(trunkMat, 0.015);
         parts.push({
             name: 'trunk',
-            mesh: this._makeInstancedMesh(trunkGeo, trunkMat, true),
+            mesh: this._makeInstancedMesh(trunkGeo, trunkMat),
             offset: { x: 0, y: 0, z: 0 },
             scaleY: 1.0,
             swayAmount: 0.05
@@ -115,24 +117,23 @@ class GrowingTreeSystem {
                 metalness: 0.0,
                 side: THREE.DoubleSide
             });
-            this._injectWindShader(branchMat, 0.02);
             parts.push({
                 name: 'branch_' + i,
-                mesh: this._makeInstancedMesh(branchGeo, branchMat, true),
+                mesh: this._makeInstancedMesh(branchGeo, branchMat),
                 offset: { x: 0, y: 0, z: 0 },
                 scaleY: 1.0,
                 swayAmount: 0.08
             });
         }
 
-        // --- TWIGS (16 twigs, 4 per branch) - separate mesh for each twig ---
+        // --- TWIGS (8 twigs, 2 per branch) - separate mesh for each twig ---
         const twigConfigs = [];
         for (let b = 0; b < 4; b++) {
             const base = branchConfigs[b];
-            for (let t = 0; t < 4; t++) {
+            for (let t = 0; t < 2; t++) {
                 const twigAngleX = base.angleX + (Math.random() - 0.5) * 0.6;
                 const twigAngleZ = base.angleZ + (Math.random() - 0.5) * 0.6;
-                const twigHeight = base.height + 0.2 + t * 0.2;
+                const twigHeight = base.height + 0.2 + t * 0.35;
                 const attachX = Math.sin(twigAngleZ) * 0.15;
                 const attachZ = -Math.sin(twigAngleX) * 0.15;
                 twigConfigs.push({
@@ -145,7 +146,7 @@ class GrowingTreeSystem {
             }
         }
 
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 8; i++) {
             const twigGeo = new THREE.CylinderGeometry(0.02, 0.04, 0.4, 6);
             twigGeo.translate(0, 0.2, 0);
             const config = twigConfigs[i];
@@ -158,37 +159,33 @@ class GrowingTreeSystem {
                 metalness: 0.0,
                 side: THREE.DoubleSide
             });
-            this._injectWindShader(twigMat, 0.03);
             parts.push({
                 name: 'twig_' + i,
-                mesh: this._makeInstancedMesh(twigGeo, twigMat, true),
+                mesh: this._makeInstancedMesh(twigGeo, twigMat),
                 offset: { x: 0, y: 0, z: 0 },
                 scaleY: 1.0,
                 swayAmount: 0.12
             });
         }
 
-        // --- FOLIAGE (9 foliage spheres, positioned relative to trunk base) ---
+        // --- FOLIAGE (5 foliage spheres, positioned relative to trunk base) ---
         const foliageConfigs = [
-            { x: 0, y: 1.8, z: 0 },           // Trunk top
+            { x: 0, y: 1.8, z: 0, s: 1.0 },           // Trunk top
         ];
 
         for (let b = 0; b < 4; b++) {
             const base = branchConfigs[b];
             const attachX = Math.sin(base.angleZ) * 0.15;
             const attachZ = -Math.sin(base.angleX) * 0.15;
-            const midHeight = base.height + 0.4;
-            const midX = attachX + Math.sin(base.angleZ) * 0.4;
-            const midZ = attachZ - Math.sin(base.angleX) * 0.4;
-            foliageConfigs.push({ x: midX, y: midHeight, z: midZ });
-            const extHeight = base.height + 0.7;
-            const extX = attachX + Math.sin(base.angleZ) * 0.7;
-            const extZ = attachZ - Math.sin(base.angleX) * 0.7;
-            foliageConfigs.push({ x: extX, y: extHeight, z: extZ });
+            const midHeight = base.height + 0.55;
+            const midX = attachX + Math.sin(base.angleZ) * 0.55;
+            const midZ = attachZ - Math.sin(base.angleX) * 0.55;
+            foliageConfigs.push({ x: midX, y: midHeight, z: midZ, s: 0.9 });
         }
 
         for (let i = 0; i < foliageConfigs.length; i++) {
-            const foliageGeo = new THREE.SphereGeometry(0.4, 16, 12);
+            const scale = foliageConfigs[i].s || 1.0;
+            const foliageGeo = new THREE.SphereGeometry(0.45 * scale, 8, 6);
             const pos = foliageConfigs[i];
             foliageGeo.translate(pos.x, pos.y, pos.z);
             const foliageMat = new THREE.MeshStandardMaterial({
@@ -198,11 +195,11 @@ class GrowingTreeSystem {
                 metalness: 0.0,
                 transparent: true,
                 alphaTest: 0.05,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: false
             });
-            this._injectWindShader(foliageMat, 0.075);
-            const foliageMesh = this._makeInstancedMesh(foliageGeo, foliageMat, true); // needsWind = true
-            foliageMesh.renderOrder = 1; // Draw after trunk/branches
+            const foliageMesh = this._makeInstancedMesh(foliageGeo, foliageMat);
+            foliageMesh.renderOrder = 2; // Draw after transparent water plane
             parts.push({
                 name: 'foliage_' + i,
                 mesh: foliageMesh,
@@ -215,27 +212,14 @@ class GrowingTreeSystem {
         this.parts = parts;
     }
 
-    _makeInstancedMesh(geometry, material, needsWind = false) {
+    _makeInstancedMesh(geometry, material) {
         const mesh = new THREE.InstancedMesh(geometry, material, this.maxTrees);
+        mesh.name = 'growingTree';
         mesh.receiveShadow = true;
         mesh.castShadow = true;
+        mesh.frustumCulled = false; // LOD manager handles culling
         mesh.count = 0;
         mesh.userData.isTree = true; // For vertex profile categorization
-
-        if (needsWind) {
-            // Per-instance random phase so trees don't sway in unison
-            const phases = new Float32Array(this.maxTrees);
-            const windMults = new Float32Array(this.maxTrees);
-            for (let i = 0; i < this.maxTrees; i++) {
-                phases[i] = Math.random() * Math.PI * 2;
-                windMults[i] = 1.0;
-            }
-            mesh.geometry.setAttribute('aWindPhase',
-                new THREE.InstancedBufferAttribute(phases, 1));
-            mesh.geometry.setAttribute('aWindMultiplier',
-                new THREE.InstancedBufferAttribute(windMults, 1));
-        }
-
         return mesh;
     }
 
@@ -246,14 +230,21 @@ class GrowingTreeSystem {
                 lightDir:      { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
                 ambient:       { value: 0.65 },
                 uWindStrength: this.windUniforms.uWindStrength,
-                uSwayMult:     { value: swayMult }
+                uSwayMult:     { value: swayMult },
+                uWindHeightPower: { value: 2.0 },
+                fogColor: { value: new THREE.Color() },
+                fogNear: { value: 0 },
+                fogFar: { value: 0 }
             },
             vertexShader: `
+                #include <common>
+                #include <fog_pars_vertex>
                 attribute float aWindMultiplier;
 
                 uniform float uTime;
                 uniform float uWindStrength;
                 uniform float uSwayMult;
+                uniform float uWindHeightPower;
 
                 varying vec2 vUv;
                 varying vec3 vWorldNormal;
@@ -266,13 +257,18 @@ class GrowingTreeSystem {
                     vec4 wp = localToWorld * vec4(position, 1.0);
                     float h = max(0.0, wp.y);
                     float phase = position.x * 0.5 + position.z * 0.3;
-                    wp.x += sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.12 * uSwayMult * aWindMultiplier;
-                    wp.z += cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.08 * uSwayMult * aWindMultiplier;
+                    wp.x += sin(uTime * 1.8 + phase) * uWindStrength * pow(h, uWindHeightPower) * 0.12 * uSwayMult * aWindMultiplier;
+                    wp.z += cos(uTime * 2.6 + phase * 1.4) * uWindStrength * pow(h, uWindHeightPower) * 0.08 * uSwayMult * aWindMultiplier;
                     vWorldPos = wp.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * wp;
+                    vec4 mvPosition = viewMatrix * wp;
+                    gl_Position = projectionMatrix * mvPosition;
+                    #include <fog_vertex>
                 }
             `,
             fragmentShader: `
+                precision highp float;
+                #include <common>
+                #include <fog_pars_fragment>
                 uniform sampler2D map;
                 uniform vec3 lightDir;
                 uniform float ambient;
@@ -289,52 +285,23 @@ class GrowingTreeSystem {
                     vec3 litColor = texel.rgb * (ambient + diff * (1.0 - ambient));
                     // Simple edge fade based on normal Y component
                     float edgeAlpha = smoothstep(0.0, 0.5, abs(n.y));
+
+                    // Distance softening: desaturate + reduce contrast at 40-80 units from camera
+                    float camDist = length(cameraPosition - vWorldPos);
+                    float softenFactor = smoothstep(40.0, 80.0, camDist);
+                    vec3 gray = vec3(dot(litColor, vec3(0.299, 0.587, 0.114)));
+                    litColor = mix(litColor, gray, softenFactor * 0.45);
+                    litColor = mix(litColor, vec3(0.5), softenFactor * 0.2);
+
                     gl_FragColor = vec4(litColor, texel.a * edgeAlpha);
+                    #include <fog_fragment>
                 }
             `,
             transparent: true,
             side: THREE.DoubleSide,
-            depthWrite: true
+            depthWrite: false,
+            fog: true
         });
-    }
-
-    _injectWindShader(material, swayAmount) {
-        material.onBeforeCompile = (shader) => {
-            shader.uniforms.uTime = this.windUniforms.uTime;
-            shader.uniforms.uWindStrength = this.windUniforms.uWindStrength;
-            shader.uniforms.uWindDirection = this.windUniforms.uWindDirection;
-
-            console.log('[GrowingTreeSystem] Injecting wind shader with sway amount:', swayAmount);
-
-            shader.vertexShader = `
-                uniform float uTime;
-                uniform float uWindStrength;
-                uniform vec2 uWindDirection;
-                attribute float aWindPhase;
-                attribute float aWindMultiplier;
-
-                ${shader.vertexShader}
-            `;
-
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `
-                #include <begin_vertex>
-
-                // Wind animation (hinge from base y=0)
-                float heightFromBase = max(position.y, 0.0);
-                if (heightFromBase > 0.1) {
-                    float windPhase = uTime * 2.0 + aWindPhase + heightFromBase * 0.5;
-                    // Directional sway based on wind direction
-                    float windAmount = sin(windPhase) * uWindStrength * ${swayAmount.toFixed(3)} * heightFromBase * aWindMultiplier;
-                    transformed.x += windAmount * uWindDirection.x;
-                    transformed.z += windAmount * uWindDirection.y;
-                }
-                `
-            );
-
-            console.log('[GrowingTreeSystem] Wind shader injected successfully');
-        };
     }
 
     _generateSeasonalTextures() {
@@ -461,7 +428,10 @@ class GrowingTreeSystem {
 
         // Per-tree variation
         const growthSpeed = 0.8 + Math.random() * 0.4;
-        const finalHeight = (0.8 + Math.random() * 0.4) * 2; // 1.6 - 2.4
+        const finalHeight = (0.8 + Math.random() * 0.4) * 1.5; // 0.8 - 1.2
+
+        const board = window.game && window.game.boardSystem;
+        const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(x, z) : new THREE.Vector3(0, 1, 0);
 
         // Store tree data
         this.treeData.push({
@@ -472,7 +442,8 @@ class GrowingTreeSystem {
             growthSpeed,
             finalHeight,
             biomeModifier: biomeModifier * nearWater,
-            windMultiplier
+            windMultiplier,
+            normal: normal.clone()
         });
 
         // Initialize height smoothing buffer
@@ -482,18 +453,15 @@ class GrowingTreeSystem {
         this._currentHeights[index] = y;
 
         // Set matrices for all parts
+        this._scratchQuat.setFromUnitVectors(UP, normal);
         this._scratchMatrix.compose(
             this._scratchPos.set(x, y, z),
-            this._scratchQuat.set(0, 0, 0, 1),
+            this._scratchQuat,
             this._scratchScale.set(1, 1, 1)
         );
 
         for (const part of this.parts) {
             part.mesh.setMatrixAt(index, this._scratchMatrix);
-            // Set wind multiplier attribute if present
-            if (part.mesh.geometry.attributes.aWindMultiplier) {
-                part.mesh.geometry.attributes.aWindMultiplier.setX(index, windMultiplier);
-            }
         }
 
         this.treeCount++;
@@ -502,16 +470,10 @@ class GrowingTreeSystem {
         for (const part of this.parts) {
             part.mesh.count = this.treeCount;
         }
-
-        // Update wind multiplier attributes
-        for (const part of this.parts) {
-            if (part.mesh.geometry.attributes.aWindMultiplier) {
-                part.mesh.geometry.attributes.aWindMultiplier.needsUpdate = true;
-            }
-        }
     }
 
     update(timeSec, windStrength, windDirection) {
+        this.lastWindDirection = windDirection;
         // Update wind uniforms
         this.windUniforms.uTime.value = timeSec;
         this.windUniforms.uWindStrength.value = (windStrength != null ? windStrength : 0.8) * 0.5;
@@ -522,10 +484,10 @@ class GrowingTreeSystem {
             );
         }
 
-        // Debug: log wind strength
-        if (Math.random() < 0.01) {
-            console.log('[GrowingTreeSystem] Wind strength:', this.windUniforms.uWindStrength.value, 'Time:', timeSec);
-        }
+        // Debug: log wind strength (disabled)
+        // if (Math.random() < 0.01) {
+        //     console.log('[GrowingTreeSystem] Wind strength:', this.windUniforms.uWindStrength.value, 'Time:', timeSec);
+        // }
 
         // Animate growth for all trees (use a fixed delta time approximation)
         this._animateGrowth(0.016);
@@ -557,9 +519,11 @@ class GrowingTreeSystem {
             // Ensure minimum scale to avoid invisible trees
             const scale = Math.max(growthScale, 0.1);
 
+            const normal = data.normal || UP;
+            this._scratchQuat.setFromUnitVectors(UP, normal);
             this._scratchMatrix.compose(
                 this._scratchPos.set(data.x, data.y, data.z),
-                this._scratchQuat.set(0, 0, 0, 1),
+                this._scratchQuat,
                 this._scratchScale.set(scale, scale, scale)
             );
 
@@ -637,35 +601,20 @@ class GrowingTreeSystem {
             const newHeight = currentHeight + (targetHeight - currentHeight) * this._heightSmoothingFactor;
             this._currentHeights[i] = newHeight;
 
-            // Get terrain normal at tree position (includes ripple effects)
-            let finalHeight = newHeight;
-            let rippleTiltX = 0;
-            let rippleTiltZ = 0;
-
             if (board.getTerrainNormal) {
-                const normal = board.getTerrainNormal(tree.x, tree.z);
-
-                // Convert normal to tilt angles
-                // Normal (nx, ny, nz) → tilt angles
-                // pitch = atan2(nx, ny) (tilt forward/back)
-                // roll = atan2(-nz, ny) (tilt left/right)
-                rippleTiltX = Math.atan2(normal.x, normal.y);
-                rippleTiltZ = Math.atan2(-normal.z, normal.y);
-
-                if (Math.random() < 0.02) {
-                    console.log('[GrowingTreeSystem] Tree', i, 'normal:', normal.x.toFixed(3), normal.y.toFixed(3), normal.z.toFixed(3), 'tiltX:', rippleTiltX.toFixed(4), 'tiltZ:', rippleTiltZ.toFixed(4));
-                }
+                tree.normal = board.getTerrainNormal(tree.x, tree.z).clone();
             }
 
             // Update the Y position in the tree data
-            tree.y = finalHeight;
+            tree.y = newHeight;
 
             if (Math.random() < 0.005 && i === 0) {
-                console.log('[GrowingTreeSystem] Tree 0: current y:', tree.y.toFixed(3), 'targetHeight:', targetHeight.toFixed(3), 'finalHeight:', finalHeight.toFixed(3), 'tiltX:', rippleTiltX.toFixed(3), 'tiltZ:', rippleTiltZ.toFixed(3), 'dx:', dx.toFixed(1), 'dz:', dz.toFixed(1));
+                const n = tree.normal || UP;
+                console.log('[GrowingTreeSystem] Tree 0: current y:', tree.y.toFixed(3), 'targetHeight:', targetHeight.toFixed(3), 'normal:', n.x.toFixed(3), n.y.toFixed(3), n.z.toFixed(3), 'dx:', dx.toFixed(1), 'dz:', dz.toFixed(1));
             }
 
             // Update the instance matrix for this tree (with terrain tilt)
-            this.updateTreeInstanceMatrix(i, tree, rippleTiltX, rippleTiltZ);
+            this.updateTreeInstanceMatrix(i, tree);
         }
 
         if (shouldUpdateDistant) {
@@ -673,19 +622,12 @@ class GrowingTreeSystem {
         }
     }
 
-    updateTreeInstanceMatrix(i, tree, rippleTiltX = 0, rippleTiltZ = 0) {
+    updateTreeInstanceMatrix(i, tree) {
         const growthScale = tree.growthStage * tree.finalHeight;
         const scale = Math.max(growthScale, 0.1);
 
-        // Apply ripple tilt to the rotation (entire tree as a unit around its base)
-        this._scratchEuler.set(rippleTiltX, 0, rippleTiltZ);
-        this._scratchQuat.setFromEuler(this._scratchEuler);
-
-        if (Math.abs(rippleTiltX) > 0.001 || Math.abs(rippleTiltZ) > 0.001) {
-            if (Math.random() < 0.05) {
-                console.log('[GrowingTreeSystem] updateTreeInstanceMatrix tree', i, 'tilt applied:', rippleTiltX.toFixed(4), rippleTiltZ.toFixed(4), 'euler:', this._scratchEuler.x.toFixed(4), this._scratchEuler.y.toFixed(4), this._scratchEuler.z.toFixed(4));
-            }
-        }
+        const normal = tree.normal || UP;
+        this._scratchQuat.setFromUnitVectors(UP, normal);
 
         // For growing trees, all parts share the same position (tree base)
         // Apply the rotation to the instance
@@ -779,16 +721,31 @@ class GrowingTreeSystem {
     }
 
     computeWindField() {
-        // Use board's shared wind field computation
         const board = window.game && window.game.boardSystem;
         if (!board || !board.computeTreeWindField) {
             console.warn('[GrowingTreeSystem] No board wind field computation available');
             return;
         }
-
-        // Pass tree data to board for wind field computation
         board.computeTreeWindField(this.treeData, this.windField);
         console.log('[GrowingTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
+    }
+
+    recomputeWindMultipliers() {
+        const ps = window.parameterSystem;
+        const exposureScale = ps ? (ps.getParameter('windExposureScale')?.value ?? 6.0) : 6.0;
+        const shadowStrength = ps ? (ps.getParameter('windShadowStrength')?.value ?? 1.5) : 1.5;
+        const wd = this.lastWindDirection || (window.game && window.game.decorativeVisuals && window.game.decorativeVisuals.windDirection) || { x: 1, y: 0 };
+        const windDir = new THREE.Vector3(wd.x, 0, wd.y).normalize();
+        for (let i = 0; i < this.treeCount; i++) {
+            const data = this.treeData[i];
+            const normal = data.normal || new THREE.Vector3(0, 1, 0);
+            const windwardFactor = Math.max(0, normal.dot(windDir));
+            let mult = 1.0 + 0.5 * exposureScale;
+            mult *= (0.5 + windwardFactor * shadowStrength);
+            const baseMult = this.windField.get(`${Math.floor(data.x)},${Math.floor(data.z)}`) || 1.0;
+            mult *= baseMult;
+            data.windMultiplier = mult;
+        }
     }
 
     clear() {

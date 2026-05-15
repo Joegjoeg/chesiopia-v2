@@ -180,35 +180,6 @@ class TerrainSystem {
         });
     }
     
-    async loadChunk(chunkX, chunkZ) {
-        const chunkKey = `${chunkX},${chunkZ}`;
-        
-        // If world is downloaded, chunks should already be cached
-        if (this.worldDownloaded) {
-            if (this.chunks.has(chunkKey)) {
-                // Chunk is already cached, update trees if needed
-                if (this.treeSystem) {
-                    this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
-                }
-                return;
-            } else {
-                console.warn(`[Terrain] Chunk (${chunkX}, ${chunkZ}) not found in cached world data`);
-                return;
-            }
-        }
-        
-        // Fallback: If world not downloaded yet, trigger download
-        console.log(`[Terrain] World not downloaded yet, triggering download for chunk (${chunkX}, ${chunkZ})`);
-        await this.downloadEntireWorld();
-        
-        // After download, try again
-        if (this.chunks.has(chunkKey)) {
-            if (this.treeSystem) {
-                this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
-            }
-        }
-    }
-    
     unloadChunk(chunkKey) {
         const chunk = this.chunks.get(chunkKey);
         if (chunk) {

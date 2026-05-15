@@ -201,6 +201,7 @@ class GrassSystem {
         
         // Create points mesh
         const points = new THREE.Points(geometry, this.grassMaterial);
+        points.name = 'grassChunk_' + chunkKey;
         points.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
         
         // Add to scene
@@ -273,23 +274,34 @@ class GrassSystem {
     
     // Update grass animation (CPU-based for Points)
     update(deltaTime, cameraPosition) {
-        this.animationTime += deltaTime * this.windSpeed;
-        
+        // Read live parameters from parameterSystem if available
+        const ps = window.parameterSystem;
+        const windSpeed = ps ? ps.getParameter('grassWindSpeed') : null;
+        const phaseScale = ps ? ps.getParameter('grassPhaseScale') : null;
+        const windMult = ps ? ps.getParameter('grassWindMultiplier') : null;
+        const globalWind = ps ? ps.getParameter('windSpeed') : 1.0;
+
+        const animSpeed = windSpeed !== null ? windSpeed : this.windSpeed;
+        const phaseScl = phaseScale !== null ? phaseScale : 1.0;
+        const strength = (windMult !== null ? windMult * 0.3 : this.windStrength) * (globalWind || 1.0);
+
+        this.animationTime += deltaTime * animSpeed;
+
         // Update each chunk's grass positions
         for (const [chunkKey, grassData] of this.grassChunks) {
             if (!grassData.mesh || !grassData.basePositions) continue;
-            
+
             const positions = grassData.mesh.geometry.attributes.position.array;
             const basePositions = grassData.basePositions;
-            
+
             // Apply wind animation to each grass sprite
             for (let i = 0; i < basePositions.length; i++) {
                 const basePos = basePositions[i];
-                const phase = (basePos.x * 0.3 + basePos.z * 0.7) * Math.PI * 2;
-                
+                const phase = (basePos.x * 0.3 + basePos.z * 0.7) * Math.PI * 2 * phaseScl;
+
                 // Wind effect
-                const windX = Math.sin(this.animationTime * 2.0 + phase) * this.windStrength;
-                const windZ = Math.cos(this.animationTime * 1.6 + phase) * this.windStrength * 0.5;
+                const windX = Math.sin(this.animationTime * 2.0 + phase) * strength;
+                const windZ = Math.cos(this.animationTime * 1.6 + phase) * strength * 0.5;
                 
                 // Update position
                 const arrayIndex = i * 3;

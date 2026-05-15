@@ -2,11 +2,14 @@ class CleanBoardSystem {
 
 
 
-    constructor(scene, terrainSystem = null, treeSystem = null, game = null) {
+    constructor(scene, terrainSystem = null, treeSystem = null, game = null, renderer = null) {
 
 
 
         this.scene = scene;
+        this.renderer = renderer || null;
+        this._waterPlaneUserVisible = true;
+        this._waterPlaneUserOpacity = 0.95;
 
 
 
@@ -19,10 +22,14 @@ class CleanBoardSystem {
 
 
         this.game = game;
+        this.waterReflectionManager = null;
+
+        this._initWaterReflectionManager();
 
 
 
         this.chunks = new Map();
+        this.terrainModifiers = new Map();
 
 
 
@@ -209,11 +216,11 @@ class CleanBoardSystem {
 
 
 
-            nearDistance: 8,     // Distance where fade starts (checkerboard visible)
+            nearDistance: 4,   // Distance where fade starts (checkerboard visible)
 
 
 
-            farDistance: 16,    // Distance where fade ends (pure grass) - expanded fade zone
+            farDistance: 8,   // Distance where fade ends (pure grass) - tighter fade zone
 
 
 
@@ -413,21 +420,50 @@ class CleanBoardSystem {
             this.textureBlendingSystem = null;
         }
 
+        // Initialize planet mapping for spherical deformation
+        this.planetMapping = new PlanetMapping();
+        this._planetSphereRadius = this.planetMapping?.activePlanet?.sphereRadius || 180;
+        this._orbitSphereBaseRadius = null;
+        this._orbitSphereEnabled = false; // Legacy billboard planet disabled for starfield view
+        this.setPlanetSphereRadius(this._planetSphereRadius);
+
         console.log(`[Board] Board system initialized with terrain system: ${this.terrainSystem ? 'YES' : 'NO'}`);
 
-        // Wire chunk-loaded callback so rolling terrain refreshes newly arrived data
+        // Wire chunk-loaded callback so rolling terrain refreshes newly arrived data.
+        // Batched: accumulate chunk bounds and flush once per frame to avoid
+        // hammering computeVertexNormals() during warmChunkCache.
         if (this.terrainSystem) {
             const board = this;
             const previousCallback = this.terrainSystem.onChunkLoaded;
+            this._pendingRefresh = null; // { minX, minZ, maxX, maxZ }
+            this._refreshScheduled = false;
             this.terrainSystem.onChunkLoaded = function(chunkX, chunkZ) {
                 if (previousCallback) previousCallback(chunkX, chunkZ);
                 if (board.rollingTerrain) {
                     const cs = board.terrainSystem.chunkSize || 16;
-                    const minX = chunkX * cs;
-                    const minZ = chunkZ * cs;
-                    const maxX = minX + cs - 1;
-                    const maxZ = minZ + cs - 1;
-                    board.rollingTerrain.refreshRegion(minX, minZ, maxX, maxZ);
+                    const cMinX = chunkX * cs;
+                    const cMinZ = chunkZ * cs;
+                    const cMaxX = cMinX + cs - 1;
+                    const cMaxZ = cMinZ + cs - 1;
+                    if (!board._pendingRefresh) {
+                        board._pendingRefresh = { minX: cMinX, minZ: cMinZ, maxX: cMaxX, maxZ: cMaxZ };
+                    } else {
+                        board._pendingRefresh.minX = Math.min(board._pendingRefresh.minX, cMinX);
+                        board._pendingRefresh.minZ = Math.min(board._pendingRefresh.minZ, cMinZ);
+                        board._pendingRefresh.maxX = Math.max(board._pendingRefresh.maxX, cMaxX);
+                        board._pendingRefresh.maxZ = Math.max(board._pendingRefresh.maxZ, cMaxZ);
+                    }
+                    if (!board._refreshScheduled) {
+                        board._refreshScheduled = true;
+                        requestAnimationFrame(() => {
+                            board._refreshScheduled = false;
+                            if (board._pendingRefresh && board.rollingTerrain) {
+                                const r = board._pendingRefresh;
+                                board.rollingTerrain.refreshRegion(r.minX, r.minZ, r.maxX, r.maxZ);
+                                board._pendingRefresh = null;
+                            }
+                        });
+                    }
                 }
             };
         }
@@ -445,13 +481,13 @@ class CleanBoardSystem {
 
 
 
-        console.log(`[Board] Adaptive mesh optimization: ${this.optimization.adaptiveMesh.enabled ? 'ENABLED' : 'DISABLED'}`);
+        // console.log(`[Board] Adaptive mesh optimization: ${this.optimization.adaptiveMesh.enabled ? 'ENABLED' : 'DISABLED'}`);
 
 
 
 
 
-        console.log(`[Board] Chunk streaming: ${this.optimization.streaming.enabled ? 'ENABLED' : 'DISABLED'}`);
+        // console.log(`[Board] Chunk streaming: ${this.optimization.streaming.enabled ? 'ENABLED' : 'DISABLED'}`);
 
 
 
@@ -462,7 +498,9 @@ class CleanBoardSystem {
         // Initialize sun system
         this.createSunSystem();
 
-        console.log(`[Board] Sun system initialized`);
+        // Orbit sphere deferred — created lazily when camera reaches high altitude
+
+        // console.log(`[Board] Sun system initialized`);
     }
 
     createCircularTerrainMask() {
@@ -524,18 +562,79 @@ class CleanBoardSystem {
             horizonFadeDistance: 20  // Distance from horizon where flare starts fading
         };
 
-        // Moon configuration - opposite orbit, pale blue light
+        // Moon configuration - independent orbit with phases
         this.moon = {
             orbitRadius: 10,         // Same as sun
-            orbitSpeed: (2 * Math.PI) / (3 * 60),  // Same speed as sun
-            angle: Math.PI,          // Opposite to sun (180 degrees offset)
+            orbitPeriodDays: 28,     // Independent lunar month
+            orbitSpeed: (2 * Math.PI) / (3 * 60),  // Fallback local speed
+            angle: Math.PI,          // Starting angle (will be driven by game time)
             height: 30,             // Same height as sun
-            intensity: 0.5,         // Dimmer than sun
+            intensity: 0.5,         // Max intensity at full moon
             color: 0x87ceeb,        // Pale blue light (sky blue)
             flareSize: 8,           // Smaller than sun
             flareOpacity: 0.6,
-            horizonFadeDistance: 20
+            horizonFadeDistance: 20,
+            lastPhase: -1           // For phase texture caching
         };
+
+        // Lighting rig — artist-driven keyframe system (feature flag, defaults off)
+        this.lightingRig = {
+            enabled: false,
+            lights: {
+                sun: [
+                    { time: 0,  color: '#000000', intensity: 0.0 },
+                    { time: 5,  color: '#ff6347', intensity: 0.1 },
+                    { time: 6.5, color: '#ffd700', intensity: 0.6 },
+                    { time: 12, color: '#ffffff', intensity: 1.0 },
+                    { time: 18, color: '#ffaa55', intensity: 0.5 },
+                    { time: 20, color: '#4a0080', intensity: 0.05 },
+                    { time: 24, color: '#000000', intensity: 0.0 }
+                ],
+                moon: [
+                    { time: 0,  color: '#e2e8f0', intensity: 0.5 },
+                    { time: 5,  color: '#4a5568', intensity: 0.1 },
+                    { time: 12, color: '#000000', intensity: 0.0 },
+                    { time: 18, color: '#4a5568', intensity: 0.1 },
+                    { time: 20, color: '#a0aec0', intensity: 0.4 },
+                    { time: 24, color: '#e2e8f0', intensity: 0.5 }
+                ],
+                ambient: [
+                    { time: 0,  color: '#2d1b4e', intensity: 0.05 },
+                    { time: 5,  color: '#8b5cf6', intensity: 0.15 },
+                    { time: 6,  color: '#ffecd2', intensity: 0.25 },
+                    { time: 12, color: '#ffffff', intensity: 0.25 },
+                    { time: 18, color: '#ffecd2', intensity: 0.25 },
+                    { time: 20, color: '#8b5cf6', intensity: 0.15 },
+                    { time: 24, color: '#2d1b4e', intensity: 0.05 }
+                ],
+                nightAmbient: [
+                    { time: 0,  color: '#2a3a5a', intensity: 0.12 },
+                    { time: 5,  color: '#2a3a5a', intensity: 0.08 },
+                    { time: 6,  color: '#2a3a5a', intensity: 0.0 },
+                    { time: 18, color: '#2a3a5a', intensity: 0.0 },
+                    { time: 20, color: '#2a3a5a', intensity: 0.06 },
+                    { time: 24, color: '#2a3a5a', intensity: 0.12 }
+                ]
+            }
+        };
+
+        // Restore saved rig from localStorage if present
+        try {
+            const saved = localStorage.getItem('chesiopia-lighting-rig');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.lights) {
+                    this.lightingRig.enabled = !!parsed.enabled;
+                    Object.keys(this.lightingRig.lights).forEach(key => {
+                        if (parsed.lights[key] && Array.isArray(parsed.lights[key])) {
+                            this.lightingRig.lights[key] = parsed.lights[key];
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn('[Board] Failed to restore lightingRig from localStorage:', e);
+        }
 
         // Ambient light for atmospheric scattering at dusk/dawn (purple twilight)
         this.ambientLight = new THREE.AmbientLight(0x8b5cf6, 0); // Purple atmospheric color, starts at 0 intensity
@@ -579,6 +678,7 @@ class CleanBoardSystem {
         });
 
         this.sun.sprite = new THREE.Sprite(spriteMaterial);
+        this.sun.sprite.name = 'sunSprite';
         this.sun.sprite.scale.set(this.sun.flareSize * 2, this.sun.flareSize * 2, 1);
         this.sun.sprite.position.set(0, this.sun.height, 0);
         this.scene.add(this.sun.sprite);
@@ -598,6 +698,7 @@ class CleanBoardSystem {
             });
 
             const flare = new THREE.Sprite(flareMaterial);
+            flare.name = 'sunFlare';
             flare.scale.set(flareSize * 2, flareSize * 2, 1);
             flare.position.set(0, this.sun.height, 0);
             this.scene.add(flare);
@@ -628,29 +729,75 @@ class CleanBoardSystem {
 
         this.scene.add(this.moon.light);
 
-        // Create moon sprite (smaller, pale blue with circular texture)
-        const moonTexture = this.createCircularTexture(this.moon.color, 128, this.moon.flareOpacity);
+        // Create moon sprite with phase-based vector texture
+        const moonTexture = this.createMoonPhaseTexture(1.0, 128);
         const moonSpriteMaterial = new THREE.SpriteMaterial({
             map: moonTexture,
             transparent: true,
-            blending: THREE.AdditiveBlending,
+            blending: THREE.NormalBlending, // Normal blend so crescent is sharp against sky
             depthWrite: false
         });
 
         this.moon.sprite = new THREE.Sprite(moonSpriteMaterial);
+        this.moon.sprite.name = 'moonSprite';
         this.moon.sprite.scale.set(this.moon.flareSize * 2, this.moon.flareSize * 2, 1);
         this.moon.sprite.position.set(0, this.moon.height, 0);
         this.scene.add(this.moon.sprite);
 
         console.log('[SUN] Sun and moon system created');
 
-        // Create sky gradient texture canvas
+        // Create sky gradient texture canvas (fallback when shader is disabled)
         this.skyCanvas = document.createElement('canvas');
         this.skyCanvas.width = 512;
         this.skyCanvas.height = 512;
         this.skyContext = this.skyCanvas.getContext('2d');
         this.skyTexture = new THREE.CanvasTexture(this.skyCanvas);
-        this.scene.background = this.skyTexture;
+
+        // Initialize sky shader system for starfield (if class exists)
+        if (typeof SkyShaderSystem !== 'undefined') {
+            this.skyShaderSystem = new SkyShaderSystem(this.scene);
+            // Use shader by default - clear scene.background so shader sphere shows through
+            this.scene.background = null;
+            console.log('[Board] SkyShaderSystem initialized');
+        } else {
+            console.warn('[Board] SkyShaderSystem class not found, using canvas sky fallback');
+            this.scene.background = this.skyTexture;
+        }
+    }
+
+    updateWaterPlanePosition(cameraPosition) {
+        if (!this._waterPlane) return;
+        this._waterPlane.position.x = cameraPosition.x;
+        this._waterPlane.position.z = cameraPosition.z;
+    }
+
+    updateWaterPlaneFade(cameraHeight = 0) {
+        if (!this._waterPlane || !this._waterPlane.material) return;
+
+        const userVisible = (this._waterPlaneUserVisible !== undefined)
+            ? this._waterPlaneUserVisible
+            : true;
+        if (!userVisible) {
+            this._waterPlane.visible = false;
+            return;
+        }
+
+        const fadeStart = window.parameterSystem
+            ? (window.parameterSystem.getParameter('waterPlaneFadeStartHeight') ?? 20)
+            : 20;
+        const fadeEnd = window.parameterSystem
+            ? (window.parameterSystem.getParameter('waterPlaneFadeEndHeight') ?? 120)
+            : 120;
+        const fade = THREE.MathUtils.smoothstep(cameraHeight, fadeStart, fadeEnd);
+
+        const shaderOpacity = window.parameterSystem
+            ? (window.parameterSystem.getParameter('waterOpacity') ?? 1)
+            : 1;
+        const userOpacity = this._waterPlaneUserOpacity ?? this._waterPlaneBaseOpacity ?? this._waterPlane.material.opacity ?? 1;
+        const opacity = userOpacity * shaderOpacity * (1 - fade);
+
+        this._waterPlane.material.opacity = opacity;
+        this._waterPlane.visible = opacity > 0.01;
     }
 
     // Create circular gradient texture for sun/moon sprites
@@ -681,7 +828,67 @@ class CleanBoardSystem {
         return new THREE.CanvasTexture(canvas);
     }
 
-    updateSkyColor(sunElevation) {
+    // Create a vector moon phase texture (crescent, gibbous, full)
+    createMoonPhaseTexture(illumination, size = 128) {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cx = size / 2;
+        const cy = size / 2;
+        const r = size / 2 - 2;
+
+        ctx.clearRect(0, 0, size, size);
+
+        const litColor = '#e2e4ec';
+        const shadowColor = '#0d0d18';
+
+        // Dark disc base
+        ctx.fillStyle = shadowColor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (illumination <= 0.01) {
+            // New moon — keep dark
+        } else if (illumination >= 0.99) {
+            // Full moon
+            ctx.fillStyle = litColor;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // Partial phase — draw lit portion using arc + bezier terminator
+            ctx.fillStyle = litColor;
+            ctx.beginPath();
+
+            if (illumination < 0.5) {
+                // Waxing crescent: right side lit
+                ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, false);
+                const termInset = r * (1 - 2 * illumination);
+                ctx.bezierCurveTo(cx + termInset, cy + r, cx + termInset, cy - r, cx, cy - r);
+            } else {
+                // Waxing gibbous: mostly lit, dark on left
+                ctx.arc(cx, cy, r, Math.PI / 2, -Math.PI / 2, false);
+                const termInset = r * (2 * illumination - 1);
+                ctx.bezierCurveTo(cx - termInset, cy - r, cx - termInset, cy + r, cx, cy + r);
+            }
+
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Subtle rim for definition
+        ctx.strokeStyle = 'rgba(160, 160, 180, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    updateSkyColor(sunElevation, cameraHeight = 0) {
         if (!this.skyContext) return;
         const ctx = this.skyContext;
         const width = this.skyCanvas.width;
@@ -802,11 +1009,12 @@ class CleanBoardSystem {
         // Update texture
         this.skyTexture.needsUpdate = true;
 
-        // Update fog color based on time of day
-        this.updateFogColor(sunElevation);
+        // Update fog color based on time of day and camera altitude
+        this.updateFogColor(sunElevation, cameraHeight);
+        this.updateWaterPlaneFade(cameraHeight);
     }
 
-    updateFogColor(sunElevation) {
+    updateFogColor(sunElevation, cameraHeight = 0) {
         if (!this.scene.fog) return;
 
         // Scale transition thresholds based on day length (shorter day = wider angular range for transitions)
@@ -864,6 +1072,33 @@ class CleanBoardSystem {
             fogNear = 6; fogFar = 28;
         }
 
+        // Retreat fog as camera gains altitude (orbit effect)
+        const fadeStartH = 30;
+        const fadeEndH = 120;
+        const disableH = 120;
+
+        if (cameraHeight >= disableH) {
+            // Orbit: completely disable fog so stars are fully visible
+            if (this.scene.fog) {
+                this._savedFog = this.scene.fog;
+                this.scene.fog = null;
+                console.log('[FOG] DISABLED at altitude', cameraHeight.toFixed(1));
+            }
+            return; // Fog is off, nothing more to do
+        }
+
+        // Below orbit: restore fog if it was disabled
+        if (!this.scene.fog && this._savedFog) {
+            this.scene.fog = this._savedFog;
+            console.log('[FOG] RESTORED at altitude', cameraHeight.toFixed(1));
+        }
+
+        // At ground level (0 height): normal fog
+        // At orbit approaching (150 height): fog pushed to far distance
+        const altitudeFade = THREE.MathUtils.smoothstep(cameraHeight, fadeStartH, fadeEndH);
+        fogNear = lerp(fogNear, 500, altitudeFade);
+        fogFar = lerp(fogFar, 2000, altitudeFade);
+
         this.scene.fog.color.setRGB(fogColor.r / 255, fogColor.g / 255, fogColor.b / 255);
         this.scene.fog.near = fogNear;
         this.scene.fog.far = fogFar;
@@ -894,6 +1129,43 @@ class CleanBoardSystem {
         }
     }
 
+    interpolateRig(keyframes, time) {
+        // Wrap time to 0-24 range
+        const wrappedTime = ((time % 24) + 24) % 24;
+
+        // Sort keyframes by time (defensive)
+        const sorted = keyframes.slice().sort((a, b) => a.time - b.time);
+        if (sorted.length < 2) {
+            const k = sorted[0] || { color: '#000000', intensity: 0 };
+            return { color: new THREE.Color(k.color), intensity: k.intensity };
+        }
+
+        // Find keyframes before and after wrappedTime, with 24h looping
+        let before = null, after = null;
+        for (let i = 0; i < sorted.length; i++) {
+            if (sorted[i].time <= wrappedTime) before = sorted[i];
+            if (sorted[i].time >= wrappedTime && after === null) after = sorted[i];
+        }
+
+        // Wrap-around: if no before, use last keyframe (treated as -24h offset)
+        if (!before) before = sorted[sorted.length - 1];
+        // Wrap-around: if no after, use first keyframe (treated as +24h offset)
+        if (!after) after = sorted[0];
+
+        let dt = after.time - before.time;
+        if (dt <= 0) dt += 24; // wrap across midnight
+
+        const t = dt === 0 ? 0 : (wrappedTime - before.time + (wrappedTime < before.time ? 24 : 0)) / dt;
+        const clampedT = Math.max(0, Math.min(1, t));
+
+        const colorA = new THREE.Color(before.color);
+        const colorB = new THREE.Color(after.color);
+        return {
+            color: colorA.lerp(colorB, clampedT),
+            intensity: before.intensity + (after.intensity - before.intensity) * clampedT
+        };
+    }
+
     updateSunPosition(cameraPosition) {
         // Update seasons
         this.updateSeasons();
@@ -902,41 +1174,54 @@ class CleanBoardSystem {
         const referenceDayLength = 60000; // 60 seconds reference
         const timeScale = referenceDayLength / this.serverDayLength; // Inverted: shorter day = larger scale
 
+        // Compute interpolated game time (used for both sun and moon)
+        let currentGameTime = this.serverGameTime;
+        if (this.serverGameTime > 0 && this.lastTimeSyncTimestamp > 0) {
+            currentGameTime += Date.now() - this.lastTimeSyncTimestamp;
+        }
+
         // Update sun angle based on server game time
         if (this.serverGameTime > 0) {
-            // Interpolate time locally between server syncs for smooth movement
-            let currentGameTime = this.serverGameTime;
-            if (this.lastTimeSyncTimestamp > 0) {
-                // Add elapsed time since last sync to get smooth continuous movement
-                const elapsedSinceSync = Date.now() - this.lastTimeSyncTimestamp;
-                currentGameTime += elapsedSinceSync;
-            }
-
-            // Use interpolated time: angle = (elapsedTime / dayLength) * 2PI - PI/2
-            // Offset by -PI/2 so that 0:00 = midnight, 6:00 = sunrise, 12:00 = noon, 18:00 = sunset
             this.sun.angle = (currentGameTime / this.serverDayLength) * (2 * Math.PI) - (Math.PI / 2);
         } else {
-            // Fallback to local frame-based increments if no server time yet
             this.sun.angle += this.sun.orbitSpeed;
+            currentGameTime = 0;
             console.log('[Board] Sun angle using local fallback');
         }
-        this.moon.angle = this.sun.angle + Math.PI;  // Moon is opposite to sun
+
+        // Update moon angle independently (lunar orbit period)
+        const moonOrbitPeriodMs = this.moon.orbitPeriodDays * this.serverDayLength;
+        const moonCycleProgress = (currentGameTime % moonOrbitPeriodMs) / moonOrbitPeriodMs;
+        this.moon.angle = moonCycleProgress * 2 * Math.PI - (Math.PI / 2);
 
         // Get seasonal configuration
         const season = this.seasonConfig[this.currentSeason];
-        const seasonTilt = season.sunTilt;
 
-        // Calculate sun height based on angle (vertical orbit) with seasonal tilt
-        const sunHeight = Math.max(0, Math.sin(this.sun.angle) * this.sun.height);
-        const sunElevation = Math.sin(this.sun.angle);
+        // Seasonal declination: shifts sun path north/south through the year
+        // +0.4 in summer (day ~30), -0.4 in winter (day ~90), 0 at equinoxes
+        const maxDeclination = 0.4;
+        const yearProgress = (this.serverGameTime % this.yearLength) / this.yearLength;
+        const seasonalOffset = maxDeclination * Math.cos((yearProgress - 0.25) * 2 * Math.PI);
 
-        // Calculate sun position (orbits around camera horizontally on X-axis, seasonal tilt on Y-axis)
+        // Calculate sun elevation with seasonal declination
+        const rawSunElevation = Math.sin(this.sun.angle);
+        const sunElevation = rawSunElevation + seasonalOffset;
+        const sunHeight = Math.max(0, sunElevation * this.sun.height);
+
+        // Compute time-of-day for lighting rig interpolation
+        const dayProgress = (currentGameTime % this.serverDayLength) / this.serverDayLength;
+        const hours = dayProgress * 24;
+
+        // Calculate sun position
         const sunX = cameraPosition.x + Math.cos(this.sun.angle) * this.sun.orbitRadius;
         const sunZ = cameraPosition.z + Math.sin(this.sun.angle) * this.sun.orbitRadius;
-        const sunY = cameraPosition.y + sunHeight + seasonTilt * 5; // Seasonal tilt affects height
+        const sunY = cameraPosition.y + sunHeight;
 
         // Update sun light position
         this.sun.light.position.set(sunX, sunY, sunZ);
+
+        // Compute sun direction for sky shader (from camera toward sun)
+        const sunDir = new THREE.Vector3(sunX - cameraPosition.x, sunY - cameraPosition.y, sunZ - cameraPosition.z).normalize();
 
         // Update sun light target to center on camera position
         this.sun.light.target.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z);
@@ -951,58 +1236,38 @@ class CleanBoardSystem {
         this.sun.light.shadow.camera.updateProjectionMatrix();
         this.sun.light.shadow.needsUpdate = true;
 
-        // Fade light intensity when sun is below horizon
-        const lightIntensity = Math.max(0, sunElevation) * this.sun.intensity;
-        this.sun.light.intensity = lightIntensity;
+        // Calculate camera height above terrain
+        const terrainHeight = this.getTerrainHeight ? this.getTerrainHeight(cameraPosition.x, cameraPosition.z) : 0;
+        const cameraHeight = Math.max(0, cameraPosition.y - terrainHeight);
 
-        // Smooth sun color transition based on elevation
-        const sunriseThreshold = 0 * timeScale;
-        const middayThreshold = 0.2 * timeScale;
-        const noonThreshold = 0.5 * timeScale;
-
-        // Define color keyframes for different elevations
-        const sunriseColor = new THREE.Color(0xff6347);  // Tomato orange
-        const sunriseRedColor = new THREE.Color(0xff2200); // Strong red at sunrise
-        const midDayColor = new THREE.Color(0xfffacd);    // Lemon chiffon
-        const noonColor = new THREE.Color(0xffffff);      // White
-        const sunNightColor = new THREE.Color(0x000000);  // Black (below horizon)
-
-        let sunColor;
-        if (sunElevation <= sunriseThreshold) {
-            // Below horizon
-            sunColor = sunNightColor;
-        } else if (sunElevation < 0.05 * timeScale) {
-            // Just above horizon - strong red tint that quickly fades
-            const t = (sunElevation - sunriseThreshold) / (0.05 * timeScale - sunriseThreshold);
-            sunColor = sunriseRedColor.clone().lerp(sunriseColor, t);
-        } else if (sunElevation < middayThreshold) {
-            // Sunrise to midday transition
-            const t = (sunElevation - 0.05 * timeScale) / (middayThreshold - 0.05 * timeScale);
-            sunColor = sunriseColor.clone().lerp(midDayColor, t);
-        } else if (sunElevation < noonThreshold) {
-            // Midday to noon transition
-            const t = (sunElevation - middayThreshold) / (noonThreshold - middayThreshold);
-            sunColor = midDayColor.clone().lerp(noonColor, t);
-        } else {
-            // Noon
-            sunColor = noonColor;
-        }
-        this.sun.light.color.copy(sunColor);
+        // Persist camera height for systems that need it later (water fade, etc.)
+        this._lastCameraHeight = cameraHeight;
 
         // Update sky background color based on sun elevation
         if (this._viewportShader) {
             this._viewportShader.uniforms.uSunElevation.value = sunElevation;
         }
-        this.updateSkyColor(sunElevation);
+        this.updateSkyColor(sunElevation, cameraHeight);
 
-        // Calculate moon height (opposite to sun) with seasonal tilt
-        const moonHeight = Math.max(0, Math.sin(this.moon.angle) * this.moon.height);
-        const moonElevation = Math.sin(this.moon.angle);
+        // Update sky shader system with camera height and time
+        if (this.skyShaderSystem) {
+            this.skyShaderSystem.update(performance.now() * 0.001, cameraHeight, sunElevation, cameraPosition, sunDir);
+        }
 
-        // Calculate moon position (opposite to sun) with seasonal tilt
+        // Update zodiac constellation system
+        if (this.zodiacSystem) {
+            this.zodiacSystem.update(performance.now() * 0.001, cameraPosition, cameraHeight);
+        }
+
+        // Calculate moon elevation with inverse seasonal declination
+        const rawMoonElevation = Math.sin(this.moon.angle);
+        const moonElevation = rawMoonElevation - seasonalOffset;
+        const moonHeight = Math.max(0, moonElevation * this.moon.height);
+
+        // Calculate moon position
         const moonX = cameraPosition.x + Math.cos(this.moon.angle) * this.moon.orbitRadius;
         const moonZ = cameraPosition.z + Math.sin(this.moon.angle) * this.moon.orbitRadius;
-        const moonY = cameraPosition.y + moonHeight + seasonTilt * 5; // Seasonal tilt affects moon too
+        const moonY = cameraPosition.y + moonHeight;
 
         // Update moon light position
         this.moon.light.position.set(moonX, moonY, moonZ);
@@ -1020,116 +1285,154 @@ class CleanBoardSystem {
         this.moon.light.shadow.camera.updateProjectionMatrix();
         this.moon.light.shadow.needsUpdate = true;
 
-        // Fade moon light intensity when moon is below horizon
-        const moonFadeInStart = -0.2 * timeScale;
-        let moonIntensity;
-        if (moonElevation < moonFadeInStart) {
-            moonIntensity = 0;
-        } else if (moonElevation < 0) {
-            // Fade in from moonFadeInStart to 0
-            const fadeProgress = (moonElevation - moonFadeInStart) / (0 - moonFadeInStart);
-            moonIntensity = fadeProgress * season.moonIntensity * 0.3; // Start at 30% of max
-        } else {
-            // Full intensity based on elevation
-            moonIntensity = Math.min(1, moonElevation * 2) * season.moonIntensity;
-        }
+        if (this.lightingRig && this.lightingRig.enabled) {
+            // Rig-driven color/intensity overrides
+            const sunState = this.interpolateRig(this.lightingRig.lights.sun, hours);
+            this.sun.light.color.copy(sunState.color);
+            this.sun.light.intensity = sunState.intensity;
 
-        // Night deepening: darken moonlight between midnight (00:00) and 03:00, then restore by 05:00
-        // Calculate hours from midnight (0-24 scale, where 0 = midnight)
-        const dayProgress = (this.serverGameTime % this.serverDayLength) / this.serverDayLength;
-        const hours = dayProgress * 24;
-        const midnightHours = hours >= 12 ? hours - 12 : hours + 12; // Normalize so 0 = midnight
-        let nightDarkenFactor = 1.0;
-        if (sunElevation < 0 && midnightHours >= 0 && midnightHours < 5) {
-            let t;
-            if (midnightHours < 3) {
-                // 00:00 to 03:00: fade to 30% intensity
-                t = midnightHours / 3; // 0 at 00:00, 1 at 03:00
-                nightDarkenFactor = 1.0 - (t * 0.7); // 1.0 at 00:00, 0.3 at 03:00
+            const moonState = this.interpolateRig(this.lightingRig.lights.moon, (hours + 12) % 24);
+            this.moon.light.color.copy(moonState.color);
+            this.moon.light.intensity = moonState.intensity;
+
+            const ambientState = this.interpolateRig(this.lightingRig.lights.ambient, hours);
+            this.ambientLight.color.copy(ambientState.color);
+            this.ambientLight.intensity = ambientState.intensity;
+
+            const nightAmbientState = this.interpolateRig(this.lightingRig.lights.nightAmbient, hours);
+            this.nightAmbientLight.color.copy(nightAmbientState.color);
+            this.nightAmbientLight.intensity = nightAmbientState.intensity;
+        } else {
+            // Legacy hardcoded color/intensity thresholds
+            // Fade light intensity when sun is below horizon
+            const lightIntensity = Math.max(0, sunElevation) * this.sun.intensity;
+            this.sun.light.intensity = lightIntensity;
+
+            // Smooth sun color transition based on elevation
+            const sunriseThreshold = 0 * timeScale;
+            const middayThreshold = 0.2 * timeScale;
+            const noonThreshold = 0.5 * timeScale;
+
+            const sunriseColor = new THREE.Color(0xff6347);
+            const sunriseRedColor = new THREE.Color(0xff2200);
+            const midDayColor = new THREE.Color(0xfffacd);
+            const noonColor = new THREE.Color(0xffffff);
+            const sunNightColor = new THREE.Color(0x000000);
+
+            let sunColor;
+            if (sunElevation <= sunriseThreshold) {
+                sunColor = sunNightColor;
+            } else if (sunElevation < 0.05 * timeScale) {
+                const t = (sunElevation - sunriseThreshold) / (0.05 * timeScale - sunriseThreshold);
+                sunColor = sunriseRedColor.clone().lerp(sunriseColor, t);
+            } else if (sunElevation < middayThreshold) {
+                const t = (sunElevation - 0.05 * timeScale) / (middayThreshold - 0.05 * timeScale);
+                sunColor = sunriseColor.clone().lerp(midDayColor, t);
+            } else if (sunElevation < noonThreshold) {
+                const t = (sunElevation - middayThreshold) / (noonThreshold - middayThreshold);
+                sunColor = midDayColor.clone().lerp(noonColor, t);
             } else {
-                // 03:00 to 05:00: restore to 100% intensity
-                t = (midnightHours - 3) / 2; // 0 at 03:00, 1 at 05:00
-                nightDarkenFactor = 0.3 + (t * 0.7); // 0.3 at 03:00, 1.0 at 05:00
+                sunColor = noonColor;
             }
-        }
-        moonIntensity *= nightDarkenFactor;
-        this.moon.light.intensity = moonIntensity;
+            this.sun.light.color.copy(sunColor);
 
-        // Debug shadow state (moved here after moonElevation is defined)
-        if (this.frameCount % 60 === 0) {
-            console.log(`[SHADOW DEBUG] sunElev=${sunElevation.toFixed(2)} sunInt=${this.sun.light.intensity.toFixed(2)} moonElev=${moonElevation.toFixed(2)} moonInt=${this.moon.light.intensity.toFixed(2)} castShadow=${this.sun.light.castShadow}`);
-        }
+            // Compute moon phase (0 = new, 1 = full)
+            const phaseAngle = ((this.moon.angle - this.sun.angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+            const illumination = (1 + Math.cos(phaseAngle)) / 2;
 
-        // Red-tinted moon events (4x per year at season boundaries)
-        const redMoonDays = [0, 30, 60, 90]; // Season boundaries
-        let redMoonFactor = 0;
-        for (const day of redMoonDays) {
-            const dayDiff = Math.abs(this.dayOfYear - day);
-            if (dayDiff < 5) { // 5-day fade window
-                const fade = 1 - (dayDiff / 5);
-                redMoonFactor = Math.max(redMoonFactor, fade);
+            // Update moon phase texture if changed significantly
+            if (Math.abs(illumination - (this.moon.lastPhase || -1)) > 0.02) {
+                this.moon.lastPhase = illumination;
+                if (this.moon.sprite && this.moon.sprite.material) {
+                    const newTexture = this.createMoonPhaseTexture(illumination, 128);
+                    this.moon.sprite.material.map = newTexture;
+                    this.moon.sprite.material.needsUpdate = true;
+                }
             }
+
+            // Fade moon light intensity when moon is below horizon, scaled by phase
+            const moonFadeInStart = -0.2 * timeScale;
+            let moonBaseIntensity;
+            if (moonElevation < moonFadeInStart) {
+                moonBaseIntensity = 0;
+            } else if (moonElevation < 0) {
+                const fadeProgress = (moonElevation - moonFadeInStart) / (0 - moonFadeInStart);
+                moonBaseIntensity = fadeProgress * 0.3;
+            } else {
+                moonBaseIntensity = Math.min(1, moonElevation * 2);
+            }
+
+            // Scale by season max and phase illumination (new moon = dim, full moon = bright)
+            let moonIntensity = moonBaseIntensity * season.moonIntensity * illumination;
+
+            // Night deepening: darken moonlight between midnight (00:00) and 03:00, then restore by 05:00
+            const midnightHours = hours >= 12 ? hours - 12 : hours + 12;
+            let nightDarkenFactor = 1.0;
+            if (sunElevation < 0 && midnightHours >= 0 && midnightHours < 5) {
+                let t;
+                if (midnightHours < 3) {
+                    t = midnightHours / 3;
+                    nightDarkenFactor = 1.0 - (t * 0.7);
+                } else {
+                    t = (midnightHours - 3) / 2;
+                    nightDarkenFactor = 0.3 + (t * 0.7);
+                }
+            }
+            moonIntensity *= nightDarkenFactor;
+            this.moon.light.intensity = moonIntensity;
+
+            // Red-tinted moon events
+            const redMoonDays = [0, 30, 60, 90];
+            let redMoonFactor = 0;
+            for (const day of redMoonDays) {
+                const dayDiff = Math.abs(this.dayOfYear - day);
+                if (dayDiff < 5) {
+                    const fade = 1 - (dayDiff / 5);
+                    redMoonFactor = Math.max(redMoonFactor, fade);
+                }
+            }
+
+            // Smooth moon color transition
+            const moonRiseColor = new THREE.Color(0x4a5568);
+            const moonZenithColor = new THREE.Color(0xe2e8f0);
+            const moonNightColor = new THREE.Color(0x000000);
+            const redMoonColor = new THREE.Color(0xcc3333);
+            const moonColorZenithThreshold = 0.5 * timeScale;
+
+            let moonColor;
+            if (moonElevation <= 0) {
+                moonColor = moonNightColor;
+            } else if (moonElevation < moonColorZenithThreshold) {
+                const t = moonElevation / moonColorZenithThreshold;
+                moonColor = moonRiseColor.clone().lerp(moonZenithColor, t);
+            } else {
+                moonColor = moonZenithColor;
+            }
+            const seasonalMoonColor = new THREE.Color(...season.moonColor);
+            moonColor.lerp(seasonalMoonColor, 0.5);
+            if (redMoonFactor > 0) {
+                moonColor.lerp(redMoonColor, redMoonFactor * 0.7);
+            }
+            this.moon.light.color.copy(moonColor);
+
+            // Ambient light intensity
+            const sunsetThreshold = 0.3 * timeScale;
+            let ambientIntensity = 0;
+            let nightAmbientIntensity = 0;
+            if (sunElevation >= sunsetThreshold) {
+                ambientIntensity = 0.25;
+            } else if (sunElevation > 0) {
+                const t = sunElevation / sunsetThreshold;
+                ambientIntensity = 0.2 + 0.05 * t;
+            } else if (sunElevation > -0.2 * timeScale) {
+                const t = 1.0 - (Math.abs(sunElevation) / (0.2 * timeScale));
+                ambientIntensity = 0.2 * t;
+            } else {
+                nightAmbientIntensity = 0.08;
+            }
+            this.ambientLight.intensity = ambientIntensity;
+            this.nightAmbientLight.intensity = nightAmbientIntensity;
         }
-
-        // Smooth moon color transition based on elevation and season
-        const moonRiseColor = new THREE.Color(0x4a5568);   // Dim bluish-gray
-        const moonZenithColor = new THREE.Color(0xe2e8f0);  // Bright silver
-        const moonNightColor = new THREE.Color(0x000000);    // Black (below horizon)
-        const redMoonColor = new THREE.Color(0xcc3333);     // Blood moon red
-        const moonColorZenithThreshold = 0.5 * timeScale;
-
-        let moonColor;
-        if (moonElevation <= 0) {
-            // Below horizon
-            moonColor = moonNightColor;
-        } else if (moonElevation < moonColorZenithThreshold) {
-            // Moonrise to zenith transition
-            const t = moonElevation / moonColorZenithThreshold;
-            moonColor = moonRiseColor.clone().lerp(moonZenithColor, t);
-        } else {
-            // Zenith
-            moonColor = moonZenithColor;
-        }
-
-        // Apply seasonal moon color
-        const seasonalMoonColor = new THREE.Color(...season.moonColor);
-        moonColor.lerp(seasonalMoonColor, 0.5);
-
-        // Apply red moon tint if active
-        if (redMoonFactor > 0) {
-            moonColor.lerp(redMoonColor, redMoonFactor * 0.7);
-        }
-
-        this.moon.light.color.copy(moonColor);
-
-        // Update ambient light intensity for atmospheric scattering at dusk/dawn
-        // Represents sunlight bouncing off atmosphere when sun is at low angles and after sunset
-        // Scale transition thresholds based on day length
-        const sunsetThreshold = 0.3 * timeScale;
-        const moonRiseThreshold = 0.2 * timeScale;
-        const moonAmbientZenithThreshold = 0.4 * timeScale;
-
-        let ambientIntensity = 0;
-        let nightAmbientIntensity = 0;
-
-        if (sunElevation >= sunsetThreshold) {
-            // Daytime - moderate fill so shadowed sides aren't pitch black
-            ambientIntensity = 0.25;
-        } else if (sunElevation > 0) {
-            // Sunset fade: drop from 0.25 down to 0.2 at the horizon
-            const t = sunElevation / sunsetThreshold;
-            ambientIntensity = 0.2 + 0.05 * t;
-        } else if (sunElevation > -0.2 * timeScale) {
-            // Twilight glow just after sunset (purple atmospheric scattering)
-            const t = 1.0 - (Math.abs(sunElevation) / (0.2 * timeScale));
-            ambientIntensity = 0.2 * t;
-        } else {
-            // Deep night - very low ambient, let the moon directional light do the work
-            nightAmbientIntensity = 0.08;
-        }
-
-        this.ambientLight.intensity = ambientIntensity;
-        this.nightAmbientLight.intensity = nightAmbientIntensity;
 
         // Winter night fog (cold color, fade in during winter)
         if (this.currentSeason === 'WINTER' && sunElevation <= 0) {
@@ -1142,6 +1445,28 @@ class CleanBoardSystem {
             this.scene.fog.far = THREE.MathUtils.lerp(this.scene.fog.far, 40, fogFade);
         }
 
+        // Update day time display every frame for smooth clock
+        if (typeof document !== 'undefined') {
+            const dayTimeEl = document.getElementById('dayTime');
+            if (dayTimeEl) {
+                // Interpolate time locally between server syncs for smooth clock
+                let currentGameTime = this.serverGameTime;
+                if (this.lastTimeSyncTimestamp > 0) {
+                    const elapsedSinceSync = Date.now() - this.lastTimeSyncTimestamp;
+                    currentGameTime += elapsedSinceSync;
+                }
+                const displayDayProgress = (currentGameTime % this.serverDayLength) / this.serverDayLength;
+                const displayHours = Math.floor(displayDayProgress * 24);
+                const minutes = Math.floor((displayDayProgress * 24 * 60) % 60);
+                const totalGameDays = Math.floor(currentGameTime / this.serverDayLength);
+                const year = Math.floor(totalGameDays / 120) + 1;
+                const doy = totalGameDays % 120;
+                const month = Math.floor(doy / 30) + 1;
+                const day = (doy % 30) + 1;
+                dayTimeEl.textContent = `${displayHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} - ${day},${month},${year}`;
+            }
+        }
+
         // Update dev console light stats (throttled to every 30 frames)
         this.frameCount++;
         if (this.frameCount % 30 === 0 && typeof document !== 'undefined') {
@@ -1151,7 +1476,6 @@ class CleanBoardSystem {
             const moonColorEl = document.getElementById('moonColor');
             const ambientIntEl = document.getElementById('ambientIntensity');
             const ambientColorEl = document.getElementById('ambientColor');
-            const dayTimeEl = document.getElementById('dayTime');
             const seasonProgressEl = document.getElementById('seasonProgress');
 
             if (sunIntEl) sunIntEl.textContent = this.sun.light.intensity.toFixed(2);
@@ -1160,14 +1484,6 @@ class CleanBoardSystem {
             if (moonColorEl) moonColorEl.textContent = '#' + this.moon.light.color.getHexString();
             if (ambientIntEl) ambientIntEl.textContent = this.ambientLight.intensity.toFixed(2);
             if (ambientColorEl) ambientColorEl.textContent = '#' + this.ambientLight.color.getHexString();
-
-            // Update day time display (0-24h format)
-            if (dayTimeEl) {
-                const dayProgress = (this.serverGameTime % this.serverDayLength) / this.serverDayLength;
-                const hours = Math.floor(dayProgress * 24);
-                const minutes = Math.floor((dayProgress * 24 * 60) % 60);
-                dayTimeEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-            }
 
             // Update season progress display
             if (seasonProgressEl) {
@@ -1204,10 +1520,13 @@ class CleanBoardSystem {
         // Calculate horizon fade factor (0 at horizon, 1 at zenith)
         const horizonFade = Math.max(0, Math.min(1, sunElevation));
         const moonHorizonFade = Math.max(0, Math.min(1, moonElevation));
+        const orbitFade = 1.0 - THREE.MathUtils.smoothstep(cameraHeight, 50, 120);
+        const sunVisibility = horizonFade * orbitFade;
+        const moonVisibility = moonHorizonFade * orbitFade;
 
         // Update sprite opacity based on horizon fade
-        this.sun.sprite.material.opacity = this.sun.flareOpacity * horizonFade;
-        this.moon.sprite.material.opacity = this.moon.flareOpacity * moonHorizonFade;
+        this.sun.sprite.material.opacity = this.sun.flareOpacity * sunVisibility;
+        this.moon.sprite.material.opacity = this.moon.flareOpacity * moonVisibility;
 
         // Update lens flares (Sprite always faces camera automatically)
         this.sun.lensFlares.forEach((flare, index) => {
@@ -1216,7 +1535,7 @@ class CleanBoardSystem {
             // Apply horizon fade and additional distance fade
             const baseOpacity = (0.5 - index * 0.15);
             const distanceFade = Math.max(0, 1 - this.sun.orbitRadius / 200);
-            flare.material.opacity = baseOpacity * horizonFade * distanceFade;
+            flare.material.opacity = baseOpacity * sunVisibility * distanceFade;
 
             // Add slight offset for lens flare effect
             const offset = (index + 1) * 2;
@@ -1225,12 +1544,15 @@ class CleanBoardSystem {
         });
     }
 
-    updateServerGameTime(elapsedTime, dayLength) {
-        this.serverGameTime = elapsedTime;
-        // Override server dayLength to 60000ms (60 seconds per day)
-        this.serverDayLength = 60000;
+    updateServerGameTime(data) {
+        this.serverGameTime = data.elapsedTime || 0;
+        this.serverDayLength = data.dayLength || 60000;
         this.lastTimeSyncTimestamp = Date.now();
-        console.log(`[Board] Server time sync: ${elapsedTime}ms elapsed, day length: ${dayLength}ms (OVERRIDDEN to 60000ms)`);
+
+        // Recalculate yearLength whenever dayLength changes from server
+        this.yearLength = 120 * this.serverDayLength;
+
+        console.log(`[Board] Server time sync: ${this.serverGameTime}ms elapsed, day length: ${this.serverDayLength}ms, year: ${data.year}, dayOfYear: ${data.dayOfYear}, timeOfDay: ${data.timeOfDay?.toFixed(2)}`);
     }
 
     updateSeasons() {
@@ -1260,10 +1582,10 @@ class CleanBoardSystem {
             this.seasonProgress = fadeProgress;
         }
 
-        // Debug logging every 60 frames
-        if (this.frameCount % 60 === 0) {
-            console.log(`[SEASON] Day: ${this.dayOfYear}/120, Season: ${newSeason}, Progress: ${this.seasonProgress.toFixed(2)}, TreeColor: [${this.seasonConfig[newSeason].treeColor.join(',')}]`);
-        }
+        // Debug logging every 60 frames (disabled)
+        // if (this.frameCount % 60 === 0) {
+        //     console.log(`[SEASON] Day: ${this.dayOfYear}/120, Season: ${newSeason}, Progress: ${this.seasonProgress.toFixed(2)}, TreeColor: [${this.seasonConfig[newSeason].treeColor.join(',')}]`);
+        // }
 
         // Update grass textures if season changed
         if (this.currentSeason !== newSeason) {
@@ -1282,7 +1604,7 @@ class CleanBoardSystem {
 
 
     async createBoard(centerX, centerZ, radius, meshMultiplier = 12, gridSize = 128) {
-        console.log(`[DYNAMIC MESH] Creating board with dynamic continuous mesh (NO GAPS!)`);
+        // console.log(`[DYNAMIC MESH] Creating board with dynamic continuous mesh (NO GAPS!)`);
         
         // CLEAR ALL EXISTING CHUNKS - we're using dynamic continuous mesh now
         this.clearAllChunks();
@@ -1306,12 +1628,12 @@ class CleanBoardSystem {
                   });
 
             this.rollingTerrain = new RollingTerrainMesh(this, this.terrainSystem, {
-                gridSize, cellSize: 1, thresholdCells: Math.floor(gridSize * 0.15), material
+                gridSize, cellSize: 1, thresholdCells: 0, material
             });
             await this.rollingTerrain.initAt(centerX, centerZ);
             this.continuousMesh = this.rollingTerrain.mesh;
             this.scene.add(this.continuousMesh);
-            console.log(`[ROLLING TERRAIN] Board created with ${gridSize}x${gridSize} fixed grid`);
+            // console.log(`[ROLLING TERRAIN] Board created with ${gridSize}x${gridSize} fixed grid`);
         } else {
             this.continuousMesh = await this.createContinuousMeshAround(centerX, centerZ);
             this.scene.add(this.continuousMesh);
@@ -1322,7 +1644,7 @@ class CleanBoardSystem {
         
         // Store reference for later access
         
-        console.log(`[DYNAMIC MESH] Board created - size=${this.meshBounds.size}, mult=${meshMultiplier}, verts≈${(this.meshBounds.size * this.meshBounds.size * 4 / 1000).toFixed(0)}K`);
+        // console.log(`[DYNAMIC MESH] Board created - size=${this.meshBounds.size}, mult=${meshMultiplier}, verts≈${(this.meshBounds.size * this.meshBounds.size * 4 / 1000).toFixed(0)}K`);
         
         return Promise.resolve(); // Return promise for compatibility
     }
@@ -1380,22 +1702,108 @@ class CleanBoardSystem {
         this._waterPlane.name = 'waterPlane';
         // Render water after terrain so it depth-tests correctly against underwater terrain
         this._waterPlane.renderOrder = 1;
+        this._waterPlane.visible = true;
+        this._waterPlaneBaseOpacity = material.opacity;
+        this._waterPlaneUserOpacity = material.opacity;
+        this._waterPlaneUserVisible = true;
         this.scene.add(this._waterPlane);
 
         // Initialize texture animation with wind parameters
+        this._waterTextureData = {
+            windSpeed: 1.0,
+            windDirection: 0,
+            windSpeedMultiplier: 1.0,
+            offset: new THREE.Vector2(0, 0),
+            lastUpdate: 0
+        };
         this._waterTextureOffset = new THREE.Vector2(0, 0);
         this._windSpeed = 1.0;
         this._windDirection = new THREE.Vector2(1, 0);
 
         console.log('[WATER] Water plane created at y=' + waterLevel + ' with sky reflection texture');
+
+        if (this.waterReflectionManager) {
+            console.log('[WATER] Water reflections enabled');
+        }
     }
 
-    updateWaterTexture() {
-        // No-op - shader removed
+    updateWaterTexture(deltaTime) {
+        if (!this._waterPlane || !this._waterPlane.visible || !this._waterPlane.material || !this._waterPlane.material.map) return;
+        if (!this._waterTextureData) return;
+
+        const now = performance.now() / 1000;
+        let dt = deltaTime;
+        if (!dt && this._waterTextureData.lastUpdate) {
+            dt = now - this._waterTextureData.lastUpdate;
+        }
+        this._waterTextureData.lastUpdate = now;
+        if (!dt || dt > 1) dt = 0.016;
+
+        const paramWind = window.parameterSystem ? window.parameterSystem.getParameter('windSpeed') : null;
+        const baseSpeed = paramWind !== null ? paramWind : (this._windSpeed || 1.0);
+        const multiplier = this._waterTextureData.windSpeedMultiplier || 1.0;
+        const dir = this._windDirection ? Math.atan2(this._windDirection.y, this._windDirection.x) : 0;
+
+        const moveSpeed = baseSpeed * multiplier * dt * 0.15;
+        // Texture offset moves opposite to visible flow in Three.js
+        this._waterTextureData.offset.x -= Math.cos(dir) * moveSpeed;
+        this._waterTextureData.offset.y += Math.sin(dir) * moveSpeed;
+
+        const tex = this._waterPlane.material.map;
+        tex.offset.x = this._waterTextureData.offset.x % 1;
+        tex.offset.y = this._waterTextureData.offset.y % 1;
+    }
+
+    updateWaterReflections(camera) {
+        if (!this.waterReflectionManager || !this._waterPlane) {
+            return;
+        }
+        try {
+            const updated = this.waterReflectionManager.update(this._waterPlane, camera);
+            if (updated && this._waterPlane.material) {
+                const reflectionTexture = this.waterReflectionManager.texture;
+                if (reflectionTexture && this._waterPlane.material.envMap !== reflectionTexture) {
+                    this._waterPlane.material.envMap = reflectionTexture;
+                    this._waterPlane.material.needsUpdate = true;
+                }
+            }
+        } catch (error) {
+            console.warn('[WaterReflection] Failed to update reflections:', error);
+        }
+    }
+
+    _initWaterReflectionManager() {
+        this.waterReflectionManager = null;
+        if (typeof WaterReflectionManager === 'undefined') {
+            return;
+        }
+        const renderer = this.game && this.game.renderer;
+        if (!renderer || !this.scene) {
+            return;
+        }
+        try {
+            this.waterReflectionManager = new WaterReflectionManager(renderer, this.scene, {
+                enabled: true,
+                size: 512,
+                maxDistance: 64,
+                maxHeight: 48
+            });
+            console.log('[WaterReflection] Manager initialized');
+        } catch (error) {
+            console.error('[WaterReflection] Failed to initialize:', error);
+            this.waterReflectionManager = null;
+        }
     }
 
     setWindParameters(windSpeed, windDirection) {
-        // No-op - shader removed
+        this._windSpeed = windSpeed;
+        const wx = Math.cos(windDirection);
+        const wz = Math.sin(windDirection);
+        this._windDirection.set(wx, wz);
+        if (this._waterTextureData) {
+            this._waterTextureData.windSpeed = windSpeed;
+            this._waterTextureData.windDirection = windDirection;
+        }
     }
 
     // Clear all existing chunks when switching to continuous mesh
@@ -1482,7 +1890,7 @@ class CleanBoardSystem {
 
         // Initialize mesh bounds if not set
         if (!this.meshBounds) {
-            console.log(`[Board] INITIALIZING mesh bounds`);
+            // console.log(`[Board] INITIALIZING mesh bounds`);
             this.meshBounds = {
                 centerX: cameraPosition.x,
                 centerZ: cameraPosition.z,
@@ -1782,7 +2190,7 @@ class CleanBoardSystem {
 
         // Update shader uniforms every frame (pass planet mapping for spherical deformation)
         if (this.textureBlendingSystem && this.textureBlendingSystem.updateShaderUniforms) {
-            this.textureBlendingSystem.updateShaderUniforms(cameraPosition, Date.now() * 0.001, this.planetMapping);
+            this.textureBlendingSystem.updateShaderUniforms(cameraPosition, performance.now() * 0.001, this.planetMapping);
         }
 
         const mesh = this._clipmapLevels[0].mesh;
@@ -1841,32 +2249,7 @@ class CleanBoardSystem {
         colAttr.needsUpdate = true;
         mesh.geometry.computeVertexNormals();
 
-        // Update water plane to follow camera and respect water level
-        if (this._waterPlane) {
-            this._waterPlane.position.x = cameraPosition.x;
-            this._waterPlane.position.z = cameraPosition.z;
-            this._waterPlane.position.y = this.waterLevel;
-
-            // Animate water texture scrolling based on wind direction and speed
-            if (this._waterPlane.material.map) {
-                const scrollAmount = this._windSpeed * 0.001;
-                this._waterTextureOffset.x -= this._windDirection.x * scrollAmount;
-                this._waterTextureOffset.y -= this._windDirection.y * scrollAmount;
-                this._waterPlane.material.map.offset.copy(this._waterTextureOffset);
-            }
-
-            this._applyWaterSphericalDeformation(cameraPosition);
-
-            const terrainHeight = this.getTerrainHeight(cameraPosition.x, cameraPosition.z);
-            const waterHeight = this.waterLevel;
-
-            if (Math.floor(Date.now() / 1000) % 5 === 0) {
-                console.log(`[WATER DEBUG] Camera: (${cameraPosition.x.toFixed(1)}, ${cameraPosition.z.toFixed(1)})`);
-                console.log(`[WATER DEBUG] Water height: ${waterHeight}, Terrain height: ${terrainHeight.toFixed(2)}`);
-                console.log(`[WATER DEBUG] Water visible: ${waterHeight > terrainHeight}`);
-                console.log(`[WATER DEBUG] Water plane position: (${this._waterPlane.position.x.toFixed(1)}, ${this._waterPlane.position.y.toFixed(1)}, ${this._waterPlane.position.z.toFixed(1)})`);
-            }
-        }
+        // Water plane update removed - water is now rendered entirely in the terrain shader
     }
 
     _applyWaterSphericalDeformation(cameraPosition) {
@@ -1943,6 +2326,140 @@ class CleanBoardSystem {
         plane.geometry.attributes.position.needsUpdate = true;
         plane.geometry.computeVertexNormals();
         plane.geometry.userData.curved = false;
+    }
+
+    setPlanetSphereRadius(radius) {
+        const parsed = Number(radius);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            console.warn('[Board] Ignoring invalid planet radius:', radius);
+            return;
+        }
+
+        this._planetSphereRadius = parsed;
+
+        const mapping = this.planetMapping;
+        if (mapping?.activePlanet) {
+            mapping.activePlanet.sphereRadius = parsed;
+            if (mapping.activePlanet.atmosphereRadius !== undefined) {
+                mapping.activePlanet.atmosphereRadius = Math.max(parsed + 20, parsed * 1.05);
+            }
+        }
+
+        const uniforms = this.textureBlendingSystem?.shaderMaterial?.uniforms;
+        if (uniforms?.uSphereRadius) {
+            uniforms.uSphereRadius.value = parsed;
+        }
+
+        if (this._orbitSphere) {
+            const baseRadius = this._orbitSphereBaseRadius || this._orbitSphere.geometry?.parameters?.radius || parsed;
+            const targetScale = parsed / baseRadius;
+            this._orbitSphere.scale.setScalar(targetScale);
+            this._orbitSphere.position.y = -parsed;
+        }
+
+        console.log('[Board] Planet sphere radius set to', parsed);
+    }
+
+    createOrbitSphere() {
+        if (this._orbitSphereEnabled === false) return;
+        const radius = this._planetSphereRadius || this.planetMapping?.activePlanet?.sphereRadius || 180;
+        const geometry = new THREE.SphereGeometry(radius, 64, 64);
+        this._orbitSphereBaseRadius = radius;
+
+        // Generate a procedural planet texture (ocean + landmass blobs)
+        const texSize = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = texSize;
+        canvas.height = texSize;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#1a4a6a';
+        ctx.fillRect(0, 0, texSize, texSize);
+        for (let i = 0; i < 25; i++) {
+            const x = Math.random() * texSize;
+            const y = Math.random() * texSize;
+            const r = 15 + Math.random() * 55;
+            const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+            grad.addColorStop(0, '#3a7a3a');
+            grad.addColorStop(0.6, '#2a5a2a');
+            grad.addColorStop(1, '#1a4a6a');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.85,
+            metalness: 0.05,
+            transparent: true,
+            opacity: 0.0,
+            side: THREE.FrontSide
+        });
+        this._orbitSphere = new THREE.Mesh(geometry, material);
+        this._orbitSphere.name = 'orbitSphere';
+        this._orbitSphere.position.set(0, -radius, 0);
+        this.scene.add(this._orbitSphere);
+        // Ensure future radius changes rescale the sphere
+        this.setPlanetSphereRadius(this._planetSphereRadius || radius);
+        console.log('[Board] Orbit sphere created with procedural texture');
+    }
+
+    updateOrbitSphere(cameraPosition) {
+        if (this._orbitSphereEnabled === false) {
+            if (this._orbitSphere) {
+                this.scene.remove(this._orbitSphere);
+                this._orbitSphere.geometry?.dispose?.();
+                this._orbitSphere.material?.dispose?.();
+                this._orbitSphere = null;
+            }
+            return;
+        }
+        // Lazily create orbit sphere when camera gets high enough
+        if (!this._orbitSphere) {
+            const terrainHeight = this.getTerrainHeight ? this.getTerrainHeight(cameraPosition.x, cameraPosition.z) : 0;
+            const camHeight = Math.max(0, cameraPosition.y - terrainHeight);
+            if (camHeight > 50) {
+                this.createOrbitSphere();
+            } else {
+                return;
+            }
+        }
+
+        // Compute deform factor directly from camera height
+        const deformStart = this.textureBlendingSystem?.deformStartHeight || 20;
+        const deformEnd = this.textureBlendingSystem?.deformEndHeight || 300;
+        const terrainHeight = this.getTerrainHeight ? this.getTerrainHeight(cameraPosition.x, cameraPosition.z) : 0;
+        const camHeight = Math.max(0, cameraPosition.y - terrainHeight);
+        const t = THREE.MathUtils.clamp((camHeight - deformStart) / Math.max(0.0001, deformEnd - deformStart), 0, 1);
+        const deformFactor = t * t * (3 - 2 * t);
+
+        const sphereRadius = this.textureBlendingSystem?.shaderMaterial?.uniforms?.uSphereRadius?.value || 300;
+
+        // Keep sphere centered below camera in XZ so it aligns with camera-centered curvature
+        this._orbitSphere.position.set(cameraPosition.x, -sphereRadius, cameraPosition.z);
+
+        // Scale sphere to match current planet radius
+        const baseRadius = this._orbitSphereBaseRadius || this._orbitSphere.geometry?.parameters?.radius || 300;
+        const currentScale = this._orbitSphere.scale.x;
+        const targetScale = sphereRadius / baseRadius;
+        if (Math.abs(currentScale - targetScale) > 0.01) {
+            this._orbitSphere.scale.setScalar(targetScale);
+        }
+
+        // Fade in as we approach orbit
+        const fadeStart = 0.5;
+        const fadeEnd = 0.85;
+        let opacity = 0.0;
+        if (deformFactor > fadeStart) {
+            opacity = (deformFactor - fadeStart) / (fadeEnd - fadeStart);
+            opacity = Math.max(0.0, Math.min(1.0, opacity));
+        }
+        this._orbitSphere.material.opacity = opacity * 0.9;
+        this._orbitSphere.visible = opacity > 0.01;
     }
 
     updateMouseWorldPosition(camera) {
@@ -2052,7 +2569,7 @@ class CleanBoardSystem {
                 }
                 // Keep shader uniforms fresh (seasonal colors, cursor, time)
                 if (this.textureBlendingSystem) {
-                    this.textureBlendingSystem.updateShaderUniforms(cameraPosition, Date.now() * 0.001, this.planetMapping);
+                    this.textureBlendingSystem.updateShaderUniforms(cameraPosition, performance.now() * 0.001, this.planetMapping);
                 }
             } else {
                 // Traditional mesh: only regenerate when camera moves far enough
@@ -2065,9 +2582,12 @@ class CleanBoardSystem {
                 }
             }
             
+            // Update orbit sphere visibility based on altitude
+            this.updateOrbitSphere(cameraPosition);
+
             // Update sun system
             this.updateSunPosition(cameraPosition);
-            
+
             return; // Skip all chunk processing
         }
         
@@ -2127,7 +2647,10 @@ class CleanBoardSystem {
         
         // Update performance stats
         this.optimization.stats.frameTime = performance.now() - frameStartTime;
-        
+
+        // Update orbit sphere visibility based on altitude
+        this.updateOrbitSphere(cameraPosition);
+
         // Reset the update flag
         this.needsFadeUpdate = false;
     }
@@ -2338,6 +2861,7 @@ class CleanBoardSystem {
 
 
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'boardChunk_' + chunkKey;
 
 
 
@@ -2994,9 +3518,91 @@ class CleanBoardSystem {
             return 0;
         }
 
-        const baseHeight = this.terrainSystem.getHeight(worldX, worldZ);
+        let baseHeight = this.terrainSystem.getHeight(worldX, worldZ);
+
+        if (this.terrainModifiers && this.terrainModifiers.size > 0) {
+            for (const modifier of this.terrainModifiers.values()) {
+                baseHeight += this._getModifierHeightContribution(modifier, worldX, worldZ);
+            }
+        }
 
         return baseHeight;
+    }
+
+    setTerrainModifier(key, modifierConfig) {
+        if (!key) return;
+        if (!modifierConfig) {
+            this.terrainModifiers.delete(key);
+            return;
+        }
+        this.terrainModifiers.set(key, modifierConfig);
+    }
+
+    getTerrainModifier(key) {
+        return this.terrainModifiers.get(key);
+    }
+
+    clearTerrainModifier(key) {
+        this.terrainModifiers.delete(key);
+    }
+
+    refreshTerrainRegion(minX, minZ, maxX, maxZ) {
+        if (!this.rollingTerrain) return;
+        this.rollingTerrain.refreshRegion(minX, minZ, maxX, maxZ);
+    }
+
+    _getModifierHeightContribution(modifier, worldX, worldZ) {
+        if (!modifier || modifier.strength === 0) {
+            return 0;
+        }
+
+        switch (modifier.type) {
+            case 'gaussianHill': {
+                const centerX = modifier.centerX || 0;
+                const centerZ = modifier.centerZ || 0;
+                const peak = modifier.amplitude ?? modifier.height ?? 0;
+                const strength = modifier.strength ?? 1;
+                if (peak === 0 || strength === 0) return 0;
+                const radius = Math.max(modifier.radius || modifier.falloff || 1, 0.0001);
+                const sigma = modifier.sigma || (radius * 0.5);
+                const sigmaSquared = sigma * sigma;
+                const dx = worldX - centerX;
+                const dz = worldZ - centerZ;
+                const distSq = dx * dx + dz * dz;
+                if (radius && distSq > radius * radius) {
+                    return 0;
+                }
+                const falloff = Math.exp(-distSq / (2 * sigmaSquared));
+                let height = peak * strength * falloff;
+
+                const plateauHalfSize = Math.max(0, modifier.plateauHalfSize || 0);
+                if (plateauHalfSize > 0) {
+                    const absDx = Math.abs(dx);
+                    const absDz = Math.abs(dz);
+                    const plateauHeight = peak * strength;
+                    if (absDx <= plateauHalfSize && absDz <= plateauHalfSize) {
+                        return plateauHeight;
+                    }
+
+                    const plateauBlend = Math.max(0, modifier.plateauBlend || 0);
+                    if (plateauBlend > 0) {
+                        const edgeX = plateauHalfSize + plateauBlend;
+                        const edgeZ = plateauHalfSize + plateauBlend;
+                        if (absDx <= edgeX && absDz <= edgeZ) {
+                            const tx = Math.max(0, (absDx - plateauHalfSize) / plateauBlend);
+                            const tz = Math.max(0, (absDz - plateauHalfSize) / plateauBlend);
+                            const t = Math.min(1, Math.max(tx, tz));
+                            const smoothFactor = 1 - t; // 1 at plateau edge, 0 at blend boundary
+                            height = plateauHeight * smoothFactor + height * (1 - smoothFactor);
+                        }
+                    }
+                }
+
+                return height;
+            }
+            default:
+                return 0;
+        }
     }
 
     // Get terrain normal at a position including ripple effects
@@ -3005,21 +3611,21 @@ class CleanBoardSystem {
             return new THREE.Vector3(0, 1, 0);
         }
 
-        const delta = 0.1; // Small offset for gradient calculation
+        // Delegate to terrainSystem.getNormal which uses delta=1 (tile-sized)
+        // because getHeight floors to tile indices, so delta<1 returns
+        // the same height and produces a false vertical normal.
+        if (this.terrainSystem.getNormal) {
+            return this.terrainSystem.getNormal(worldX, worldZ);
+        }
 
-        // Get heights at neighboring points including ripple
+        // Fallback finite-difference with delta=1
+        const delta = 1.0;
         const h = this.getHeightWithRipple(worldX, worldZ);
         const hx = this.getHeightWithRipple(worldX + delta, worldZ);
         const hz = this.getHeightWithRipple(worldX, worldZ + delta);
-
-        // Calculate gradient
         const dx = (hx - h) / delta;
         const dz = (hz - h) / delta;
-
-        // Normal is perpendicular to gradient
-        const normal = new THREE.Vector3(-dx, 1.0, -dz).normalize();
-
-        return normal;
+        return new THREE.Vector3(-dx, 1.0, -dz).normalize();
     }
 
     // Get height including ripple effect

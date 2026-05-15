@@ -111,73 +111,33 @@ class MovementBridge {
     }
     
     getMovementPattern(pieceType) {
+        if (typeof MoveValidator !== 'undefined') {
+            return MoveValidator.PATTERNS[pieceType];
+        }
+        // Fallback if shared module hasn't loaded yet
         const patterns = {
-            pawn: {
-                moves: [
-                    { dx: 0, dz: 1 },  // North
-                    { dx: 0, dz: -1 }, // South
-                    { dx: 1, dz: 0 },  // East
-                    { dx: -1, dz: 0 }  // West
-                ],
-                captures: [
-                    { dx: 1, dz: 1 },   // NE
-                    { dx: 1, dz: -1 },  // SE
-                    { dx: -1, dz: 1 },  // NW
-                    { dx: -1, dz: -1 }  // SW
-                ]
-            },
-            knight: {
-                moves: [
-                    { dx: 2, dz: 1 }, { dx: 2, dz: -1 },
-                    { dx: -2, dz: 1 }, { dx: -2, dz: -1 },
-                    { dx: 1, dz: 2 }, { dx: 1, dz: -2 },
-                    { dx: -1, dz: 2 }, { dx: -1, dz: -2 }
-                ]
-            },
-            bishop: {
-                moves: 'diagonal',
-                range: 8
-            },
-            rook: {
-                moves: 'straight',
-                range: 8
-            },
-            queen: {
-                moves: 'both',
-                range: 8
-            },
-            king: {
-                moves: [
-                    { dx: 0, dz: 1 }, { dx: 0, dz: -1 },
-                    { dx: 1, dz: 0 }, { dx: -1, dz: 0 },
-                    { dx: 1, dz: 1 }, { dx: 1, dz: -1 },
-                    { dx: -1, dz: 1 }, { dx: -1, dz: -1 }
-                ]
-            }
+            pawn: { moves: [{ dx: 0, dz: 1 }, { dx: 0, dz: -1 }, { dx: 1, dz: 0 }, { dx: -1, dz: 0 }], captures: [{ dx: 1, dz: 1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: -1, dz: -1 }] },
+            knight: { moves: [{ dx: 2, dz: 1 }, { dx: 2, dz: -1 }, { dx: -2, dz: 1 }, { dx: -2, dz: -1 }, { dx: 1, dz: 2 }, { dx: 1, dz: -2 }, { dx: -1, dz: 2 }, { dx: -1, dz: -2 }] },
+            bishop: { moves: 'diagonal', range: 8 },
+            rook: { moves: 'straight', range: 8 },
+            queen: { moves: 'both', range: 8 },
+            king: { moves: [{ dx: 0, dz: 1 }, { dx: 0, dz: -1 }, { dx: 1, dz: 0 }, { dx: -1, dz: 0 }, { dx: 1, dz: 1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: -1, dz: -1 }] }
         };
-        
         return patterns[pieceType];
     }
-    
+
     getDirections(moveType) {
+        if (typeof MoveValidator !== 'undefined') {
+            return MoveValidator.getDirections(moveType);
+        }
+        // Fallback if shared module hasn't loaded yet
         switch (moveType) {
             case 'straight':
-                return [
-                    { dx: 0, dz: 1 }, { dx: 0, dz: -1 },
-                    { dx: 1, dz: 0 }, { dx: -1, dz: 0 }
-                ];
+                return [{ dx: 0, dz: 1 }, { dx: 0, dz: -1 }, { dx: 1, dz: 0 }, { dx: -1, dz: 0 }];
             case 'diagonal':
-                return [
-                    { dx: 1, dz: 1 }, { dx: 1, dz: -1 },
-                    { dx: -1, dz: 1 }, { dx: -1, dz: -1 }
-                ];
+                return [{ dx: 1, dz: 1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: -1, dz: -1 }];
             case 'both':
-                return [
-                    { dx: 0, dz: 1 }, { dx: 0, dz: -1 },
-                    { dx: 1, dz: 0 }, { dx: -1, dz: 0 },
-                    { dx: 1, dz: 1 }, { dx: 1, dz: -1 },
-                    { dx: -1, dz: 1 }, { dx: -1, dz: -1 }
-                ];
+                return [{ dx: 0, dz: 1 }, { dx: 0, dz: -1 }, { dx: 1, dz: 0 }, { dx: -1, dz: 0 }, { dx: 1, dz: 1 }, { dx: 1, dz: -1 }, { dx: -1, dz: 1 }, { dx: -1, dz: -1 }];
             default:
                 return [];
         }

@@ -36,6 +36,7 @@ class CelShaderSystem {
         
         // Custom cel fragment shader
         this.celFragmentShader = `
+            precision highp float;
             uniform vec3 diffuse;
             uniform vec3 emissive;
             uniform vec3 specular;

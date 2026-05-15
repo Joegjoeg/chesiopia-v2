@@ -51,18 +51,28 @@ class DecorativeVisualsSystem {
             'hu?', 'oop!', 'yelp!', 'eep!', 'ah!', 'oh!', 'wa!', 'yi!', 'ee!', 'oo!'
         ];
         
-        // Initialize systems
-        this.initializeDaisies();
-        this.initializeBirds();
+        // Initialize systems deferred — terrain isn't ready at constructor time anyway
+        setTimeout(() => this.initializeDaisies(), 3000);
+        setTimeout(() => this.initializeBirds(), 5000);
+
+        // One-time cleanup: remove any existing birdDebugSphere meshes from previous sessions
+        setTimeout(() => this._cleanupLegacyDebugSpheres(), 1000);
     }
     
     // DAISY SYSTEM
     initializeDaisies() {
+        if (window.parameterSystem && !window.parameterSystem.getParameter('daisiesEnabled')) {
+            console.log('[DecorativeVisuals] Daisy system disabled via dev tools, skipping initialization.');
+            return;
+        }
         console.log('[DecorativeVisuals] Initializing daisy system...');
         this.spawnInitialDaisies();
     }
     
     spawnInitialDaisies() {
+        if (window.parameterSystem && !window.parameterSystem.getParameter('daisiesEnabled')) {
+            return;
+        }
         // Spawn daisies around current camera position
         const cx = this.cameraPosition.x;
         const cz = this.cameraPosition.z;
@@ -108,6 +118,9 @@ class DecorativeVisualsSystem {
     }
 
     spawnDaisy(x, z) {
+        if (window.parameterSystem && !window.parameterSystem.getParameter('daisiesEnabled')) {
+            return;
+        }
         const key = `${Math.round(x)},${Math.round(z)}`;
         if (this.daisies.has(key)) {
             return;
@@ -122,6 +135,8 @@ class DecorativeVisualsSystem {
 
         // Create daisy group at world position, oriented to terrain normal
         const daisyGroup = new THREE.Group();
+        daisyGroup.name = 'daisy';
+        daisyGroup.userData.isDaisy = true;
         daisyGroup.position.set(x, height, z);
 
         if (this.terrainSystem && typeof this.terrainSystem.getNormal === 'function') {
@@ -136,9 +151,11 @@ class DecorativeVisualsSystem {
         const spriteMat = new THREE.SpriteMaterial({
             map: this.flowerTexture,
             transparent: true,
-            opacity: 0.9
+            opacity: 0.9,
+            alphaTest: 0.3
         });
         const flowerSprite = new THREE.Sprite(spriteMat);
+        flowerSprite.name = 'daisySprite';
         flowerSprite.position.set(0, 0.22, 0);
         flowerSprite.scale.set(0.3, 0.3, 1);
         flowerSprite.renderOrder = 1000;
@@ -219,11 +236,14 @@ class DecorativeVisualsSystem {
             map: texture,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            color: 0xffffff
+            color: 0xffffff,
+            alphaTest: 0.01,
+            depthWrite: false
         });
         
         // Create sprite
         const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.name = 'birdSprite';
         sprite.scale.set(0.125, 0.125, 1); // Size of sprite (reduced by half again)
         sprite.userData.isDecorative = true; // Mark as decorative for vertex profiling
 
@@ -231,14 +251,38 @@ class DecorativeVisualsSystem {
         sprite.visible = false;
 
         // Create omni light with falloff for the sprite
-        const light = new THREE.PointLight(0xffaa00, 2, 8, 2); // Warm orange light, intensity 2, distance 8, decay 2
+        const light = new THREE.PointLight(0x00ffaa, 5, 15, 2); // Blue-green glow, intensity 5, distance 15, decay 2
+        light.name = 'birdLight';
         light.position.set(0, 0, 0);
         light.visible = false;
+
+        // Ground glow sprite — illuminates terrain under the fairy
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64;
+        glowCanvas.height = 64;
+        const gCtx = glowCanvas.getContext('2d');
+        const glowGrad = gCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        glowGrad.addColorStop(0.0, 'rgba(0, 255, 170, 0.45)');
+        glowGrad.addColorStop(0.5, 'rgba(0, 255, 170, 0.15)');
+        glowGrad.addColorStop(1.0, 'rgba(0, 255, 170, 0.0)');
+        gCtx.fillStyle = glowGrad;
+        gCtx.fillRect(0, 0, 64, 64);
+        const glowTex = new THREE.CanvasTexture(glowCanvas);
+        const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: glowTex,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            alphaTest: 0.01
+        }));
+        glowSprite.scale.set(6, 6, 1);
+        glowSprite.visible = false;
 
         return {
             group: sprite,
             sprite: sprite,
             light: light,
+            glowSprite: glowSprite,
             position: { x: 0, y: 0, z: 0 },
             velocity: { x: 0, y: 0, z: 0 },
             targetPosition: { x: 0, y: 0, z: 0 },
@@ -268,6 +312,24 @@ class DecorativeVisualsSystem {
         }
         console.log(`[DecorativeVisuals] Spawned ${this.activeBirds.size} initial magical books`);
     }
+
+    _cleanupLegacyDebugSpheres() {
+        // Remove any lingering birdDebugSphere meshes from scene
+        const toRemove = [];
+        this.scene.traverse((child) => {
+            if (child.name === 'birdDebugSphere') {
+                toRemove.push(child);
+            }
+        });
+        for (const mesh of toRemove) {
+            this.scene.remove(mesh);
+            if (mesh.geometry) mesh.geometry.dispose();
+            if (mesh.material) mesh.material.dispose();
+        }
+        if (toRemove.length > 0) {
+            console.log(`[DecorativeVisuals] Cleaned up ${toRemove.length} legacy birdDebugSphere meshes`);
+        }
+    }
     
     spawnBook() {
         if (this.birdPool.length === 0) return null;
@@ -289,6 +351,7 @@ class DecorativeVisualsSystem {
         book.position = { x, y: height, z };
         book.group.position.set(x, height, z);
         book.group.visible = true;
+        book.light.visible = true;
         book.active = true;
         
         // Set initial magical velocity
@@ -312,8 +375,12 @@ class DecorativeVisualsSystem {
         
         // Add to scene and active books
         this.scene.add(book.group);
-        this.scene.add(book.light);  // Add sprite's omni light to scene
+        this.scene.add(book.light);
+        this.scene.add(book.glowSprite);
+        book.glowSprite.visible = true;
         this.activeBirds.set(id, book);
+
+        console.log(`[Fairy] Spawned ${id} — light visible: ${book.light.visible}, color: #${book.light.color.getHexString()}, intensity: ${book.light.intensity}, distance: ${book.light.distance}, pos: ${x.toFixed(1)},${height.toFixed(1)},${z.toFixed(1)}`);
         
         return id;
     }
@@ -343,14 +410,19 @@ class DecorativeVisualsSystem {
         // Update wind time (controls all wind animations)
         this.windTime += deltaTime * 1.2;
 
-        // Wander wind direction slowly using multi-frequency angular drift
+        // Steer toward windTargetAngle (set by parameter slider) while keeping organic noise
+        let angleDiff = this.windTargetAngle - this.windAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
         const angleNoise = Math.sin(this.windTime * 0.08) * 0.5 + Math.sin(this.windTime * 0.023) * 0.3 + Math.sin(this.windTime * 0.004) * 0.2;
-        this.windAngle += angleNoise * deltaTime * 0.15;
+        this.windAngle += (angleDiff * 0.8 + angleNoise * 0.2) * deltaTime * 0.15;
         this.windDirection.set(Math.cos(this.windAngle), Math.sin(this.windAngle));
 
-        // Wind speed also drifts (1.0 - 3.5 range)
-        const speedNoise = Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4;
-        this.windSpeed = 2.0 + speedNoise;
+        // Wind speed base comes from parameterSystem; natural noise adds variation on top
+        const ps = window.parameterSystem;
+        const baseWind = ps ? ps.getParameter('windSpeed') : 2.0;
+        const speedNoise = (Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4) * (baseWind / 2.0);
+        this.windSpeed = Math.max(0, baseWind + speedNoise);
 
         // Update gust system
         this.updateGusts(deltaTime);
@@ -379,7 +451,9 @@ class DecorativeVisualsSystem {
         }
         const windSpeedEl = document.getElementById('windSpeed');
         if (windSpeedEl) {
-            windSpeedEl.textContent = effectiveWindSpeed.toFixed(1);
+            const ps = window.parameterSystem;
+            const displaySpeed = ps ? ps.getParameter('windSpeed') : effectiveWindSpeed;
+            windSpeedEl.textContent = displaySpeed.toFixed(1);
         }
 
         this.updateDaisies(deltaTime);
@@ -430,6 +504,9 @@ class DecorativeVisualsSystem {
     }
     
     updateDaisies(deltaTime) {
+        if (window.parameterSystem && !window.parameterSystem.getParameter('daisiesEnabled')) {
+            return;
+        }
         // Rehome all daisies when camera has wandered far from last spawn center
         const cameraDistFromSpawn = Math.sqrt(
             Math.pow(this.cameraPosition.x - this.daisySpawnCenter.x, 2) +
@@ -556,11 +633,20 @@ class DecorativeVisualsSystem {
             // Update light position to match sprite
             sprite.light.position.copy(sprite.sprite.position);
 
+            // Update glow sprite to follow fairy position
+            sprite.glowSprite.position.copy(sprite.sprite.position);
+
+            // Distance-based scaling — sprites are screen-space, so scale them
+            // proportionally to distance to keep a roughly constant world presence
+            const dx = sprite.sprite.position.x - this.cameraPosition.x;
+            const dy = sprite.sprite.position.y - this.cameraPosition.y;
+            const dz = sprite.sprite.position.z - this.cameraPosition.z;
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const scaleFactor = Math.max(0.02, distance * 0.008);
+            sprite.sprite.scale.set(scaleFactor, scaleFactor, 1);
+            sprite.glowSprite.scale.set(scaleFactor * 8, scaleFactor * 8, 1);
+
             // Distance-based fading (mist effect)
-            const distance = Math.sqrt(
-                Math.pow(sprite.sprite.position.x - this.cameraPosition.x, 2) +
-                Math.pow(sprite.sprite.position.z - this.cameraPosition.z, 2)
-            );
 
             const fadeStartDistance = 10.67; // Start fading at ~10.67 units (8 * 1.33)
             const fadeEndDistance = 45; // Fully faded at 45 units
@@ -903,8 +989,8 @@ class DecorativeVisualsSystem {
         }
         
         // Spawn new books to maintain population
-        while (this.activeBirds.size < this.maxBirds) {
-            this.spawnBook();
+        while (this.activeBirds.size < this.maxBirds && this.birdPool.length > 0) {
+            if (!this.spawnBook()) break;
         }
     }
     
@@ -929,30 +1015,38 @@ class DecorativeVisualsSystem {
         // Remove all magical books (return to pool)
         for (const [id, book] of this.activeBirds) {
             this.scene.remove(book.group);
+            this.scene.remove(book.light);
+            this.scene.remove(book.glowSprite);
             book.group.visible = false;
+            book.light.visible = false;
+            book.glowSprite.visible = false;
             book.active = false;
             this.birdPool.push(book);
         }
         this.activeBirds.clear();
-        
+
         // Dispose book pool objects
         this.disposeBookPool();
     }
-    
+
     despawnBook(id) {
         const book = this.activeBirds.get(id);
         if (!book) return;
-        
+
         // Remove from scene
         this.scene.remove(book.group);
+        this.scene.remove(book.light);
+        this.scene.remove(book.glowSprite);
         book.group.visible = false;
+        book.light.visible = false;
+        book.glowSprite.visible = false;
         book.active = false;
-        
+
         // Return to pool
         this.activeBirds.delete(id);
         this.birdPool.push(book);
     }
-    
+
     // Dispose book pool objects
     disposeBookPool() {
         for (const book of this.birdPool) {
@@ -960,6 +1054,14 @@ class DecorativeVisualsSystem {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) child.material.dispose();
             });
+            if (book.light) {
+                if (book.light.geometry) book.light.geometry.dispose();
+                if (book.light.material) book.light.material.dispose();
+            }
+            if (book.glowSprite) {
+                if (book.glowSprite.material) book.glowSprite.material.dispose();
+                if (book.glowSprite.material.map) book.glowSprite.material.map.dispose();
+            }
         }
         this.birdPool.length = 0;
     }

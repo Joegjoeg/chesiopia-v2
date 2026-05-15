@@ -5,6 +5,16 @@ class Pieces3D {
         this.pieces = new Map();
         this.pieceMeshes = new Map();
         this.animatingPieces = new Map();
+        this.glbModelCache = new Map(); // Cache loaded GLB models by piece type
+        this.glbMeshFilters = {
+            pawn: ['pawn'],
+            rook: ['rook'],
+            knight: ['knight'],
+            bishop: ['bishop'],
+            queen: ['queen'],
+            king: ['king']
+        };
+        this.glbMeshBlacklist = ['plane', 'circle', 'berserker'];
         
         // Piece materials
         this.materials = {
@@ -59,6 +69,7 @@ class Pieces3D {
         });
 
         const shadow = new THREE.Mesh(geometry, material);
+        shadow.name = 'blobShadow';
         shadow.userData.isBlobShadow = true;
         shadow.rotation.x = -Math.PI / 2; // Lay flat on ground
         shadow.position.y = 0.01; // Slightly above ground to avoid z-fighting
@@ -135,123 +146,6 @@ class Pieces3D {
         });
     }
     
-    createPawn(group, material) {
-        const bodyGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.35, 12);
-        bodyGeo.translate(0, 0.175, 0);
-        const headGeo = new THREE.SphereGeometry(0.14, 12, 10);
-        headGeo.translate(0, 0.42, 0);
-        const collarGeo = new THREE.TorusGeometry(0.13, 0.03, 8, 12);
-        collarGeo.rotateX(Math.PI / 2);
-        collarGeo.translate(0, 0.33, 0);
-        const baseGeo = new THREE.CylinderGeometry(0.22, 0.24, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        [bodyGeo, headGeo, collarGeo, baseGeo].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
-    createRook(group, material) {
-        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        const bodyGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.45, 12);
-        bodyGeo.translate(0, 0.26, 0);
-        const topGeo = new THREE.CylinderGeometry(0.22, 0.16, 0.08, 12);
-        topGeo.translate(0, 0.5, 0);
-        const crenelGeo = new THREE.BoxGeometry(0.4, 0.08, 0.08);
-        crenelGeo.translate(0, 0.56, 0);
-        const crenelGeo2 = new THREE.BoxGeometry(0.08, 0.08, 0.4);
-        crenelGeo2.translate(0, 0.56, 0);
-        [baseGeo, bodyGeo, topGeo, crenelGeo, crenelGeo2].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
-    createKnight(group, material) {
-        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        const bodyGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.4, 12);
-        bodyGeo.translate(0, 0.24, 0);
-        const neckGeo = new THREE.CylinderGeometry(0.1, 0.14, 0.2, 10);
-        neckGeo.translate(0, 0.48, 0);
-        neckGeo.rotateZ(0.3);
-        const headGeo = new THREE.BoxGeometry(0.12, 0.18, 0.22);
-        headGeo.translate(0.08, 0.62, 0);
-        headGeo.rotateZ(0.3);
-        const snoutGeo = new THREE.BoxGeometry(0.1, 0.08, 0.18);
-        snoutGeo.translate(0.18, 0.58, 0);
-        snoutGeo.rotateZ(0.3);
-        [baseGeo, bodyGeo, neckGeo, headGeo, snoutGeo].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
-    createBishop(group, material) {
-        const baseGeo = new THREE.CylinderGeometry(0.24, 0.26, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        const bodyGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.5, 12);
-        bodyGeo.translate(0, 0.29, 0);
-        const collarGeo = new THREE.TorusGeometry(0.13, 0.03, 8, 12);
-        collarGeo.rotateX(Math.PI / 2);
-        collarGeo.translate(0, 0.55, 0);
-        const hatGeo = new THREE.ConeGeometry(0.1, 0.18, 12);
-        hatGeo.translate(0, 0.65, 0);
-        const slitGeo = new THREE.BoxGeometry(0.02, 0.12, 0.12);
-        slitGeo.translate(0, 0.64, 0);
-        [baseGeo, bodyGeo, collarGeo, hatGeo, slitGeo].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
-    createQueen(group, material) {
-        const baseGeo = new THREE.CylinderGeometry(0.26, 0.28, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        const bodyGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.55, 12);
-        bodyGeo.translate(0, 0.31, 0);
-        const collarGeo = new THREE.TorusGeometry(0.14, 0.03, 8, 12);
-        collarGeo.rotateX(Math.PI / 2);
-        collarGeo.translate(0, 0.6, 0);
-        const crownBaseGeo = new THREE.CylinderGeometry(0.18, 0.14, 0.08, 12);
-        crownBaseGeo.translate(0, 0.66, 0);
-        const crownGeo = new THREE.ConeGeometry(0.08, 0.15, 8);
-        crownGeo.translate(0, 0.78, 0);
-        const orbGeo = new THREE.SphereGeometry(0.06, 8, 8);
-        orbGeo.translate(0, 0.88, 0);
-        [baseGeo, bodyGeo, collarGeo, crownBaseGeo, crownGeo, orbGeo].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
-    createKing(group, material) {
-        const baseGeo = new THREE.CylinderGeometry(0.26, 0.28, 0.06, 16);
-        baseGeo.translate(0, 0.03, 0);
-        const bodyGeo = new THREE.CylinderGeometry(0.17, 0.21, 0.55, 12);
-        bodyGeo.translate(0, 0.31, 0);
-        const collarGeo = new THREE.TorusGeometry(0.15, 0.03, 8, 12);
-        collarGeo.rotateX(Math.PI / 2);
-        collarGeo.translate(0, 0.6, 0);
-        const topGeo = new THREE.CylinderGeometry(0.12, 0.16, 0.08, 12);
-        topGeo.translate(0, 0.67, 0);
-        const crossVGeo = new THREE.BoxGeometry(0.04, 0.18, 0.04);
-        crossVGeo.translate(0, 0.8, 0);
-        const crossHGeo = new THREE.BoxGeometry(0.12, 0.04, 0.04);
-        crossHGeo.translate(0, 0.85, 0);
-        [baseGeo, bodyGeo, collarGeo, topGeo, crossVGeo, crossHGeo].forEach(g => {
-            const mesh = new THREE.Mesh(g, material);
-            mesh.userData.isPieceMesh = true;
-            group.add(mesh);
-        });
-    }
-
     addPiece(pieceData) {
         // Check if spawn location is valid (not surrounded by blocked squares)
         if (!this.isValidSpawnLocation(pieceData.x, pieceData.z)) {
@@ -305,10 +199,12 @@ class Pieces3D {
     
     createPieceModel(pieceData) {
         const group = new THREE.Group();
+        group.name = `piece_${pieceData.type}_${pieceData.color}`;
         const material = this.materials[pieceData.color] || this.materials.white;
 
         // Inner group holds the actual meshes; outer group handles terrain normal + position
         const modelGroup = new THREE.Group();
+        modelGroup.name = `pieceModel_${pieceData.type}`;
         group.add(modelGroup);
         group.userData.modelGroup = modelGroup;
 
@@ -348,10 +244,12 @@ class Pieces3D {
         group.position.set(pieceData.x + 0.5, pieceHeight, pieceData.z + 0.5);
 
         // Apply terrain normal via quaternion to the outer group (sticks piece to ground)
+        // TEMP: Disabled to test if this conflicts with mesh rotation fix
         if (normal && normal.y < 0.999) {
             const up = new THREE.Vector3(0, 1, 0);
             const terrainQuat = new THREE.Quaternion().setFromUnitVectors(up, normal);
-            group.quaternion.copy(terrainQuat);
+            // group.quaternion.copy(terrainQuat); // TEMP: Disabled
+            group.quaternion.set(0, 0, 0, 1); // TEMP: Force identity
         } else {
             group.quaternion.set(0, 0, 0, 1);
         }
@@ -376,60 +274,6 @@ class Pieces3D {
         return group;
     }
     
-    applyTerrainRotation(group, terrainNormal) {
-        console.log(`[Pieces3D] DEBUG: Applying terrain rotation - normal:`, terrainNormal);
-
-        // Calculate full terrain alignment
-        const upVector = new THREE.Vector3(0, 1, 0);
-        const terrainQuaternion = new THREE.Quaternion().setFromUnitVectors(upVector, terrainNormal);
-
-        // Apply full terrain rotation (no reduction)
-        group.quaternion.copy(terrainQuaternion);
-
-        console.log(`[Pieces3D] DEBUG: Full terrain rotation applied - quaternion: x=${group.quaternion.x.toFixed(4)}, y=${group.quaternion.y.toFixed(4)}, z=${group.quaternion.z.toFixed(4)}, w=${group.quaternion.w.toFixed(4)}`);
-    }
-
-    applyBaseRotationToModel(group) {
-        // Apply ONLY base rotation to make model upright from face-down default
-        // This is static - set once when model is created
-        let meshCount = 0;
-        group.traverse((child) => {
-            if (child.isMesh && !child.userData.isBlobShadow && child.userData.isGLBModel) {
-                meshCount++;
-                // Apply base rotation (180 X) to flip model upright from face-down position
-                // Plus 90 Y to face the correct direction
-                const baseRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, Math.PI / 2, 0));
-                child.quaternion.copy(baseRotation);
-            }
-        });
-    }
-
-    applyTerrainRotationToModel(group, terrainNormal) {
-        // Apply terrain rotation + base rotation at MESH level (static, set once)
-        // This keeps group's local Y aligned with world Y for proper facing rotation.
-        // Because the group rotates around Y to face movement direction, we must
-        // cancel that Y spin here so the terrain tilt stays aligned to world space.
-        const upVector = new THREE.Vector3(0, 1, 0);
-        const terrainQuaternion = new THREE.Quaternion().setFromUnitVectors(upVector, terrainNormal);
-        const baseRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, Math.PI / 2, 0));
-
-        // Precompute inverse of the group's current Y-facing rotation
-        const inverseGroupY = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -group.rotation.y, 0));
-
-        let meshCount = 0;
-        group.traverse((child) => {
-            if (child.isMesh && !child.userData.isBlobShadow) {
-                meshCount++;
-                // Cancel the group's Y rotation so terrain tilt is world-locked,
-                // then apply terrain alignment and base model rotation.
-                child.quaternion.copy(inverseGroupY).multiply(terrainQuaternion);
-                if (child.userData.isGLBModel) {
-                    child.quaternion.multiply(baseRotation);
-                }
-            }
-        });
-    }
-
     deformMeshToTerrain(mesh, terrainNormal, terrainHeight) {
         console.log(`[Pieces3D] DEBUG: Deforming mesh - terrainNormal.y=${terrainNormal.y.toFixed(4)}, terrainHeight=${terrainHeight.toFixed(3)}`);
         
@@ -511,122 +355,129 @@ class Pieces3D {
     
     
     createPawn(group, material) {
-        // Load GLB model for pawn
         this.loadPieceModel(group, 'pawn', material);
     }
-    
+
     createRook(group, material) {
-        // Use geometric rook directly (no GLB file exists)
-        this.createGeometricRook(group, material);
+        this.loadPieceModel(group, 'rook', material);
     }
-    
+
     createKnight(group, material) {
-        // Use geometric knight directly (no GLB file exists)
-        this.createGeometricKnight(group, material);
+        this.loadPieceModel(group, 'knight', material);
     }
-    
+
     createBishop(group, material) {
-        // Use geometric bishop directly (case mismatch with Bishop.glb)
-        this.createGeometricBishop(group, material);
+        this.loadPieceModel(group, 'bishop', material);
     }
-    
+
     createQueen(group, material) {
-        // Load GLB model for queen
         this.loadPieceModel(group, 'queen', material);
     }
-    
+
     createKing(group, material) {
-        console.log(`[Pieces3D] *** CREATE KING CALLED ***`);
-        console.log(`[Pieces3D] Group:`, group);
-        console.log(`[Pieces3D] Material:`, material);
-        
-        // Load GLB model for king
-        this.loadKingModel(group, material);
+        this.loadPieceModel(group, 'king', material);
     }
     
+    getEffectiveModelFile(pieceType) {
+        try {
+            const overrides = JSON.parse(localStorage.getItem('chessiopia_piece_models') || '{}');
+            if (overrides[pieceType]) {
+                return overrides[pieceType];
+            }
+        } catch (e) { /* ignore */ }
+        return pieceType;
+    }
+
     async loadPieceModel(group, pieceType, material) {
         try {
-            console.log(`[Pieces3D] === ${pieceType.toUpperCase()} MODEL LOADING START ===`);
-            console.log(`[Pieces3D] Loading ${pieceType} model from: /Models/${pieceType}.glb`);
-            
+            const effectiveModelFile = this.getEffectiveModelFile(pieceType);
+            console.log(`[Pieces3D] === ${pieceType.toUpperCase()} MODEL LOADING START (file: ${effectiveModelFile}) ===`);
+
+            // Check cache first (keyed by resolved model file so overrides are honoured)
+            if (this.glbModelCache.has(effectiveModelFile)) {
+                console.log(`[Pieces3D] Using cached model for ${effectiveModelFile}`);
+                const cachedModel = this.glbModelCache.get(effectiveModelFile);
+                const clonedModel = cachedModel.clone();
+                const targetGroup = group.userData.modelGroup || group;
+                targetGroup.add(clonedModel);
+                this.debugLogGLBMeshes(group, `${pieceType} from cache`);
+                return;
+            }
+
+            console.log(`[Pieces3D] Loading ${pieceType} model from: /Models/${effectiveModelFile}.glb`);
+
             // Check if GLTFLoader is available
             if (typeof THREE.GLTFLoader === 'undefined') {
                 console.warn(`[Pieces3D] GLTFLoader not available, falling back to geometric ${pieceType}`);
                 this.createGeometricPiece(pieceType, group, material);
                 return;
             }
-            
-            console.log(`[Pieces3D] GLTFLoader is available, proceeding to load ${pieceType}.glb`);
-            
-            console.log(`[Pieces3D] Using custom GLTFLoader to load ${pieceType}.glb`);
+
+            console.log(`[Pieces3D] GLTFLoader is available, proceeding to load ${effectiveModelFile}.glb`);
+
+            console.log(`[Pieces3D] Using custom GLTFLoader to load ${effectiveModelFile}.glb`);
             const loader = new THREE.GLTFLoader();
-            const gltf = await loader.loadAsync(`/Models/${pieceType}.glb?v=${Date.now()}`);
+            const gltf = await loader.loadAsync(`/Models/${effectiveModelFile}.glb?v=${Date.now()}`);
             
             console.log(`[Pieces3D] GLTF loaded successfully for ${pieceType}:`, gltf);
             console.log(`[Pieces3D] GLTF scene:`, gltf.scene);
             console.log(`[Pieces3D] GLTF scene children:`, gltf.scene.children.length);
-            
-            // Get the loaded model
+
+            // DIAGNOSTIC: Log every node's transform before any code changes
+            console.log(`[Pieces3D] === ${pieceType.toUpperCase()} GLB RAW TRANSFORMS ===`);
+            gltf.scene.traverse((child) => {
+                console.log(`  node='${child.name || '(unnamed)'}' type=${child.type} pos=(${child.position.x.toFixed(3)}, ${child.position.y.toFixed(3)}, ${child.position.z.toFixed(3)}) rot=(${child.rotation.x.toFixed(3)}, ${child.rotation.y.toFixed(3)}, ${child.rotation.z.toFixed(3)}) scale=(${child.scale.x.toFixed(3)}, ${child.scale.y.toFixed(3)}, ${child.scale.z.toFixed(3)})`);
+            });
+            console.log(`[Pieces3D] === END RAW TRANSFORMS ===`);
+
+            // Get the loaded model and strip out meshes that don't belong to this piece type
             const model = gltf.scene;
+
+            // WORKAROUND: Rotate meshes to stand upright (GLB pieces are lying flat in local space)
+            gltf.scene.traverse((child) => {
+                if (child.isMesh) {
+                    child.rotation.x = -Math.PI / 2; // Rotate -90 degrees around X to stand up
+                    child.rotation.z = 0; // Zero out the baked-in Z rotation
+                    child.updateMatrix();
+                }
+            });
+            console.log(`[Pieces3D] Applied upright rotation to all meshes in ${pieceType}`);
+
+            const filterStats = this.filterGLBMeshesForPiece(model, pieceType);
+            console.log(`[Pieces3D] GLB mesh filter stats for ${pieceType}:`, filterStats);
             
-            console.log('=== MODEL DEBUG ===');
-            console.log('Model before scaling:', model);
-            console.log('Model children count:', model.children.length);
-            console.log('Model position:', model.position);
-            console.log('Model scale:', model.scale);
-            console.log('Model visible:', model.visible);
-            
-            // Debug model bounds before scaling
-            const box = new THREE.Box3().setFromObject(model);
-            console.log('Model bounding box before scaling:', box);
-            console.log('Model size before scaling:', box.getSize(new THREE.Vector3()));
-            
-            // Center model on its local origin by calculating bounding box
-            const center = box.getCenter(new THREE.Vector3());
-            
-            // Move model so its center is at local origin
-            model.position.sub(center);
-            
-            // Update bounding box after repositioning
-            const newBox = new THREE.Box3().setFromObject(model);
-            console.log(`[Pieces3D] ${pieceType} model recentered - new bounds:`, newBox);
-            
-            // Scale and position the model appropriately
+            // Scale the model appropriately
             model.scale.set(0.5, 0.5, 0.5); // Consistent scale for all pieces
 
-            // Base orientation is applied at mesh level in applyTerrainRotationToModel
-            // to avoid double rotation conflicts
-
-            // Position model so 0,0 origin touches the square for all pieces
-            model.position.set(0, 0, 0); // Origin touches the square
-            
-            console.log('Model after scaling - scale:', model.scale);
-            console.log('Model after scaling - position:', model.position);
-            
             // Debug model bounds after scaling
-            const boxAfter = new THREE.Box3().setFromObject(model);
-            console.log('Model bounding box after scaling:', boxAfter);
-            console.log('Model size after scaling:', boxAfter.getSize(new THREE.Vector3()));
-            
+            const box = new THREE.Box3().setFromObject(model);
+            console.log('Model bounding box after scaling:', box);
+            console.log('Model size after scaling:', box.getSize(new THREE.Vector3()));
+
+            // Position model so it sits neatly on the board square:
+            // center in X/Z, and place bottom (min.y) at y=0
+            const center = box.getCenter(new THREE.Vector3());
+            model.position.set(-center.x, -box.min.y, -center.z);
+            console.log(`[Pieces3D] ${pieceType} model repositioned - bottom at y=0, centered XZ`);
+
             // Preserve original materials and textures from GLB model
             model.traverse((child) => {
                 if (child.isMesh) {
-                    console.log('Found mesh child:', child.name || 'unnamed');
-                    console.log('Child mesh material:', child.material);
                     // Keep original material with textures, just enable shadows
                     child.castShadow = true;
                     child.receiveShadow = true;
                     child.userData.isGLBModel = true;
                 }
             });
-            
-            // Add model to inner modelGroup so outer group handles terrain normal
-            const modelGroup = group.userData.modelGroup;
-            if (modelGroup) {
-                modelGroup.add(model);
-            } else {
-                group.add(model);
-            }
+
+            // Cache the processed model for future pieces of this type
+            this.glbModelCache.set(effectiveModelFile, model.clone());
+            console.log(`[Pieces3D] Cached model for ${effectiveModelFile}`);
+
+            // Add model directly to inner modelGroup so outer group handles terrain normal
+            const targetGroup = group.userData.modelGroup || group;
+            targetGroup.add(model);
+            this.debugLogGLBMeshes(group, `${pieceType} after load`);
             console.log(`[Pieces3D] ${pieceType} GLB model loaded with original textures`);
 
         } catch (error) {
@@ -634,6 +485,83 @@ class Pieces3D {
             console.log(`[Pieces3D] Falling back to geometric ${pieceType}`);
             this.createGeometricPiece(pieceType, group, material);
         }
+    }
+
+
+    debugLogGLBMeshes(group, label = 'mesh-snapshot') {
+        if (!group) {
+            console.warn('[Pieces3D][MeshDebug] No group passed to debugLogGLBMeshes');
+            return;
+        }
+
+        const pieceId = group.userData?.pieceId ?? 'unknown';
+        const pieceType = group.userData?.pieceType ?? 'unknown';
+        const meshInfos = [];
+
+        group.traverse((child) => {
+            if (child.isMesh && child.userData.isGLBModel) {
+                meshInfos.push({
+                    name: child.name || '(unnamed)',
+                    uuid: child.uuid,
+                    parent: child.parent?.name || child.parent?.type || '(no-parent)',
+                    childCount: child.children?.length || 0,
+                    hasBaseRotation: !!child.userData.baseRotationApplied
+                });
+            }
+        });
+
+        console.log(`[Pieces3D][MeshDebug] ${label} pieceId=${pieceId} type=${pieceType} glbMeshCount=${meshInfos.length}`);
+        meshInfos.forEach((info, index) => {
+            console.log(`[Pieces3D][MeshDebug]   #${index} name=${info.name} uuid=${info.uuid} parent=${info.parent} childCount=${info.childCount} baseRotApplied=${info.hasBaseRotation}`);
+        });
+    }
+
+    filterGLBMeshesForPiece(model, pieceType) {
+        if (!model) {
+            return { kept: 0, removed: 0, skipped: true };
+        }
+
+        const typeKey = (pieceType || '').toLowerCase();
+        const allowedFragments = this.glbMeshFilters[typeKey] || (typeKey ? [typeKey] : []);
+        const blacklist = this.glbMeshBlacklist || [];
+
+        const nodesToRemove = [];
+        let kept = 0;
+        let totalMeshes = 0;
+
+        model.traverse((child) => {
+            if (!child.isMesh) {
+                return;
+            }
+            totalMeshes++;
+            const name = (child.name || '').toLowerCase();
+            const matchesAllowed = allowedFragments.length === 0
+                ? true
+                : allowedFragments.some(fragment => fragment && name.includes(fragment));
+            const matchesBlacklist = blacklist.some(fragment => fragment && name.includes(fragment));
+
+            if (matchesAllowed && !matchesBlacklist) {
+                child.userData.isGLBModel = true;
+                kept++;
+            } else {
+                nodesToRemove.push(child);
+            }
+        });
+
+        if (kept === 0) {
+            // Don't strip everything—leave original model intact for inspection
+            console.warn(`[Pieces3D] No GLB meshes matched filters for ${pieceType}, skipping removal (totalMeshes=${totalMeshes})`);
+            return { kept: 0, removed: 0, skipped: true };
+        }
+
+        nodesToRemove.forEach(child => {
+            if (child.parent) {
+                console.log(`[Pieces3D] Removing non-matching GLB mesh: ${child.name || '(unnamed)'}`);
+                child.parent.remove(child);
+            }
+        });
+
+        return { kept, removed: nodesToRemove.length, skipped: false };
     }
 
     createGeometricPiece(pieceType, group, material) {
@@ -663,10 +591,6 @@ class Pieces3D {
         }
     }
 
-    async loadKingModel(group, material) {
-        await this.loadPieceModel(group, 'king', material);
-    }
-    
     createGeometricKing(group, material) {
         // Fallback to original geometric king
         // Base - increased height segments for smooth bend
@@ -909,16 +833,10 @@ class Pieces3D {
         const startPos = pieceMesh.position.clone();
         const endPos = new THREE.Vector3(targetX, targetY, targetZ);
 
-        // Get start terrain normal for debugging and interpolation
-        const debugStartNormal = this.getTerrainNormal(startPos.x, startPos.z);
-        const startNormal = debugStartNormal.clone(); // Use actual start normal, not assume upright
-
         console.log(`[Pieces3D] === MOVEMENT START ===`);
         console.log(`[Pieces3D] Piece Type: ${pieceType}`);
         console.log(`[Pieces3D] Start Position: (${startPos.x.toFixed(2)}, ${startPos.y.toFixed(2)}, ${startPos.z.toFixed(2)})`);
         console.log(`[Pieces3D] End Position: (${endPos.x.toFixed(2)}, ${endPos.y.toFixed(2)}, ${endPos.z.toFixed(2)})`);
-        console.log(`[Pieces3D] Start Normal: (${debugStartNormal.x.toFixed(3)}, ${debugStartNormal.y.toFixed(3)}, ${debugStartNormal.z.toFixed(3)})`);
-        console.log(`[Pieces3D] Target Normal: (${targetNormal.x.toFixed(3)}, ${targetNormal.y.toFixed(3)}, ${targetNormal.z.toFixed(3)})`);
 
         // Revert deformation during movement (make base horizontal)
         pieceMesh.traverse((child) => {
@@ -931,178 +849,92 @@ class Pieces3D {
         const distance = Math.sqrt(Math.pow(endPos.x - startPos.x, 2) + Math.pow(endPos.z - startPos.z, 2));
         const squaresToCross = Math.max(Math.floor(distance), 1); // At least 1 step
 
-        // Calculate direction to destination for initial turn
-        const direction = new THREE.Vector3(endPos.x - startPos.x, 0, endPos.z - startPos.z).normalize();
-        let targetRotation = Math.atan2(direction.x, direction.z);
-
-        // Normalize rotation to [0, 2*PI] to avoid edge cases
-        if (targetRotation < 0) {
-            targetRotation += 2 * Math.PI;
-        }
-
-        // Get current piece rotation from modelGroup and normalize to [0, 2*PI]
-        const modelGroup = pieceMesh.userData.modelGroup;
-        const currentRotation = modelGroup.rotation.y % (2 * Math.PI);
-        const normalizedCurrentRotation = currentRotation < 0 ? currentRotation + 2 * Math.PI : currentRotation;
-
-        // Calculate shortest rotation path
-        let rotationDelta = targetRotation - normalizedCurrentRotation;
-
-        // Choose shortest path (clockwise vs anticlockwise)
-        if (Math.abs(rotationDelta) > Math.PI) {
-            if (rotationDelta > 0) {
-                rotationDelta -= 2 * Math.PI; // Go anticlockwise instead
-            } else {
-                rotationDelta += 2 * Math.PI; // Go clockwise instead
-            }
-        }
-
-        // Check if piece already faces correct direction (within tolerance)
-        const rotationTolerance = 0.1; // ~5.7 degrees
-        const needsRotation = Math.abs(rotationDelta) > rotationTolerance;
-        const skipStartHop = !needsRotation;
-
-
-        // Animation phases - adjust duration if no rotation needed
-        const turnDuration = skipStartHop ? 0 : 300; // Skip turn phase if already facing direction
-        const hopDuration = 600 * squaresToCross; // Time for hopping movement
-        const totalDuration = turnDuration + hopDuration;
+        const hopDuration = 600 * squaresToCross;
+        const totalDuration = hopDuration;
         const startTime = Date.now();
         
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / totalDuration, 1);
             
-            // Play footsteps during movement - simple time-based approach
+            // Play footsteps during movement
             if (window.soundManager && progress > 0.1 && progress < 0.9) {
-                // Calculate footstep intervals based on distance - 2 footsteps per square
-                const footstepInterval = hopDuration / squaresToCross / 2; // 2 footsteps per square
-                
-                // Simple time-based footstep tracking - no persistent state needed
+                const footstepInterval = hopDuration / squaresToCross / 2;
                 const shouldPlayFootstep = Math.floor(elapsed / footstepInterval) !== Math.floor((elapsed - 16) / footstepInterval);
-                
                 if (shouldPlayFootstep) {
                     window.soundManager.playFootstep();
                 }
             }
             
-            // Phase 1: Initial turn to face destination (only if needed)
-            // Phase 2: Disney-style hopping movement
-            let currentX, currentZ, currentY, rotationProgress;
-            let scaleX = 1, scaleY = 1, scaleZ = 1;
-            let swayX = 0, swayZ = 0;
+            const hopEased = this.disneyEaseInOut(progress);
             
-            if (progress < 0.25 && !skipStartHop) {
-                // Phase 1: Turn to face destination - NO MOVEMENT during rotation
-                const turnProgress = progress / 0.25; // Normalize to 0-1 for this phase
-                const turnEased = this.disneyEaseInOut(turnProgress);
-                
-                // Stay at start position during rotation
-                currentX = startPos.x;
-                currentZ = startPos.z;
-                
-                // Small anticipatory hop during turn
-                const turnHopHeight = 0.15 * Math.sin(turnProgress * Math.PI);
-                const terrainHeightAtStart = this.getMedianTerrainHeight(startPos.x, startPos.z);
-                currentY = terrainHeightAtStart + 0.15 + turnHopHeight;
-                
-                // Rotate using shortest path
-                rotationProgress = normalizedCurrentRotation + (rotationDelta * turnEased);
-                
-                // Gentle scale pulse during turn anticipation
-                const scalePulse = 1.0 + (Math.sin(turnProgress * Math.PI) * 0.05);
-                scaleX = scaleY = scaleZ = scalePulse;
-                
+            // Calculate position along path
+            const currentX = THREE.MathUtils.lerp(startPos.x, endPos.x, hopEased);
+            const currentZ = THREE.MathUtils.lerp(startPos.z, endPos.z, hopEased);
+            
+            // Calculate terrain height at current position
+            const terrainHeightAtCurrent = this.getMedianTerrainHeight(currentX, currentZ);
+            const baseY = terrainHeightAtCurrent + 0.15;
+            
+            // Variable stride patterns
+            let stepHeight, swayAmount, squashAmount;
+            const hopPhase = progress * squaresToCross;
+            
+            if (hopPhase < 1) {
+                stepHeight = 0.25;
+                swayAmount = 0.08;
+                squashAmount = 0.15;
+            } else if (hopPhase < 2) {
+                stepHeight = 0.35;
+                swayAmount = 0.12;
+                squashAmount = 0.20;
             } else {
-                // Phase 2: Disney-style hopping movement
-                // Adjust progress calculation if we skipped rotation phase
-                let hopProgress;
-                if (skipStartHop) {
-                    // If no rotation needed, use full progress for hopping
-                    hopProgress = progress; // 0-1 for entire animation
-                } else {
-                    // Normal case: rotation phase was 0-25%, so hopping starts at 25%
-                    hopProgress = (progress - 0.25) / 0.75; // Normalize to 0-1 for hopping phase
-                }
-                const hopEased = this.disneyEaseInOut(hopProgress);
-                
-                // Calculate position along path
-                currentX = THREE.MathUtils.lerp(startPos.x, endPos.x, hopEased);
-                currentZ = THREE.MathUtils.lerp(startPos.z, endPos.z, hopEased);
-                
-                // Calculate terrain height at current position
-                const terrainHeightAtCurrent = this.getMedianTerrainHeight(currentX, currentZ);
-                const baseY = terrainHeightAtCurrent + 0.15;
-                
-                // Variable stride patterns - first few hops are different
-                let stepHeight, swayAmount, squashAmount;
-                const hopPhase = hopProgress * squaresToCross; // Which hop we're on
-                
-                if (hopPhase < 1) {
-                    // First hop: shorter, quicker
-                    stepHeight = 0.25;
-                    swayAmount = 0.08;
-                    squashAmount = 0.15;
-                } else if (hopPhase < 2) {
-                    // Second hop: medium height, different timing
-                    stepHeight = 0.35;
-                    swayAmount = 0.12;
-                    squashAmount = 0.20;
-                } else {
-                    // Regular hops for remaining distance
-                    stepHeight = 0.3;
-                    swayAmount = 0.15;
-                    squashAmount = 0.25;
-                }
-                
-                // Higher final hop for the last square
-                if (hopProgress > 0.85) {
-                    stepHeight *= 1.8; // Almost double height for final hop
-                    swayAmount *= 0.7; // Less sway on final hop
-                }
-                
-                // Calculate hopping motion with Disney furniture-style sway
-                const stepCycle = hopProgress * squaresToCross * Math.PI * 2;
-                let hopY = Math.abs(Math.sin(stepCycle)) * stepHeight;
-                
-                // Ensure we land perfectly at the end
-                if (hopProgress >= 0.98) {
-                    hopY = 0;
-                }
-                
-                currentY = baseY + hopY;
-                
-                // Side-to-side swaying like Disney furniture walking
-                if (hopProgress < 0.95) {
-                    swayX = Math.sin(stepCycle * 0.7) * swayAmount;
-                    swayZ = Math.cos(stepCycle * 0.7) * swayAmount * 0.6; // Less Z sway for forward motion
-                }
-                
-                // Squash and stretch during hops
-                if (hopProgress < 0.95) {
-                    const stepPhase = Math.sin(stepCycle);
-                    scaleX = 1.0 + (stepPhase * squashAmount * 0.4);
-                    scaleY = 1.0 - (Math.abs(stepPhase) * squashAmount * 0.3);
-                    scaleZ = 1.0 + (Math.cos(stepCycle) * squashAmount * 0.4);
-                }
-                
-                // Continue rotation during movement with wobble
-                // Use the final target rotation (which accounts for shortest path)
-                const finalTargetRotation = normalizedCurrentRotation + rotationDelta;
-                rotationProgress = finalTargetRotation + (Math.sin(stepCycle * 3) * 0.1);
+                stepHeight = 0.3;
+                swayAmount = 0.15;
+                squashAmount = 0.25;
+            }
+            
+            // Higher final hop for the last square
+            if (progress > 0.85) {
+                stepHeight *= 1.8;
+                swayAmount *= 0.7;
+            }
+            
+            // Calculate hopping motion
+            const stepCycle = progress * squaresToCross * Math.PI * 2;
+            let hopY = Math.abs(Math.sin(stepCycle)) * stepHeight;
+            
+            // Ensure we land perfectly at the end
+            if (progress >= 0.98) {
+                hopY = 0;
+            }
+            
+            const currentY = baseY + hopY;
+            
+            // Side-to-side swaying
+            let swayX = 0, swayZ = 0;
+            if (progress < 0.95) {
+                swayX = Math.sin(stepCycle * 0.7) * swayAmount;
+                swayZ = Math.cos(stepCycle * 0.7) * swayAmount * 0.6;
+            }
+            
+            // Squash and stretch during hops
+            let scaleX = 1, scaleY = 1, scaleZ = 1;
+            if (progress < 0.95) {
+                const stepPhase = Math.sin(stepCycle);
+                scaleX = 1.0 + (stepPhase * squashAmount * 0.4);
+                scaleY = 1.0 - (Math.abs(stepPhase) * squashAmount * 0.3);
+                scaleZ = 1.0 + (Math.cos(stepCycle) * squashAmount * 0.4);
             }
 
             // Apply transformations
             pieceMesh.position.set(currentX + swayX, currentY, currentZ + swayZ);
             pieceMesh.scale.set(scaleX, scaleY, scaleZ);
 
-            // Update blob shadow position (stays on ground, follows piece X/Z)
+            // Update blob shadow position
             if (pieceMesh.userData.blobShadow) {
                 pieceMesh.userData.blobShadow.position.set(currentX + swayX, 0.01, currentZ + swayZ);
             }
-
-            // Apply facing rotation to modelGroup (terrain normal is on outer group)
-            modelGroup.rotation.y = rotationProgress;
             
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -1122,7 +954,7 @@ class Pieces3D {
                 }
                 
                 // Special flourish for higher final hop
-                this.disneyFlourish(pieceMesh, targetNormal, targetRotation);
+                this.disneyFlourish(pieceMesh, targetNormal);
                 
                 // Call completion callback if provided
                 if (onCompleteCallback) {
@@ -1165,7 +997,7 @@ class Pieces3D {
         return new THREE.Vector3(0, 1, 0);
     }
     
-    disneyFlourish(pieceMesh, terrainNormal = null, targetRotation = null) {
+    disneyFlourish(pieceMesh, terrainNormal = null) {
         // End with a charming little flourish
         const flourishDuration = 300;
         const startTime = Date.now();
@@ -1174,9 +1006,8 @@ class Pieces3D {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / flourishDuration, 1);
             
-            // Final bounce without spin (to preserve travel direction)
+            // Final bounce without spin
             const bounce = Math.sin(progress * Math.PI) * 0.03; // Much smaller bounce to prevent shelf hopping
-            // Removed finalSpin to preserve travel direction
             
             // Add bounce during flourish, then land back down
             if (progress < 0.5) {
@@ -1186,11 +1017,9 @@ class Pieces3D {
                 // Second half: land back down (negative bounce)
                 pieceMesh.position.y -= bounce * 0.8; // Slightly less down to settle gently
             }
-            // Final 10%: no height changes, just spin
 
-            // Terrain alignment is already at group level (static)
-            // Base rotation is already at mesh level (static)
-            // No rotation changes needed during flourish
+            // Terrain alignment is on the outer group; base rotation is on the static pivot.
+            // No rotation changes needed during flourish.
 
             // Scale back to normal with a little pop
             const popScale = 1.0 + (Math.sin(progress * Math.PI) * 0.08);
@@ -1206,10 +1035,12 @@ class Pieces3D {
                 // pieceMesh.position.y should already be correct from the animation
 
                 // Update outer group quaternion to match new terrain normal
+                // TEMP: Disabled to prevent cumulative rotation with mesh rotation fix
                 if (terrainNormal !== null) {
                     const up = new THREE.Vector3(0, 1, 0);
                     const terrainQuat = new THREE.Quaternion().setFromUnitVectors(up, terrainNormal);
-                    pieceMesh.quaternion.copy(terrainQuat);
+                    // pieceMesh.quaternion.copy(terrainQuat); // TEMP: Disabled
+                    pieceMesh.quaternion.set(0, 0, 0, 1); // TEMP: Force identity
                 } else {
                     pieceMesh.quaternion.set(0, 0, 0, 1);
                 }

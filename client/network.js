@@ -39,11 +39,17 @@ class NetworkManager {
             const serverUrl = this.getServerUrl();
             console.log('[Network] Starting connection to', serverUrl, '...');
             
+            // Get auth token if available
+            const authToken = window.authState ? window.authState.getToken() : null;
+            
             // Connect to server
             this.socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 timeout: 10000,
-                forceNew: true
+                forceNew: true,
+                auth: {
+                    token: authToken
+                }
             });
             
             console.log('[Network] Socket.IO instance created:', this.socket);
@@ -244,10 +250,13 @@ class NetworkManager {
         // Initialize console manager after connection
         this.initializeConsoleManager();
         
-        // Join game
+        // Join game with authenticated user info
+        const user = window.authState ? window.authState.getUser() : null;
         const playerData = {
-            name: this.getPlayerName(),
-            color: this.getPlayerColor()
+            name: user ? user.username : this.getPlayerName(),
+            color: this.getPlayerColor(),
+            userId: user ? user.id : null,
+            role: user ? user.role : 'guest'
         };
         console.log('[Network] Emitting joinGame with data:', playerData);
         this.emit('joinGame', playerData);

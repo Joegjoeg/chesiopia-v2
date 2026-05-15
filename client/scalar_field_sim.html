@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scalar Field Simulation — Chessiopia Constructor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1a1a2e; color: #e0e0e0;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 12px;
+  }
+  h1 { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+  .panel {
+    background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+    padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 12px;
+    align-items: center; width: 100%; max-width: 640px; margin-bottom: 8px;
+  }
+  .panel label { font-size: 12px; color: #a0b0d0; white-space: nowrap; }
+  .panel input[type="range"] {
+    width: 90px; accent-color: #e94560; cursor: pointer;
+  }
+  .panel select, .panel button {
+    background: #0f3460; border: 1px solid #1a4a7a; color: #e0e0e0;
+    border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  }
+  .panel button:hover { background: #1a4a7a; }
+  .panel button.active { background: #e94560; border-color: #e94560; }
+  .panel .val { font-size: 11px; color: #e94560; min-width: 36px; text-align: right; }
+  .canvas-wrap {
+    position: relative; border: 1px solid #0f3460; border-radius: 6px;
+    overflow: hidden; margin-bottom: 8px;
+  }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .readout {
+    font-size: 11px; color: #8090b0; text-align: center; width: 100%; max-width: 640px;
+    display: flex; justify-content: space-between; padding: 0 4px;
+  }
+  .readout span { white-space: nowrap; }
+  .legend {
+    display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; color: #8090b0;
+    max-width: 640px; justify-content: center; margin-top: 4px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 3px; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #333; }
+</style>
+</head>
+<body>
+<h1>Scalar Field Simulation</h1>
+
+<div class="panel">
+  <button id="btnPlay">⏸ Pause</button>
+  <label>Speed: <input type="range" id="speed" min="0.1" max="4" step="0.1" value="1">
+    <span class="val" id="speedVal">1.0×</span></label>
+  <label>Mode:
+    <select id="mode">
+      <option value="combined" selected>Combined</option>
+      <option value="elevation">Elevation</option>
+      <option value="moisture">Moisture</option>
+      <option value="temperature">Temperature</option>
+      <option value="water">Water Table</option>
+      <option value="clouds">Clouds</option>
+      <option value="precipitation">Precipitation</option>
+      <option value="pressure">Pressure</option>
+      <option value="forecast">Forecast</option>
+      <option value="biome">Biome</option>
+    </select>
+  </label>
+  <button id="btnRain" class="active">☔ Rain Brush</button>
+  <button id="btnReset">↺ Reset</button>
+  <button id="btnExport">📤 Export</button>
+</div>
+
+<div class="panel" id="forecastLayers" style="display:none;">
+  <label>Layers:
+    <input type="checkbox" id="layerClouds" checked> Clouds
+    <input type="checkbox" id="layerPrecip" checked> Precipitation
+    <input type="checkbox" id="layerWind" checked> Wind
+    <input type="checkbox" id="layerTemp" checked> Temperature
+  </label>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="simCanvas" width="256" height="256" style="width:512px;height:512px;"></canvas>
+</div>
+
+<div class="readout">
+  <span>Wind: <b id="windReadout">0°</b> @ <b id="windSpdReadout">1.0</b></span>
+  <span>Mean Moisture: <b id="meanMoist">—</b></span>
+  <span>Cells: <b id="cellCount">0</b></span>
+</div>
+
+<div class="panel">
+  <label>Wind Dir (°): <input type="range" id="windDir" min="0" max="360" step="5" value="45">
+    <span class="val" id="windDirVal">45°</span></label>
+  <label>Wind Spd: <input type="range" id="windSpd" min="0" max="5" step="0.1" value="1">
+    <span class="val" id="windSpdVal">1.0</span></label>
+  <label>Evaporation: <input type="range" id="evap" min="0" max="0.5" step="0.01" value="0.05">
+    <span class="val" id="evapVal">0.05</span></label>
+  <label>Saturation Cap: <input type="range" id="satCap" min="0.2" max="2" step="0.05" value="0.8">
+    <span class="val" id="satCapVal">0.80</span></label>
+</div>
+
+<div class="panel">
+  <label>Outflow Rate: <input type="range" id="outflow" min="0" max="1" step="0.05" value="0.3">
+    <span class="val" id="outflowVal">0.30</span></label>
+  <label>Diffusion: <input type="range" id="diffusion" min="0" max="0.3" step="0.01" value="0.03">
+    <span class="val" id="diffusionVal">0.03</span></label>
+  <label>Rainfall: <input type="range" id="rainfall" min="0" max="0.5" step="0.01" value="0.02">
+    <span class="val" id="rainfallVal">0.02</span></label>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<script>
+/* ================================================================
+   Simplex Noise — self-contained, deterministic
+   ================================================================ */
+class SimplexNoise {
+  constructor(seed = 12345) {
+    this.p = new Uint8Array(512);
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let s = seed;
+    for (let i = 255; i > 0; i--) {
+      s = (s * 16807) % 2147483647;
+      const j = s % (i + 1);
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    for (let i = 0; i < 512; i++) this.p[i] = p[i & 255];
+  }
+  _grad(hash, x, y) {
+    const h = hash & 7;
+    const u = h < 4 ? x : y;
+    const v = h < 4 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  }
+  noise2D(x, y) {
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    let n0, n1, n2;
+    let s = (x + y) * F2;
+    let i = Math.floor(x + s), j = Math.floor(y + s);
+    let t = (i + j) * G2;
+    let X0 = i - t, Y0 = j - t;
+    let x0 = x - X0, y0 = y - Y0;
+    let i1, j1;
+    if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+    let x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+    let x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+    let ii = i & 255, jj = j & 255;
+    let gi0 = this.p[ii + this.p[jj]];
+    let gi1 = this.p[ii + i1 + this.p[jj + j1]];
+    let gi2 = this.p[ii + 1 + this.p[jj + 1]];
+    let t0 = 0.5 - x0 * x0 - y0 * y0;
+    if (t0 < 0) n0 = 0; else { t0 *= t0; n0 = t0 * t0 * this._grad(gi0, x0, y0); }
+    let t1 = 0.5 - x1 * x1 - y1 * y1;
+    if (t1 < 0) n1 = 0; else { t1 *= t1; n1 = t1 * t1 * this._grad(gi1, x1, y1); }
+    let t2 = 0.5 - x2 * x2 - y2 * y2;
+    if (t2 < 0) n2 = 0; else { t2 *= t2; n2 = t2 * t2 * this._grad(gi2, x2, y2); }
+    return 70 * (n0 + n1 + n2);
+  }
+}
+
+/* ================================================================
+   Scalar Field Simulation
+   ================================================================ */
+const W = 256, H = 256, N = W * H;
+const noise = new SimplexNoise(42);
+
+// Fields
+let elevation = new Float32Array(N);
+let moisture = new Float32Array(N);
+let temperature = new Float32Array(N);
+let waterTable = new Float32Array(N);
+let cloudCover = new Float32Array(N);
+let precipitation = new Float32Array(N);
+let pressure = new Float32Array(N);
+let biome = new Uint8Array(N);
+
+// Params
+let running = true;
+let tickRate = 1;
+let windDir = 45;
+let windSpd = 1.0;
+let evapRate = 0.05;
+let satCap = 0.8;
+let outflowRate = 0.3;
+let diffusionRate = 0.03;
+let globalRainfall = 0.02;
+let rainBrush = true;
+
+// Scratch buffers for double buffering
+let bufA = new Float32Array(N);
+let bufB = new Float32Array(N);
+let bufC = new Float32Array(N);
+
+function idx(x, y) { return ((y + H) % H) * W + ((x + W) % W); }
+
+function fbm(x, y, octaves = 4, lacunarity = 2.0, gain = 0.5) {
+  let total = 0, amplitude = 1, frequency = 1, maxVal = 0;
+  for (let i = 0; i < octaves; i++) {
+    total += noise.noise2D(x * frequency, y * frequency) * amplitude;
+    maxVal += amplitude;
+    amplitude *= gain;
+    frequency *= lacunarity;
+  }
+  return total / maxVal;
+}
+
+function initTerrain() {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      // Elevation: layered simplex for varied terrain
+      let e = fbm(x * 0.015, y * 0.015, 4, 2.0, 0.5) * 0.55;
+      e += fbm(x * 0.045 + 50, y * 0.045 + 50, 3, 2.0, 0.5) * 0.30;
+      e += fbm(x * 0.15 + 100, y * 0.15 + 100, 2, 2.0, 0.5) * 0.15;
+      // Gentle power curve: valleys broader, peaks sharper
+      const sign = Math.sign(e);
+      e = sign * Math.pow(Math.abs(e), 1.3);
+      elevation[i] = e * 35.0; // range roughly -30 to +30
+
+      // Initial temperature: base + elevation lapse rate (~6°C / 1000m)
+      let baseTemp = 22.0;
+      temperature[i] = baseTemp - elevation[i] * 0.006;
+
+      // Initial moisture: spatial variation + elevation bias
+      let m = 0.35 + fbm(x * 0.025 + 200, y * 0.025 + 300, 3, 2.0, 0.5) * 0.35;
+      if (elevation[i] > 10) m += 0.15;  // mountains catch rain
+      if (elevation[i] < -5) m += 0.25; // oceans/lakes humid
+      moisture[i] = Math.max(0, Math.min(1.2, m));
+
+      waterTable[i] = 0;
+    }
+  }
+}
+
+function advect(src, dst, angleDeg, speed, diff) {
+  const rad = angleDeg * Math.PI / 180;
+  const dx = Math.cos(rad) * speed;
+  const dy = Math.sin(rad) * speed;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      // Backtrace for advection
+      const sx = x - dx;
+      const sy = y - dy;
+      const ix = Math.floor(sx), iy = Math.floor(sy);
+      const fx = sx - ix, fy = sy - iy;
+      const v00 = src[idx(ix, iy)];
+      const v10 = src[idx(ix + 1, iy)];
+      const v01 = src[idx(ix, iy + 1)];
+      const v11 = src[idx(ix + 1, iy + 1)];
+      let val = v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy)
+              + v01 * (1 - fx) * fy + v11 * fx * fy;
+      // Diffusion (laplacian)
+      const lap = src[idx(x-1,y)] + src[idx(x+1,y)] + src[idx(x,y-1)] + src[idx(x,y+1)] - 4 * src[i];
+      val += diff * lap;
+      dst[i] = Math.max(0, val);
+    }
+  }
+}
+
+function downhillFlow() {
+  // Excess moisture above saturation flows to lowest neighbor
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      if (moisture[i] <= satCap) { waterTable[i] = moisture[i]; continue; }
+      const excess = moisture[i] - satCap;
+      // Find lowest elevation neighbor
+      let lowest = i, lowestH = elevation[i];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ni = idx(x + dx, y + dy);
+          if (elevation[ni] < lowestH) { lowestH = elevation[ni]; lowest = ni; }
+        }
+      }
+      // Flow: proportional to excess and elevation difference
+      if (lowest !== i && elevation[i] > lowestH) {
+        const flowAmt = excess * 0.3 * (1 + (elevation[i] - lowestH) * 0.05);
+        moisture[i] -= flowAmt;
+        moisture[lowest] += flowAmt;
+        // If recipient overflows, clamp next tick
+      }
+      waterTable[i] = Math.min(moisture[i], satCap);
+    }
+  }
+}
+
+function orographicPrecipitation() {
+  const rad = windDir * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      // Check if wind is pushing moisture uphill
+      const upwind = idx(Math.round(x - dx), Math.round(y - dy));
+      if (elevation[i] > elevation[upwind] && moisture[upwind] > 0.2) {
+        const rise = elevation[i] - elevation[upwind];
+        // Condensation: upwind moisture condenses as it rises
+        const condense = Math.min(moisture[upwind] * 0.3, moisture[upwind] * 0.05 * rise * 0.01);
+        moisture[upwind] = Math.max(0, moisture[upwind] - condense);
+        waterTable[i] += condense;
+      }
+    }
+  }
+}
+
+function evaporate() {
+  for (let i = 0; i < N; i++) {
+    const surf = Math.min(moisture[i], satCap);
+    const tempFactor = Math.max(0, temperature[i]) / 30.0;
+    const evap = surf * evapRate * tempFactor;
+    moisture[i] = Math.max(0, moisture[i] - evap);
+    waterTable[i] = Math.min(moisture[i], satCap);
+  }
+}
+
+function edgeOutflow() {
+  for (let x = 0; x < W; x++) {
+    // Bottom edge drains (low elevation assumed at bottom)
+    const i = idx(x, H - 1);
+    if (elevation[i] < 0) {
+      moisture[i] *= (1 - outflowRate);
+      waterTable[i] = Math.min(moisture[i], satCap);
+    }
+    // Top edge also drains if low
+    const j = idx(x, 0);
+    if (elevation[j] < 0) {
+      moisture[j] *= (1 - outflowRate);
+      waterTable[j] = Math.min(moisture[j], satCap);
+    }
+  }
+  for (let y = 0; y < H; y++) {
+    const i = idx(0, y), j = idx(W - 1, y);
+    if (elevation[i] < 0) { moisture[i] *= (1 - outflowRate); waterTable[i] = Math.min(moisture[i], satCap); }
+    if (elevation[j] < 0) { moisture[j] *= (1 - outflowRate); waterTable[j] = Math.min(moisture[j], satCap); }
+  }
+}
+
+function globalRain() {
+  for (let i = 0; i < N; i++) {
+    moisture[i] += globalRainfall;
+  }
+}
+
+/* ================================================================
+   Biome Classification
+   ================================================================ */
+const BIOME_NAMES = ['Deep Water','Shallow Water','Marsh','Forest','Grassland','Arid','Tundra','Snow','Rock'];
+const BIOME_COLORS = [
+  [20,40,100],    // deep water
+  [60,90,160],    // shallow water
+  [50,90,55],     // marsh
+  [25,80,25],     // forest
+  [65,150,50],    // grassland
+  [200,180,100],  // arid
+  [160,180,200],  // tundra
+  [240,245,250],  // snow
+  [130,120,110]   // rock
+];
+
+function classifyBiome(i) {
+  const e = elevation[i], m = moisture[i], t = temperature[i];
+  if (e < -8) return 0;   // deep water
+  if (e < -2) return 1;   // shallow water
+  if (m > 0.7 && t > 5) return 2;   // marsh
+  if (m > 0.45 && t > 8) return 3;  // forest
+  if (m > 0.18 && t > 2) return 4; // grassland
+  if (m < 0.15 && t > 12) return 5; // arid
+  if (t < -2) return 7;   // snow
+  if (t < 5) return 6;    // tundra
+  if (e > 18) return 8;   // rock
+  return 4; // default grassland
+}
+
+function updateBiomes() {
+  for (let i = 0; i < N; i++) biome[i] = classifyBiome(i);
+}
+
+/* ================================================================
+   Rendering
+   ================================================================ */
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: false });
+const imgData = ctx.createImageData(W, H);
+const pixels = imgData.data;
+
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function terrainColor(e) {
+  // e in roughly [-30, +30]
+  const t = clamp01((e + 30) / 60);
+  if (t < 0.10) return [25, 45, 100];      // deep water
+  if (t < 0.18) return [60, 90, 160];     // shallow water
+  if (t < 0.22) return [200, 185, 130];  // wet sand / beach
+  if (t < 0.35) return [55, 140, 45];      // grassland
+  if (t < 0.50) return [35, 100, 30];     // forest
+  if (t < 0.70) return [120, 105, 85];     // rocky
+  return [230, 235, 240];                 // snow
+}
+
+function moistureColor(m) {
+  const t = clamp01(m);
+  return [lerp(240, 30, t), lerp(240, 60, t), lerp(220, 160, t)];
+}
+
+function temperatureColor(t) {
+  const n = clamp01((t + 10) / 40);
+  return [lerp(50, 240, n), lerp(60, 80, n), lerp(180, 40, n)];
+}
+
+function waterTableColor(w, m) {
+  const t = clamp01(w);
+  const sat = m > satCap ? 1 : 0;
+  if (sat) return [240, 50, 50];
+  return [lerp(240, 30, t), lerp(240, 60, t), lerp(220, 160, t)];
+}
+
+function cloudColor(cc) {
+  const t = clamp01(cc);
+  // White clouds on blue sky background
+  return [lerp(100, 255, t), lerp(140, 255, t), lerp(200, 255, t)];
+}
+
+function precipitationColor(p) {
+  const t = clamp01(p);
+  // Light blue drizzle → deep blue heavy rain
+  return [lerp(220, 30, t), lerp(240, 60, t), lerp(255, 180, t)];
+}
+
+function pressureColor(p) {
+  const t = clamp01((p + 1) / 2);
+  // Low pressure (red) → high pressure (green)
+  return [lerp(220, 50, t), lerp(80, 220, t), lerp(100, 100, t)];
+}
+
+function render(mode) {
+  const isForecast = mode === 'forecast';
+  const drawMode = isForecast ? 'combined' : mode;
+
+  for (let i = 0; i < N; i++) {
+    let r, g, b;
+    switch (drawMode) {
+      case 'elevation':
+        [r, g, b] = terrainColor(elevation[i]);
+        break;
+      case 'moisture':
+        [r, g, b] = moistureColor(moisture[i]);
+        break;
+      case 'temperature':
+        [r, g, b] = temperatureColor(temperature[i]);
+        break;
+      case 'water':
+        [r, g, b] = waterTableColor(waterTable[i], moisture[i]);
+        break;
+      case 'clouds':
+        [r, g, b] = cloudColor(cloudCover[i]);
+        break;
+      case 'precipitation':
+        [r, g, b] = precipitationColor(precipitation[i]);
+        break;
+      case 'pressure':
+        [r, g, b] = pressureColor(pressure[i]);
+        break;
+      case 'biome':
+        [r, g, b] = BIOME_COLORS[biome[i]];
+        break;
+      case 'combined':
+      default: {
+        const [tr, tg, tb] = terrainColor(elevation[i]);
+        const mt = clamp01(moisture[i]);
+        r = lerp(tr, 30, mt * 0.5);
+        g = lerp(tg, 80, mt * 0.5);
+        b = lerp(tb, 180, mt * 0.5);
+        // Saturated highlight
+        if (moisture[i] > satCap) { r = 200; g = 50; b = 50; }
+        break;
+      }
+    }
+    // In forecast mode, blend active overlays
+    if (isForecast) {
+      const showClouds = document.getElementById('layerClouds').checked;
+      const showPrecip = document.getElementById('layerPrecip').checked;
+      const showTemp = document.getElementById('layerTemp').checked;
+      if (showClouds) {
+        const cc = cloudCover[i];
+        r = lerp(r, 245, cc * 0.55);
+        g = lerp(g, 245, cc * 0.55);
+        b = lerp(b, 255, cc * 0.45);
+      }
+      if (showPrecip) {
+        const pr = precipitation[i];
+        r = lerp(r, 40, pr * 0.5);
+        g = lerp(g, 80, pr * 0.4);
+        b = lerp(b, 200, pr * 0.6);
+      }
+      if (showTemp) {
+        const temp = clamp01((temperature[i] + 10) / 40);
+        // Warm = slight red tint, cold = slight blue tint
+        if (temp > 0.6) { r = lerp(r, 255, 0.15); }
+        else if (temp < 0.3) { b = lerp(b, 255, 0.15); }
+      }
+    }
+    const pi = i * 4;
+    pixels[pi] = r; pixels[pi + 1] = g; pixels[pi + 2] = b; pixels[pi + 3] = 255;
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Draw wind arrows in forecast mode
+  if (isForecast) drawWindArrows();
+}
+
+function drawWindArrows() {
+  if (!document.getElementById('layerWind').checked) return;
+  const rad = windDir * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  const step = 16; // arrow grid spacing
+  const arrowLen = 6;
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = '#e94560';
+  ctx.fillStyle = '#e94560';
+  ctx.lineWidth = 1;
+  for (let y = step / 2; y < H; y += step) {
+    for (let x = step / 2; x < W; x += step) {
+      const i = idx(x, y);
+      const cc = cloudCover[i];
+      // Arrow length proportional to wind speed and moisture flux
+      const flux = windSpd * moisture[i];
+      const len = arrowLen * (0.5 + flux * 0.8);
+      const ax = x + dx * len;
+      const ay = y + dy * len;
+      // Draw line
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+      // Draw arrowhead
+      const headLen = 2.5;
+      const angle = Math.atan2(dy, dx);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - headLen * Math.cos(angle - 0.5), ay - headLen * Math.sin(angle - 0.5));
+      ctx.lineTo(ax - headLen * Math.cos(angle + 0.5), ay - headLen * Math.sin(angle + 0.5));
+      ctx.closePath();
+      ctx.fill();
+      // Small moisture indicator dot
+      if (cc > 0.3) {
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.fillStyle = '#e94560';
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* ================================================================
+   Simulation Loop
+   ================================================================ */
+let tickCount = 0;
+let lastTime = performance.now();
+let acc = 0;
+const TICK_MS = 50; // base tick every 50ms
+
+function computeCloudCover() {
+  // Clouds form from high moisture + cooling (orographic or temp drop)
+  const rad = windDir * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      const upwind = idx(Math.round(x - dx), Math.round(y - dy));
+      // Cloud cover rises with moisture, peaks when pushing uphill
+      let cc = moisture[i] * 0.6;
+      if (elevation[i] > elevation[upwind]) {
+        const rise = elevation[i] - elevation[upwind];
+        cc += Math.min(0.4, rise * 0.015); // orographic clouds
+      }
+      // Cold air holds less moisture → more visible clouds near saturation
+      if (temperature[i] < 5) cc += 0.15;
+      cloudCover[i] = clamp01(cc);
+    }
+  }
+}
+
+function computePrecipitation() {
+  // Precipitation = condensation from orographic lift + random convection
+  const rad = windDir * Math.PI / 180;
+  const dx = Math.cos(rad), dy = Math.sin(rad);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      const upwind = idx(Math.round(x - dx), Math.round(y - dy));
+      let pr = 0;
+      // Orographic rain
+      if (elevation[i] > elevation[upwind] && moisture[upwind] > 0.25) {
+        const rise = elevation[i] - elevation[upwind];
+        pr += Math.min(1.0, moisture[upwind] * 0.2 + rise * 0.008);
+      }
+      // Convectional rain from high moisture + warmth
+      if (moisture[i] > 0.6 && temperature[i] > 15) {
+        pr += (moisture[i] - 0.6) * 0.4;
+      }
+      precipitation[i] = clamp01(pr);
+    }
+  }
+}
+
+function computePressure() {
+  // Pressure driven by elevation, temperature, moisture, cloud cover,
+  // precipitation, and a slow-moving planetary wave.
+  const wavePhase = tickCount * 0.008;
+  const waveX = Math.cos(wavePhase) * 0.15;
+  const waveY = Math.sin(wavePhase * 0.7) * 0.15;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = idx(x, y);
+      // Base: elevation reduces pressure, temperature increases it
+      let p = -elevation[i] * 0.018 + (temperature[i] - 15) * 0.012;
+      // Moisture → low pressure (latent heat, rising air)
+      p -= moisture[i] * 0.25;
+      // Cloud cover → low pressure (storm systems)
+      p -= cloudCover[i] * 0.35;
+      // Precipitation → very low pressure
+      p -= precipitation[i] * 0.25;
+      // Slow-moving planetary wave
+      p += Math.sin(x * 0.03 + waveX) * Math.cos(y * 0.03 + waveY) * 0.2;
+      pressure[i] = clamp01((p + 1.2) / 2.4) * 2.4 - 1.2; // range approx -1.2 to +1.2
+    }
+  }
+}
+
+function tick() {
+  tickCount++;
+  globalRain();
+  // Advect moisture and temperature
+  advect(moisture, bufA, windDir, windSpd, diffusionRate);
+  [moisture, bufA] = [bufA, moisture];
+  advect(temperature, bufB, windDir, windSpd * 0.5, diffusionRate * 0.5);
+  [temperature, bufB] = [bufB, temperature];
+  // Orographic + flow + evap + outflow
+  orographicPrecipitation();
+  downhillFlow();
+  evaporate();
+  edgeOutflow();
+  computeCloudCover();
+  // Advect cloud cover so orographic clouds visibly drift with wind
+  advect(cloudCover, bufC, windDir, windSpd * 0.8, diffusionRate * 0.5);
+  [cloudCover, bufC] = [bufC, cloudCover];
+  computePrecipitation();
+  computePressure();
+  if (tickCount % 20 === 0) updateBiomes();
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (!running) return;
+  const dt = now - lastTime;
+  lastTime = now;
+  acc += dt * tickRate;
+  let ticks = 0;
+  while (acc >= TICK_MS && ticks < 5) {
+    tick();
+    acc -= TICK_MS;
+    ticks++;
+  }
+  const mode = document.getElementById('mode').value;
+  render(mode);
+  updateReadout();
+}
+
+function updateReadout() {
+  let sumM = 0, cellsWet = 0;
+  for (let i = 0; i < N; i++) { sumM += moisture[i]; if (moisture[i] > satCap) cellsWet++; }
+  document.getElementById('meanMoist').textContent = (sumM / N).toFixed(3);
+  document.getElementById('cellCount').textContent = cellsWet;
+  document.getElementById('windReadout').textContent = Math.round(windDir) + '°';
+  document.getElementById('windSpdReadout').textContent = windSpd.toFixed(1);
+}
+
+/* ================================================================
+   UI Wiring
+   ================================================================ */
+function bind(id, param, displayId, scale = 1, suffix = '') {
+  const el = document.getElementById(id);
+  const disp = document.getElementById(displayId);
+  el.addEventListener('input', () => {
+    const v = parseFloat(el.value) * scale;
+    param[v] = v; // placeholder
+    disp.textContent = el.value + suffix;
+  });
+}
+
+// Map UI elements to params
+function syncParams() {
+  tickRate = parseFloat(document.getElementById('speed').value);
+  windDir = parseFloat(document.getElementById('windDir').value);
+  windSpd = parseFloat(document.getElementById('windSpd').value);
+  evapRate = parseFloat(document.getElementById('evap').value);
+  satCap = parseFloat(document.getElementById('satCap').value);
+  outflowRate = parseFloat(document.getElementById('outflow').value);
+  diffusionRate = parseFloat(document.getElementById('diffusion').value);
+  globalRainfall = parseFloat(document.getElementById('rainfall').value);
+}
+
+// Event listeners
+const ids = [
+  ['speed','speedVal','×','tickRate',1],
+  ['windDir','windDirVal','°','windDir',1],
+  ['windSpd','windSpdVal','','windSpd',1],
+  ['evap','evapVal','','evapRate',1],
+  ['satCap','satCapVal','','satCap',1],
+  ['outflow','outflowVal','','outflowRate',1],
+  ['diffusion','diffusionVal','','diffusionRate',1],
+  ['rainfall','rainfallVal','','globalRainfall',1],
+];
+ids.forEach(([id, dispId, suffix, paramName, scale]) => {
+  const el = document.getElementById(id);
+  const disp = document.getElementById(dispId);
+  el.addEventListener('input', () => {
+    syncParams();
+    disp.textContent = el.value + suffix;
+  });
+});
+
+// Play / Pause
+document.getElementById('btnPlay').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('btnPlay').textContent = running ? '⏸ Pause' : '▶ Play';
+});
+
+// Rain brush toggle
+document.getElementById('btnRain').addEventListener('click', () => {
+  rainBrush = !rainBrush;
+  document.getElementById('btnRain').classList.toggle('active', rainBrush);
+});
+
+// Reset
+document.getElementById('btnReset').addEventListener('click', () => {
+  initTerrain();
+  for (let i = 0; i < N; i++) { cloudCover[i] = 0; precipitation[i] = 0; pressure[i] = 0; }
+  tickCount = 0;
+  updateBiomes();
+});
+
+// Export snapshot
+function exportSnapshot() {
+  const snapshot = {
+    version: 1,
+    width: W,
+    height: H,
+    windDir: windDir,
+    windSpd: windSpd,
+    tickCount: tickCount,
+    elevation: Array.from(elevation),
+    moisture: Array.from(moisture),
+    temperature: Array.from(temperature),
+    waterTable: Array.from(waterTable),
+    cloudCover: Array.from(cloudCover),
+    precipitation: Array.from(precipitation),
+    pressure: Array.from(pressure),
+    biome: Array.from(biome)
+  };
+  const blob = new Blob([JSON.stringify(snapshot)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `weather_snapshot_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('btnExport').addEventListener('click', exportSnapshot);
+
+// Canvas rain brush
+let isPainting = false;
+canvas.addEventListener('mousedown', (e) => {
+  if (!rainBrush) return;
+  isPainting = true;
+  paint(e);
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (isPainting && rainBrush) paint(e);
+});
+window.addEventListener('mouseup', () => { isPainting = false; });
+
+function paint(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) / rect.width;
+  const sy = (e.clientY - rect.top) / rect.height;
+  const cx = Math.floor(sx * W);
+  const cy = Math.floor(sy * H);
+  const radius = 4;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radius * radius) continue;
+      const i = idx(cx + dx, cy + dy);
+      moisture[i] = Math.min(2.0, moisture[i] + 0.3);
+    }
+  }
+}
+
+// Forecast layer toggles re-render in real time
+['layerClouds', 'layerPrecip', 'layerWind', 'layerTemp'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    if (document.getElementById('mode').value === 'forecast') render('forecast');
+  });
+});
+
+// Mode change triggers render
+document.getElementById('mode').addEventListener('change', () => {
+  const mode = document.getElementById('mode').value;
+  render(mode);
+  updateLegend();
+  // Show forecast layer controls only in forecast mode
+  document.getElementById('forecastLayers').style.display = (mode === 'forecast') ? 'flex' : 'none';
+});
+
+/* ================================================================
+   Legend
+   ================================================================ */
+function updateLegend() {
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  const mode = document.getElementById('mode').value;
+  if (mode === 'biome') {
+    BIOME_NAMES.forEach((name, i) => {
+      const c = BIOME_COLORS[i];
+      leg.innerHTML += `<div class="legend-item"><div class="legend-swatch" style="background:rgb(${c[0]},${c[1]},${c[2]})"></div>${name}</div>`;
+    });
+  } else if (mode === 'water') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#3c3ca0"></div>Normal</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#f03232"></div>Saturated</div>';
+  } else if (mode === 'combined') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#1e5a28"></div>Terrain</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#1e3ca0"></div>Moisture</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#f03232"></div>Saturated</div>';
+  } else if (mode === 'clouds') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#6496c8"></div>Clear</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#ffffff"></div>Cloud</div>';
+  } else if (mode === 'forecast') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#1e5a28"></div>Terrain</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#e94560"></div>Wind</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#ffffff"></div>Cloud</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#2850c8"></div>Precip</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#50dc8a"></div>Temp</div>';
+  } else if (mode === 'precipitation') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#dcf0ff"></div>Light</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#1e3ca0"></div>Heavy</div>';
+  } else if (mode === 'pressure') {
+    leg.innerHTML = '<div class="legend-item"><div class="legend-swatch" style="background:#dc5032"></div>Low</div>' +
+                    '<div class="legend-item"><div class="legend-swatch" style="background:#32dc50"></div>High</div>';
+  }
+}
+
+/* ================================================================
+   Boot
+   ================================================================ */
+initTerrain();
+updateBiomes();
+updateLegend();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

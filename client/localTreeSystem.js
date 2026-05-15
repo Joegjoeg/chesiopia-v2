@@ -64,6 +64,11 @@ class LocalTreeSystem {
         this.animationEnabled = true; // Whether wind animation runs
         this.lodLevel = 'high'; // 'high', 'medium', 'low'
 
+        // Wind parameter defaults (overridden by parameterSystem sliders)
+        this.windExposureScale = 6.0;
+        this.windShadowStrength = 1.5;
+        this.windHeightPower = 2.0;
+
         // Initialize template asynchronously
         this.initializeTemplate();
     }
@@ -84,9 +89,14 @@ class LocalTreeSystem {
                 lightDir: { value: new THREE.Vector3(0.3, 0.8, 0.2).normalize() },
                 ambient: { value: 0.4 },
                 edgeSoftness: { value: 2.2 },
-                edgeStrength: { value: 0.85 }
+                edgeStrength: { value: 0.85 },
+                fogColor: { value: new THREE.Color() },
+                fogNear: { value: 0 },
+                fogFar: { value: 0 }
             },
             vertexShader: `
+                #include <common>
+                #include <fog_pars_vertex>
                 varying vec2 vUv;
                 varying vec3 vNormal;
                 varying vec3 vWorldPos;
@@ -94,10 +104,15 @@ class LocalTreeSystem {
                     vUv = uv;
                     vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
                     vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    #include <fog_vertex>
                 }
             `,
             fragmentShader: `
+                precision highp float;
+                #include <common>
+                #include <fog_pars_fragment>
                 uniform sampler2D map;
                 uniform vec3 lightDir;
                 uniform float ambient;
@@ -124,11 +139,13 @@ class LocalTreeSystem {
                     float finalAlpha = texel.a * edgeAlpha;
 
                     gl_FragColor = vec4(litColor, finalAlpha);
+                    #include <fog_fragment>
                 }
             `,
             transparent: true,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
+            fog: true
         });
     }
 
@@ -151,6 +168,7 @@ class LocalTreeSystem {
                 }
             `,
             fragmentShader: `
+                precision highp float;
                 uniform sampler2D map;
                 uniform float alphaThreshold;
                 varying vec2 vUv;
@@ -1014,9 +1032,15 @@ class LocalTreeSystem {
             // Calculate bend factor based on tree properties
             // Taller trees bend more, thinner trees bend more
 
+            // Read wind parameters from parameterSystem if available
+            const ps = window.parameterSystem;
+            const exposureScale = ps ? (ps.getParameter('windExposureScale')?.value ?? this.windExposureScale) : this.windExposureScale;
+            const shadowStrength = ps ? (ps.getParameter('windShadowStrength')?.value ?? this.windShadowStrength) : this.windShadowStrength;
+            const heightPower = ps ? (ps.getParameter('windHeightPower')?.value ?? this.windHeightPower) : this.windHeightPower;
+
             // Apply exposure-based wind sensitivity
             const exposure = tree.userData.exposure || 0.5;
-            let exposureMultiplier = 1.0 + exposure * 6.0; // Increased from 3.0 for more terrain exposure effect: 1.0 to 7.0x wind
+            let exposureMultiplier = 1.0 + exposure * exposureScale; // 1.0 to (1.0 + exposureScale)x wind
 
         // Apply leeward/windward consideration using terrain normal vs wind direction
         if (tree.userData.terrainNormal && this.windDirection) {
@@ -1025,7 +1049,7 @@ class LocalTreeSystem {
             // Dot product: positive = windward (facing wind), negative = leeward (facing away)
             const windwardFactor = Math.max(0, terrainNormal.dot(windDir));
             // Windward trees get more wind, leeward trees get less
-            exposureMultiplier *= (0.5 + windwardFactor * 1.5); // 0.5x to 2.0x multiplier based on windward/leeward
+            exposureMultiplier *= (0.5 + windwardFactor * shadowStrength); // 0.5x to (0.5 + shadowStrength)x multiplier based on windward/leeward
 
             // Debug: log windward factor for first few trees
             if (animatedCount < 5 && Math.floor(time * 60) % 60 === 0) {
@@ -1070,7 +1094,7 @@ class LocalTreeSystem {
                 const normalizedHeight = (origY + props.height / 2) / props.height;
 
                 // Bend increases with height (base doesn't bend, top bends most)
-                const heightBendFactor = Math.pow(normalizedHeight, 2); // Quadratic for more natural bend
+                const heightBendFactor = Math.pow(normalizedHeight, heightPower); // Power-controlled bend curve
 
                 // Apply bend in wind direction (use global wind direction if available)
                 // Note: windDirection is (x, y) where y maps to Z in world space

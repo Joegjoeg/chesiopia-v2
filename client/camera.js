@@ -66,12 +66,12 @@ class CameraController {
         this.oscillationCount = 0;
         this.maxOscillationCount = 10;
         
-        // Isometric mode constants
+            // Isometric mode constants
         this.isometricAzimuth = Math.PI / 4; // 45 degrees for diamond silhouette
         this.isometricPolar = 0.55;           // ~31.5 degrees elevation
         this.minOrbitDistance = 12;           // Min zoom: pieces stay tap-friendly
         this.maxOrbitDistance = 45;           // Max zoom: fills screen edge-to-edge
-        
+
         // Touch state for mobile
         this.touchDragged = false;
         this.touchOnEmptyGround = false;
@@ -114,7 +114,28 @@ class CameraController {
     handleKeyUp(event) {
         this.keys[event.key.toLowerCase()] = false;
     }
-    
+
+    getDynamicPanSpeed() {
+        if (!window.parameterSystem) return 0.04;
+
+        const startHeight = window.parameterSystem.getParameter('scrollEffectStartHeight') ?? 0;
+        const baseSpeed = window.parameterSystem.getParameter('scrollBaseDragSpeed') ?? 0.04;
+        const multiplier = window.parameterSystem.getParameter('scrollHeightMultiplier') ?? 0.001;
+
+        // Compute camera height above terrain
+        let heightAboveTerrain = this.camera.position.y;
+        if (window.game && window.game.boardSystem) {
+            const terrainHeight = window.game.boardSystem.getTerrainHeight(this.camera.position.x, this.camera.position.z);
+            heightAboveTerrain = Math.max(0, this.camera.position.y - terrainHeight);
+        }
+
+        if (heightAboveTerrain <= startHeight) {
+            return baseSpeed;
+        }
+
+        return baseSpeed + (heightAboveTerrain - startHeight) * multiplier;
+    }
+
     handleMouseDown(event) {
         if (event.button === 0) { // Left click - now for pieces only
             // Don't handle camera controls here - let game handle pieces
@@ -136,6 +157,7 @@ class CameraController {
             this.rightMouseDown = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
+            this.zoomTarget = null; // Cancel smooth zoom when taking manual control
             event.preventDefault(); // Prevent context menu
         }
     }
@@ -183,7 +205,7 @@ class CameraController {
             
             if (this.mode === 'tactical' || this.mode === 'free') {
                 // Move camera target like WASD keys (now right click)
-                const panSpeed = 0.04; // Reduced sensitivity for more controlled movement
+                const panSpeed = this.getDynamicPanSpeed();
                 const angleRad = this.orbitAzimuth; // Use actual camera azimuth (radians)
                 
                 // Calculate movement vectors based on camera direction
@@ -212,31 +234,16 @@ class CameraController {
     
     handleWheel(event) {
         event.preventDefault();
-        
-        if (this.mode === 'isometric') {
-            // In isometric mode, wheel zooms by changing orbit distance
-            const zoomDelta = event.deltaY > 0 ? 2 : -2;
-            this.orbitDistance = Math.max(
-                this.minOrbitDistance,
-                Math.min(this.maxOrbitDistance, this.orbitDistance + zoomDelta)
-            );
-            return;
-        }
-        
-        // Target point zoom system
-        const scrollDelta = event.deltaY;
-        const zoomDirection = scrollDelta > 0 ? -1 : 1; // Reversed: scroll forward = zoom in
-        
-        // Get camera's forward direction
-        const forward = new THREE.Vector3();
-        this.camera.getWorldDirection(forward);
-        
-        // Calculate target point along line of sight
-        const stepDistance = 5.0; // Reduced step distance for less dramatic zoom
-        const newTarget = this.target.clone().add(forward.clone().multiplyScalar(zoomDirection * stepDistance));
-        
-        // Set the zoom target for smooth movement
-        this.zoomTarget = newTarget;
+
+        // Get wheel sensitivity from parameter system
+        const sensitivity = window.parameterSystem ? window.parameterSystem.getParameter('wheelSensitivity') : 2;
+
+        // All modes: wheel zooms by changing orbit distance (camera up/down, target stays put)
+        const zoomDelta = event.deltaY > 0 ? sensitivity : -sensitivity;
+        this.orbitDistance = Math.max(
+            this.minOrbitDistance,
+            Math.min(this.maxOrbitDistance, this.orbitDistance + zoomDelta)
+        );
     }
     
     handleTouchStart(event) {
@@ -284,7 +291,7 @@ class CameraController {
             if (this.mode === 'isometric') {
                 // Single finger drags pan the target in isometric mode
                 if (this.touchDragged) {
-                    const panSpeed = 0.04;
+                    const panSpeed = this.getDynamicPanSpeed();
                     const angleRad = this.isometricAzimuth;
                     
                     const moveVector = new THREE.Vector3();
@@ -323,7 +330,7 @@ class CameraController {
             const deltaY = midY - this.lastTouchMidY;
             
             if (this.mode === 'isometric' || this.mode === 'tactical' || this.mode === 'free') {
-                const panSpeed = 0.04;
+                const panSpeed = this.getDynamicPanSpeed();
                 const angleRad = this.mode === 'isometric' ? this.isometricAzimuth : this.orbitAzimuth;
                 
                 const moveVector = new THREE.Vector3();
@@ -346,19 +353,11 @@ class CameraController {
             const pinchDist = Math.sqrt(dx * dx + dy * dy);
             const pinchDelta = pinchDist - this.lastPinchDist;
             
-            if (this.mode === 'isometric') {
-                // In isometric mode, pinch changes orbit distance directly
-                this.orbitDistance = Math.max(
-                    this.minOrbitDistance,
-                    Math.min(this.maxOrbitDistance, this.orbitDistance - pinchDelta * 0.05)
-                );
-            } else {
-                // Move target forward/back along camera forward direction
-                const forward = new THREE.Vector3();
-                this.camera.getWorldDirection(forward);
-                const zoomStep = 0.05;
-                this.target.add(forward.multiplyScalar(-pinchDelta * zoomStep));
-            }
+            // All modes: pinch changes orbit distance (camera up/down, target stays put)
+            this.orbitDistance = Math.max(
+                this.minOrbitDistance,
+                Math.min(this.maxOrbitDistance, this.orbitDistance - pinchDelta * 0.05)
+            );
             
             this.lastPinchDist = pinchDist;
         }
@@ -424,6 +423,7 @@ class CameraController {
         
         // Apply movement
         this.target.add(moveVector);
+        if (moveVector.lengthSq() > 0) this.zoomTarget = null;
         
         // Q/E for zoom
         if (this.keys['q']) this.distance = Math.max(10, this.distance - this.zoomSpeed);
@@ -649,7 +649,16 @@ class CameraController {
         
         this.lastPosition.copy(currentPosition);
         this.camera.position.set(x, smoothHeight, z);
-        
+
+        // Widen FOV as camera rises for orbit effect
+        const altitude = smoothHeight;
+        const fovFactor = THREE.MathUtils.smoothstep(altitude, 20, 300);
+        const targetFOV = 75 + 30 * fovFactor;
+        if (Math.abs(this.camera.fov - targetFOV) > 0.1) {
+            this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 0.05);
+            this.camera.updateProjectionMatrix();
+        }
+
         // During right-click drag (panning), lock camera orientation to avoid swing.
         // Otherwise the camera smoothly tracks the target.
         // In isometric mode, always track target even during panning.

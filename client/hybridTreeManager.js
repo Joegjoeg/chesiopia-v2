@@ -3,10 +3,11 @@
 // Uses 4-way chunk distribution cycling through the four tree types
 
 class HybridTreeManager {
-    constructor(scene, terrainSystem) {
+    constructor(scene, terrainSystem, lodManager) {
         this.scene = scene;
         this.terrainSystem = terrainSystem;
         this.chunkSize = 16;
+        this.lodManager = lodManager;
 
         // Initialize all four tree systems
         this.terrainTreeSystem = new TerrainTreeSystem(scene, terrainSystem);
@@ -17,22 +18,180 @@ class HybridTreeManager {
         // Track which trees belong to which system
         this.treeRegistry = new Map(); // key -> 'terrain', 'growing', 'poplar', or 'cherry'
 
+        // Scratch vector for LOD position queries (zero-alloc)
+        this._scratchPos = new THREE.Vector3();
+
+        // Dev-tool overrides
+        this.treeTypeOverride = 'default';
+        this.lodEnabled = true;
+        this._isRepopulating = false;
+
+        // Register LOD groups if manager available
+        if (this.lodManager) {
+            this._registerLodGroups();
+        }
+
         console.log('[HybridTreeManager] Initialized with patch-based alternation (chunkSize=' + this.chunkSize + ')');
+
+        // Only show the active system's meshes; hide others to avoid rendering empty InstancedMesh overhead
+        this._updateActiveSystemVisibility();
+    }
+
+    _getActiveSystem() {
+        switch (this.treeTypeOverride) {
+            case 'terrain': return this.terrainTreeSystem;
+            case 'growing': return this.growingTreeSystem;
+            case 'cherry':  return this.cherryTreeSystem;
+            case 'poplar':
+            default:        return this.poplarTreeSystem;
+        }
+    }
+
+    _attachSystemToScene(system, attach) {
+        if (!system || !system.parts) return;
+        for (const part of system.parts) {
+            if (!part.mesh) continue;
+            if (attach) {
+                if (part.mesh.parent !== this.scene) this.scene.add(part.mesh);
+            } else {
+                if (part.mesh.parent === this.scene) this.scene.remove(part.mesh);
+            }
+        }
+    }
+
+    _updateActiveSystemVisibility() {
+        const active = this._getActiveSystem();
+        const activeName = active === this.terrainTreeSystem ? 'terrain'
+                         : active === this.growingTreeSystem ? 'growing'
+                         : active === this.cherryTreeSystem ? 'cherry'
+                         : 'poplar';
+        const all = [this.terrainTreeSystem, this.growingTreeSystem, this.poplarTreeSystem, this.cherryTreeSystem];
+        for (const system of all) {
+            const isActive = system === active;
+            const name = system === this.terrainTreeSystem ? 'terrain'
+                       : system === this.growingTreeSystem ? 'growing'
+                       : system === this.cherryTreeSystem ? 'cherry'
+                       : 'poplar';
+            this._attachSystemToScene(system, isActive);
+            if (system) {
+                const count = system.getTreeCount ? system.getTreeCount() : 0;
+                const inScene = system.parts && system.parts[0] && system.parts[0].mesh
+                    ? system.parts[0].mesh.parent === this.scene
+                    : false;
+                // console.log(`[HybridTreeManager] ${name}: inScene=${inScene}, count=${count}`);
+            }
+        }
+        // console.log(`[HybridTreeManager] Active system: ${activeName}, override=${this.treeTypeOverride}`);
+    }
+
+    _registerLodGroups() {
+        const lm = this.lodManager;
+        const posFn = (tree) => this._scratchPos.set(tree.x, tree.y, tree.z);
+        const radiusFn = () => 4.0;
+
+        lm.registerGroup('terrainTrees', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 120,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 800,
+            onCull: (tree, id) => this._setTreeInstanceVisible(this.terrainTreeSystem, id, false),
+            onVisible: (tree, id) => this._setTreeInstanceVisible(this.terrainTreeSystem, id, true)
+        });
+        lm.registerGroup('growingTrees', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 100,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 600,
+            onCull: (tree, id) => this._setTreeInstanceVisible(this.growingTreeSystem, id, false),
+            onVisible: (tree, id) => this._setTreeInstanceVisible(this.growingTreeSystem, id, true)
+        });
+        lm.registerGroup('poplarTrees', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 120,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 1000,
+            onCull: (tree, id) => this._setTreeInstanceVisible(this.poplarTreeSystem, id, false),
+            onVisible: (tree, id) => this._setTreeInstanceVisible(this.poplarTreeSystem, id, true)
+        });
+        lm.registerGroup('cherryTrees', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 100,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 600,
+            onCull: (tree, id) => this._setTreeInstanceVisible(this.cherryTreeSystem, id, false),
+            onVisible: (tree, id) => this._setTreeInstanceVisible(this.cherryTreeSystem, id, true)
+        });
+    }
+
+    _setTreeInstanceVisible(system, index, visible) {
+        const tree = system.treeData[index];
+        if (!tree) return;
+        if (visible) {
+            system.updateTreeInstanceMatrix(index, tree);
+        } else {
+            const m = system._scratchMatrix || new THREE.Matrix4();
+            const p = system._scratchPos || new THREE.Vector3();
+            const q = system._scratchQuat || new THREE.Quaternion();
+            const s = system._scratchScale || new THREE.Vector3();
+            p.set(tree.x, tree.y, tree.z);
+            q.set(0, 0, 0, 1);
+            s.set(0, 0, 0);
+            m.compose(p, q, s);
+            for (const part of system.parts) {
+                part.mesh.setMatrixAt(index, m);
+                part.mesh.instanceMatrix.needsUpdate = true;
+            }
+        }
     }
 
     /**
      * Determine which tree system to use based on chunk position
-     * 4-way distribution: chunks cycle through Terrain, Growing, Poplar, Cherry
+     * Supports dev-tool override to force a single tree type.
      */
     _getTreeSystemForPosition(worldX, worldZ) {
-        const chunkX = Math.floor(worldX / this.chunkSize);
-        const chunkZ = Math.floor(worldZ / this.chunkSize);
-        const mod = Math.abs(chunkX + chunkZ * 2) % 4;
+        switch (this.treeTypeOverride) {
+            case 'poplar': return this.poplarTreeSystem;
+            case 'terrain': return this.terrainTreeSystem;
+            case 'growing': return this.growingTreeSystem;
+            case 'cherry': return this.cherryTreeSystem;
+            default: return this.poplarTreeSystem;
+        }
+    }
 
-        if (mod === 0) return this.terrainTreeSystem;
-        if (mod === 1) return this.growingTreeSystem;
-        if (mod === 2) return this.poplarTreeSystem;
-        return this.cherryTreeSystem;
+    /**
+     * Dev tool: override all trees to a single type and repopulate
+     */
+    setTreeTypeOverride(type) {
+        if (this._isRepopulating) return;
+        if (this.treeTypeOverride === type) return;
+
+        console.log('[HybridTreeManager] Switching tree type to:', type);
+        this.treeTypeOverride = type;
+
+        // Clear existing trees and repopulate from server
+        this._isRepopulating = true;
+        this.clear();
+
+        // Repopulate next frame to let clear() finish
+        requestAnimationFrame(() => {
+            this.populateFromServer().then(() => {
+                this._updateActiveSystemVisibility();
+                this._isRepopulating = false;
+                console.log('[HybridTreeManager] Repopulated with type:', type);
+            }).catch(err => {
+                this._updateActiveSystemVisibility();
+                this._isRepopulating = false;
+                console.error('[HybridTreeManager] Repopulate failed:', err);
+            });
+        });
     }
 
     /**
@@ -42,19 +201,30 @@ class HybridTreeManager {
         const system = this._getTreeSystemForPosition(worldX, worldZ);
         const key = `${Math.floor(worldX)},${Math.floor(worldZ)}`;
 
-        let result;
+        let result = system.addTree(worldX, worldZ, terrainHeight);
+        if (result === -1) return -1;
+
+        // Track in registry
         if (system === this.terrainTreeSystem) {
-            result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'terrain');
+            if (this.lodManager) {
+                this.lodManager.add('terrainTrees', system.treeData[result], result);
+            }
         } else if (system === this.growingTreeSystem) {
-            result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'growing');
+            if (this.lodManager) {
+                this.lodManager.add('growingTrees', system.treeData[result], result);
+            }
         } else if (system === this.poplarTreeSystem) {
-            result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'poplar');
+            if (this.lodManager) {
+                this.lodManager.add('poplarTrees', system.treeData[result], result);
+            }
         } else {
-            result = system.addTree(worldX, worldZ, terrainHeight);
             this.treeRegistry.set(key, 'cherry');
+            if (this.lodManager) {
+                this.lodManager.add('cherryTrees', system.treeData[result], result);
+            }
         }
 
         return result;
@@ -64,83 +234,87 @@ class HybridTreeManager {
      * Populate trees from server, distributing between systems based on chunk pattern
      */
     async populateFromServer() {
-        try {
-            const response = await fetch('/api/trees');
-            if (!response.ok) {
-                console.warn('[HybridTreeManager] /api/trees returned ' + response.status);
-                return;
-            }
-            const data = await response.json();
-            const list = data.trees || [];
-            console.log('[HybridTreeManager] Server reports ' + list.length + ' trees');
-
-            const board = window.game && window.game.boardSystem;
-            if (!board || typeof board.getUnifiedTerrainHeight !== 'function') {
-                console.warn('[HybridTreeManager] boardSystem.getUnifiedTerrainHeight not ready; aborting populate');
-                return;
-            }
-
-            const waterCutoff = (board.waterLevel != null ? board.waterLevel : -1.5) + 0.05;
-
-            let placed = 0;
-            let underwater = 0;
-            let terrainTrees = 0;
-            let growingTrees = 0;
-            let poplarTrees = 0;
-            let cherryTrees = 0;
-
-            for (const t of list) {
-                const wx = t.x;
-                const wz = t.y;
-                const height = board.getUnifiedTerrainHeight(wx, wz);
-
-                if (height < waterCutoff) { underwater++; continue; }
-
-                const system = this._getTreeSystemForPosition(wx, wz);
-                const key = `${Math.floor(wx)},${Math.floor(wz)}`;
-
-                if (system === this.terrainTreeSystem) {
-                    if (this.terrainTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
-                        terrainTrees++;
-                        this.treeRegistry.set(key, 'terrain');
-                    }
-                } else if (system === this.growingTreeSystem) {
-                    if (this.growingTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
-                        growingTrees++;
-                        this.treeRegistry.set(key, 'growing');
-                    }
-                } else if (system === this.poplarTreeSystem) {
-                    if (this.poplarTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
-                        poplarTrees++;
-                        this.treeRegistry.set(key, 'poplar');
-                    }
-                } else {
-                    if (this.cherryTreeSystem.addTree(wx + 0.5, wz + 0.5, height) !== -1) {
-                        cherryTrees++;
-                        this.treeRegistry.set(key, 'cherry');
-                    }
+        return new Promise(async (resolve, reject) => {
+            try {
+                const response = await fetch('/api/trees');
+                if (!response.ok) {
+                    console.warn('[HybridTreeManager] /api/trees returned ' + response.status);
+                    resolve();
+                    return;
                 }
-                placed++;
+                const data = await response.json();
+                const list = data.trees || [];
+                console.log('[HybridTreeManager] Server reports ' + list.length + ' trees');
+
+                const board = window.game && window.game.boardSystem;
+                if (!board || typeof board.getUnifiedTerrainHeight !== 'function') {
+                    console.warn('[HybridTreeManager] boardSystem.getUnifiedTerrainHeight not ready; aborting populate');
+                    resolve();
+                    return;
+                }
+
+                const waterCutoff = (board.waterLevel != null ? board.waterLevel : -1.5) + 0.05;
+
+                let placed = 0;
+                let underwater = 0;
+                let terrainTrees = 0;
+                let growingTrees = 0;
+                let poplarTrees = 0;
+                let cherryTrees = 0;
+
+                // Process trees in batches to keep the main thread responsive
+                const BATCH_SIZE = 50;
+                let idx = 0;
+
+                const processBatch = () => {
+                    const end = Math.min(idx + BATCH_SIZE, list.length);
+                    for (; idx < end; idx++) {
+                        const t = list[idx];
+                        const wx = t.x;
+                        const wz = t.y;
+                        const height = board.getUnifiedTerrainHeight(wx, wz);
+
+                        if (height < waterCutoff) { underwater++; continue; }
+
+                        const system = this._getTreeSystemForPosition(wx, wz);
+                        const result = this.addTree(wx + 0.5, wz + 0.5, height);
+                        if (result !== -1) {
+                            if (system === this.terrainTreeSystem) terrainTrees++;
+                            else if (system === this.growingTreeSystem) growingTrees++;
+                            else if (system === this.poplarTreeSystem) poplarTrees++;
+                            else cherryTrees++;
+                            placed++;
+                        }
+                    }
+
+                    if (idx < list.length) {
+                        requestAnimationFrame(processBatch);
+                    } else {
+                        console.log('[HybridTreeManager] Placed ' + placed + ' trees (' + underwater + ' skipped underwater)');
+                        console.log('[HybridTreeManager] Distribution: ' + terrainTrees + ' terrain, ' + growingTrees + ' growing, ' + poplarTrees + ' poplar, ' + cherryTrees + ' cherry');
+                        console.log('[HybridTreeManager] Growing tree count:', this.growingTreeSystem.getTreeCount());
+                        console.log('[HybridTreeManager] Poplar tree count:', this.poplarTreeSystem.getTreeCount());
+                        console.log('[HybridTreeManager] Cherry tree count:', this.cherryTreeSystem.getTreeCount());
+
+                        // Compute wind field for all systems
+                        this.terrainTreeSystem.computeWindField();
+                        console.log('[HybridTreeManager] Computing wind field for growing trees...');
+                        this.growingTreeSystem.computeWindField();
+                        console.log('[HybridTreeManager] Computing wind field for poplar trees...');
+                        this.poplarTreeSystem.computeWindField();
+                        console.log('[HybridTreeManager] Computing wind field for cherry trees...');
+                        this.cherryTreeSystem.computeWindField();
+                        console.log('[HybridTreeManager] Wind field computed for all systems');
+                        resolve();
+                    }
+                };
+
+                processBatch();
+            } catch (err) {
+                console.error('[HybridTreeManager] populateFromServer failed:', err);
+                reject(err);
             }
-
-            console.log('[HybridTreeManager] Placed ' + placed + ' trees (' + underwater + ' skipped underwater)');
-            console.log('[HybridTreeManager] Distribution: ' + terrainTrees + ' terrain, ' + growingTrees + ' growing, ' + poplarTrees + ' poplar, ' + cherryTrees + ' cherry');
-            console.log('[HybridTreeManager] Growing tree count:', this.growingTreeSystem.getTreeCount());
-            console.log('[HybridTreeManager] Poplar tree count:', this.poplarTreeSystem.getTreeCount());
-            console.log('[HybridTreeManager] Cherry tree count:', this.cherryTreeSystem.getTreeCount());
-
-            // Compute wind field for all systems
-            this.terrainTreeSystem.computeWindField();
-            console.log('[HybridTreeManager] Computing wind field for growing trees...');
-            this.growingTreeSystem.computeWindField();
-            console.log('[HybridTreeManager] Computing wind field for poplar trees...');
-            this.poplarTreeSystem.computeWindField();
-            console.log('[HybridTreeManager] Computing wind field for cherry trees...');
-            this.cherryTreeSystem.computeWindField();
-            console.log('[HybridTreeManager] Wind field computed for all systems');
-        } catch (err) {
-            console.error('[HybridTreeManager] populateFromServer failed:', err);
-        }
+        });
     }
 
     /**
@@ -152,20 +326,63 @@ class HybridTreeManager {
         this.poplarTreeSystem.clear();
         this.cherryTreeSystem.clear();
         this.treeRegistry.clear();
+        if (this.lodManager) {
+            this.lodManager.clear('terrainTrees');
+            this.lodManager.clear('growingTrees');
+            this.lodManager.clear('poplarTrees');
+            this.lodManager.clear('cherryTrees');
+        }
         console.log('[HybridTreeManager] Cleared all trees');
+    }
+
+    /**
+     * Set visibility on all tree meshes across all systems
+     */
+    setTreeVisible(visible) {
+        const systems = [this.terrainTreeSystem, this.growingTreeSystem, this.poplarTreeSystem, this.cherryTreeSystem];
+        for (const system of systems) {
+            this._attachSystemToScene(system, visible);
+        }
     }
 
     /**
      * Update all tree systems
      */
     update(timeSec, windStrength, windDirection) {
-        if (Math.random() < 0.01) {
-            console.log('[HybridTreeManager] update called, timeSec:', timeSec, 'windStrength:', windStrength);
+        const dontRender = window.parameterSystem && window.parameterSystem.getParameter('dontRenderTrees');
+        if (dontRender) {
+            this.setTreeVisible(false);
+            return;
         }
-        this.terrainTreeSystem.update(timeSec, windStrength, windDirection);
-        this.growingTreeSystem.update(timeSec, windStrength, windDirection);
-        this.poplarTreeSystem.update(timeSec, windStrength, windDirection);
-        this.cherryTreeSystem.update(timeSec, windStrength, windDirection);
+
+        // Ensure only the active system is visible (handles dev-tool toggle or parameter changes)
+        this._updateActiveSystemVisibility();
+
+        if (this.lodManager && this.lodEnabled) {
+            // Terrain trees - animate every frame
+            const terrainGo = this.lodManager.shouldAnimateGroup('terrainTrees', 1);
+            if (terrainGo) this.terrainTreeSystem.update(timeSec, windStrength, windDirection);
+
+            // Growing trees - every 2nd frame
+            const growingGo = this.lodManager.shouldAnimateGroup('growingTrees', 2);
+            if (growingGo) this.growingTreeSystem.update(timeSec, windStrength, windDirection);
+
+            // Poplar trees - adaptive throttling based on visible count
+            const poplarVisible = this.lodManager.getGroupVisibleCount('poplarTrees');
+            const poplarInterval = poplarVisible < 50 ? 1 : poplarVisible < 200 ? 4 : 8;
+            const poplarGo = this.lodManager.shouldAnimateGroup('poplarTrees', poplarInterval);
+            if (poplarGo) this.poplarTreeSystem.update(timeSec, windStrength, windDirection);
+
+            // Cherry trees - every 2nd frame
+            const cherryGo = this.lodManager.shouldAnimateGroup('cherryTrees', 2);
+            if (cherryGo) this.cherryTreeSystem.update(timeSec, windStrength, windDirection);
+        } else {
+            // Fallback without LODManager
+            this.terrainTreeSystem.update(timeSec, windStrength, windDirection);
+            this.growingTreeSystem.update(timeSec, windStrength, windDirection);
+            this.poplarTreeSystem.update(timeSec, windStrength, windDirection);
+            this.cherryTreeSystem.update(timeSec, windStrength, windDirection);
+        }
     }
 
     /**

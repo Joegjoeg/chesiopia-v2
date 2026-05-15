@@ -1,3 +1,6 @@
+var UP = window.UP || new THREE.Vector3(0, 1, 0);
+window.UP = UP;
+
 // CherryTreeSystem
 // Instanced cherry trees using three equally-spaced vertical planes
 // around a central trunk. Each plane samples a random silhouette from
@@ -89,7 +92,6 @@ class CherryTreeSystem {
             metalness: 0.0,
             side: THREE.DoubleSide
         });
-        this._injectWindShader(trunkMat, 0.015);
         parts.push({
             name: 'trunk',
             mesh: this._makeInstancedMesh(trunkGeo, trunkMat, true),
@@ -104,9 +106,11 @@ class CherryTreeSystem {
             planeGeo.translate(0, 1.2, 0); // base at y=0
             planeGeo.rotateY(planeAngles[i]);
             const planeMat = this._createPlaneShaderMaterial(0.05);
+            const planeMesh = this._makeInstancedMesh(planeGeo, planeMat, true, i);
+            planeMesh.renderOrder = 2; // draw after transparent water plane
             parts.push({
                 name: 'plane_' + i,
-                mesh: this._makeInstancedMesh(planeGeo, planeMat, true, i),
+                mesh: planeMesh,
                 offset: { x: 0, y: 0, z: 0 },
                 scaleY: 1.0,
                 isPlane: true,
@@ -130,11 +134,17 @@ class CherryTreeSystem {
                 uWindStrength:   this.windUniforms.uWindStrength,
                 uWindDirection:  this.windUniforms.uWindDirection,
                 uSwayMult:       { value: swayMult },
+                uWindHeightPower: { value: 2.0 },
                 uSunIntensity:   { value: 1.0 },
                 uAtlasCols:      { value: atlasCols },
-                uAtlasRows:      { value: atlasRows }
+                uAtlasRows:      { value: atlasRows },
+                fogColor: { value: new THREE.Color() },
+                fogNear: { value: 0 },
+                fogFar: { value: 0 }
             },
             vertexShader: `
+                #include <common>
+                #include <fog_pars_vertex>
                 attribute float aWindPhase;
                 attribute float aWindMultiplier;
                 attribute float aSilhouetteIndex;
@@ -143,6 +153,7 @@ class CherryTreeSystem {
                 uniform float uWindStrength;
                 uniform vec2 uWindDirection;
                 uniform float uSwayMult;
+                uniform float uWindHeightPower;
                 uniform float uAtlasCols;
                 uniform float uAtlasRows;
 
@@ -171,15 +182,20 @@ class CherryTreeSystem {
                     mat4 localToWorld = modelMatrix * instanceMatrix;
                     vWorldNormal = normalize(mat3(localToWorld) * normal);
                     vec4 wp = localToWorld * vec4(position, 1.0);
-                    float h = max(0.0, wp.y);
+                    float hRel = max(0.0, wp.y - instanceMatrix[3][1]); float hNorm = clamp(hRel * 0.12, 0.0, 1.0);
                     float phase = aWindPhase + position.x * 0.5 + position.z * 0.3;
-                    wp.x += sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.15 * uSwayMult * aWindMultiplier;
-                    wp.z += cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.10 * uSwayMult * aWindMultiplier;
+                    wp.x += sin(uTime * 1.8 + phase) * uWindStrength * pow(hNorm, uWindHeightPower) * 0.15 * uSwayMult * aWindMultiplier;
+                    wp.z += cos(uTime * 2.6 + phase * 1.4) * uWindStrength * pow(hNorm, uWindHeightPower) * 0.10 * uSwayMult * aWindMultiplier;
                     vWorldPos = wp.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * wp;
+                    vec4 mvPosition = viewMatrix * wp;
+                    gl_Position = projectionMatrix * mvPosition;
+                    #include <fog_vertex>
                 }
             `,
             fragmentShader: `
+                precision highp float;
+                #include <common>
+                #include <fog_pars_fragment>
                 uniform sampler2D silhouetteAtlas;
                 uniform sampler2D foliageMap;
                 uniform vec3 lightDir;
@@ -208,20 +224,23 @@ class CherryTreeSystem {
                     vec3 litColor = foliage.rgb * (ambient + diff * (1.0 - ambient)) * uSunIntensity;
 
                     gl_FragColor = vec4(litColor, mask * foliage.a);
+                    #include <fog_fragment>
                 }
             `,
             transparent: true,
             side: THREE.DoubleSide,
-            depthWrite: true
+            depthWrite: false,
+            fog: true
         });
     }
 
     _makeInstancedMesh(geometry, material, needsWind = false, planeIndex = -1) {
         const mesh = new THREE.InstancedMesh(geometry, material, this.maxTrees);
+        mesh.name = 'cherryTree';
         mesh.count = 0;
         mesh.castShadow = false;
         mesh.receiveShadow = true;
-        mesh.frustumCulled = false;
+        mesh.frustumCulled = false; // LOD manager handles culling
 
         if (needsWind) {
             mesh.geometry.setAttribute('aWindPhase',
@@ -236,37 +255,6 @@ class CherryTreeSystem {
         return mesh;
     }
 
-    _injectWindShader(material, swayAmount) {
-        const u = this.windUniforms;
-        material.onBeforeCompile = (shader) => {
-            shader.uniforms.uTime          = u.uTime;
-            shader.uniforms.uWindStrength  = u.uWindStrength;
-            shader.uniforms.uWindDirection = u.uWindDirection;
-            shader.uniforms.uSwayMult      = { value: swayAmount };
-
-            shader.vertexShader =
-                `attribute float aWindPhase;\n` +
-                `attribute float aWindMultiplier;\n` +
-                `uniform float uTime;\n` +
-                `uniform float uWindStrength;\n` +
-                `uniform vec2 uWindDirection;\n` +
-                `uniform float uSwayMult;\n` +
-                shader.vertexShader;
-
-            shader.vertexShader = shader.vertexShader.replace(
-                '#include <begin_vertex>',
-                `#include <begin_vertex>
-                float h = max(0.0, position.y);
-                float phase = aWindPhase + position.x * 0.5 + position.z * 0.3;
-                float s1 = sin(uTime * 1.8 + phase) * uWindStrength * h * h * 0.15 * uSwayMult * aWindMultiplier;
-                float s2 = cos(uTime * 2.6 + phase * 1.4) * uWindStrength * h * h * 0.10 * uSwayMult * aWindMultiplier;
-                transformed.x += s1;
-                transformed.z += s2;`
-            );
-        };
-        material.needsUpdate = true;
-    }
-
     addTree(worldX, worldZ, terrainHeight) {
         if (this.treeCount >= this.maxTrees) {
             console.warn('[CherryTreeSystem] Capacity reached (' + this.maxTrees + ')');
@@ -277,7 +265,9 @@ class CherryTreeSystem {
         const scale  = 0.85 + Math.random() * 0.45; // 0.85 - 1.30
         const rotY   = Math.random() * Math.PI * 2;
 
-        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY });
+        const board = window.game && window.game.boardSystem;
+        const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(worldX, worldZ) : new THREE.Vector3(0, 1, 0);
+        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone() });
 
         if (!this._currentHeights) {
             this._currentHeights = new Float32Array(this.maxTrees);
@@ -293,8 +283,10 @@ class CherryTreeSystem {
             this._silhouetteIndices[p][i] = Math.floor(Math.random() * this.numSilhouettes);
         }
 
-        this._scratchEuler.set(0, rotY, 0);
-        this._scratchQuat.setFromEuler(this._scratchEuler);
+        this._scratchQuat.setFromAxisAngle(UP, rotY);
+        const tiltQuat = new THREE.Quaternion().setFromUnitVectors(UP, normal);
+        tiltQuat.multiply(this._scratchQuat);
+        this._scratchQuat.copy(tiltQuat);
         this._scratchPos.set(worldX, terrainHeight, worldZ);
         this._scratchScale.set(scale, scale, scale);
         this._scratchMatrix.compose(this._scratchPos, this._scratchQuat, this._scratchScale);
@@ -323,6 +315,7 @@ class CherryTreeSystem {
     }
 
     update(timeSec, windStrength, windDirection) {
+        this.lastWindDirection = windDirection;
         this.windUniforms.uTime.value = timeSec;
         this.windUniforms.uWindStrength.value = (windStrength != null ? windStrength : 0.6) * 0.5;
         if (windDirection != null) {
@@ -397,25 +390,23 @@ class CherryTreeSystem {
             const newHeight = currentHeight + (targetHeight - currentHeight) * this._heightSmoothingFactor;
             this._currentHeights[i] = newHeight;
 
-            let rippleTiltX = 0;
-            let rippleTiltZ = 0;
             if (board.getTerrainNormal) {
-                const normal = board.getTerrainNormal(tree.x, tree.z);
-                rippleTiltX = Math.atan2(normal.x, normal.y);
-                rippleTiltZ = Math.atan2(-normal.z, normal.y);
+                tree.normal = board.getTerrainNormal(tree.x, tree.z).clone();
             }
 
             tree.y = newHeight;
-            this.updateTreeInstanceMatrix(i, tree, rippleTiltX, rippleTiltZ);
+            this.updateTreeInstanceMatrix(i, tree);
         }
     }
 
-    updateTreeInstanceMatrix(i, tree, rippleTiltX = 0, rippleTiltZ = 0) {
+    updateTreeInstanceMatrix(i, tree) {
         const scale = tree.scale;
         const rotY = tree.rotY;
 
-        this._scratchEuler.set(rippleTiltX, rotY, rippleTiltZ);
-        this._scratchQuat.setFromEuler(this._scratchEuler);
+        const normal = tree.normal || UP;
+        this._scratchQuat.setFromUnitVectors(UP, normal);
+        const yQuat = new THREE.Quaternion().setFromAxisAngle(UP, rotY);
+        this._scratchQuat.multiply(yQuat);
         this._scratchPos.set(tree.x, tree.y, tree.z);
         this._scratchScale.set(scale, scale, scale);
         this._scratchMatrix.compose(this._scratchPos, this._scratchQuat, this._scratchScale);
@@ -437,6 +428,28 @@ class CherryTreeSystem {
         }
         board.computeTreeWindField(this.treeData, this.windField);
         console.log('[CherryTreeSystem] Wind field computed for', this.windField.size, 'tiles');
+    }
+
+    recomputeWindMultipliers() {
+        const ps = window.parameterSystem;
+        const exposureScale = ps ? (ps.getParameter('windExposureScale')?.value ?? 6.0) : 6.0;
+        const shadowStrength = ps ? (ps.getParameter('windShadowStrength')?.value ?? 1.5) : 1.5;
+        const wd = this.lastWindDirection || (window.game && window.game.decorativeVisuals && window.game.decorativeVisuals.windDirection) || { x: 1, y: 0 };
+        const windDir = new THREE.Vector3(wd.x, 0, wd.y).normalize();
+        for (let i = 0; i < this.treeCount; i++) {
+            const data = this.treeData[i];
+            const normal = data.normal || new THREE.Vector3(0, 1, 0);
+            const windwardFactor = Math.max(0, normal.dot(windDir));
+            let mult = 1.0 + 0.5 * exposureScale;
+            mult *= (0.5 + windwardFactor * shadowStrength);
+            const baseMult = this.windField.get(`${Math.floor(data.x)},${Math.floor(data.z)}`) || 1.0;
+            mult *= baseMult;
+            this._sharedWindMultipliers[i] = mult;
+        }
+        for (const part of this.parts) {
+            const attr = part.mesh.geometry.attributes.aWindMultiplier;
+            if (attr) attr.needsUpdate = true;
+        }
     }
 
     clear() {

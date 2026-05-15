@@ -31,69 +31,6 @@
                 </button>
             </div>
             
-            <!-- Dev Controls (hidden by default, toggle with Space) -->
-            <div id="devControls" class="ui-panel" style="display: none; background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2);">
-                <h3 style="color: #ff6666;">Dev Tools</h3>
-                <button id="clearAllPiecesBtn" class="dev-btn" style="background: #ff4444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Clear All Pieces
-                </button>
-                <button id="spawnTestPiecesBtn" class="dev-btn" style="background: #ff8800; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Spawn Test Pieces
-                </button>
-                <button id="toggleCelShadingBtn" class="dev-btn" style="background: #9966ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Toggle Cel Shading
-                </button>
-                <button id="recreateMapBtn" class="dev-btn" style="background: #ff0066; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Recreate Map
-                </button>
-                <button id="testServerErrorBtn" class="dev-btn" style="background: #ff0000; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Test Server Error
-                </button>
-                <button id="respawnBtn" class="dev-btn" style="background: #4488ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Respawn (Flying Castle)
-                </button>
-                <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
-                    <div>Wind: <span id="windSpeed">0</span> <span id="windDirArrow">-</span></div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Day Time (<span id="dayTime">12:00</span>):</label><br>
-                        <input type="range" id="dayTimeSlider" min="0" max="24" step="0.1" value="12" style="width: 100%; margin-top: 2px;">
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Day Speed (<span id="daySpeedValue">60s/day</span>):</label><br>
-                        <input type="range" id="daySpeedSlider" min="3" max="240" step="1" value="60" style="width: 100%; margin-top: 2px;">
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Time of Year (<span id="seasonProgress">Spring</span>):</label><br>
-                        <input type="range" id="yearTimeSlider" min="0" max="365" step="1" value="0" style="width: 100%; margin-top: 2px;">
-                    </div>
-                </div>
-                <div id="windCompass" style="margin-top: 10px; width: 30px; height: 30px; border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; position: relative; background: rgba(0,0,0,0.2);">
-                    <div id="windArrow" style="position: absolute; top: 50%; left: 50%; width: 0; height: 0; margin-left: -3px; margin-top: -6px; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 10px solid rgba(255,200,100,0.8); transform-origin: 50% 100%; transform: rotate(0deg);"></div>
-                </div>
-                <button id="respawnBtn" class="dev-btn" style="background: #4488ff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin: 2px;">
-                    Respawn (Flying Castle)
-                </button>
-                <div id="performanceStats" style="margin-top: 10px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ff00;">
-                    <div>Wind: <span id="windSpeed">0</span> <span id="windDirArrow">-</span></div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Day Time (<span id="dayTime">12:00</span>):</label><br>
-                        <input type="range" id="dayTimeSlider" min="0" max="24" step="0.1" value="12" style="width: 100%; margin-top: 2px;">
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Day Speed (<span id="daySpeedValue">60s/day</span>):</label><br>
-                        <input type="range" id="daySpeedSlider" min="3" max="240" step="1" value="60" style="width: 100%; margin-top: 2px;">
-                    </div>
-                    <div style="margin-top: 8px;">
-                        <label style="color: #00ff00; font-size: 11px;">Time of Year (<span id="seasonProgress">Spring</span>):</label><br>
-                        <input type="range" id="yearTimeSlider" min="0" max="365" step="1" value="0" style="width: 100%; margin-top: 2px;">
-                    </div>
-                    <div style="margin-top:6px;border-top:1px solid rgba(0,255,0,0.3);padding-top:4px;">Verts: <span id="vertexCount">-</span> | Tris: <span id="triangleCount">-</span></div>
-                    <div style="font-size:10px;color:#aaa;margin-top:4px;white-space:pre-wrap;" id="optStatus">Loading...</div>
-                </div>
-                <div id="controlsHint" style="margin-top:8px;padding:4px 8px;background:rgba(0,0,0,0.4);border-radius:4px;font-size:11px;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;">
-                    WASD: Move | Mouse: Select & Move | S: Shop | C: Center on King | Space: Toggle Dev Tools
-                </div>
-            </div>
             
             <!-- Shop Modal (hidden by default) -->
             <div id="shopModal" class="modal hidden">
@@ -772,68 +709,120 @@
         }
         
         function loadGameModules() {
-            // Load game modules in order
-            const scripts = [
-                'gameState.js',
-                'network.js',
-                'consoleManager.js',
-                'serverErrorDisplay.js',
-                'terrain-new.js?v=' + Date.now(),
-                'textureAtlasGenerator.js?v=' + Date.now(),
-                'planetMapping.js?v=' + Date.now(),
-                'RollingTerrainMesh.js?v=' + Date.now(),
-                'board_clean.js?v=' + Date.now(),
-                'camera.js',
-                'soundManager.js',
-                'pieces3d.js',
-                'movementBridge.js',
-                'coveringSystem.js',
-                'visualFeedback.js',
-                'growingTreeSystem.js',
-                'terrainTreeSystem.js',
-                'poplarTreeSystem.js',
-                'cherryTreeSystem.js',
-                'hybridTreeManager.js',
-                'terrainTreeIntegration.js',
-                'debugTreeSystem.js',
-                'shadowSystem.js',
-                'celShaderSimple.js',
-                'grassSystem.js',
-                'textureBlendingSystem.js',
-                'decorativeVisuals.js',
-                'performanceManager.js',
-                'validationTests.js',
-                'parameterSystem.js',
-                'devInterface.js',
-                'game.js?v=' + Date.now()
+            // Load auth modules first
+            const authScripts = [
+                'authApi.js',
+                'authState.js',
+                'authOverlay.js'
             ];
             
-            function loadScript(index) {
-                if (index >= scripts.length) {
-                    // All scripts loaded, initialize game
-                    console.log('All game modules loaded, initializing game...');
-                    if (typeof initializeGame === 'function') {
-                        setTimeout(initializeGame, 100);
-                    } else {
-                        console.error('initializeGame function not found');
-                    }
+            function loadAuthScript(index, callback) {
+                if (index >= authScripts.length) {
+                    callback();
                     return;
                 }
-                
                 const script = document.createElement('script');
-                script.src = scripts[index];
+                script.src = authScripts[index];
                 script.onload = () => {
-                    console.log(`Loaded ${scripts[index]}`);
-                    loadScript(index + 1);
+                    console.log(`Loaded auth module ${authScripts[index]}`);
+                    loadAuthScript(index + 1, callback);
                 };
                 script.onerror = () => {
-                    console.error(`Failed to load ${scripts[index]}`);
-                    loadScript(index + 1); // Continue loading other scripts
+                    console.error(`Failed to load auth module ${authScripts[index]}`);
+                    loadAuthScript(index + 1, callback);
                 };
                 document.body.appendChild(script);
             }
             
-            loadScript(0);
+            // Initialize auth overlay after auth modules load
+            function initAuthAndGame() {
+                if (typeof window.authOverlay === 'undefined') {
+                    console.error('[Auth] Auth overlay not loaded, continuing without auth');
+                    startGameLoading();
+                    return;
+                }
+                
+                window.authOverlay.init((user) => {
+                    console.log('[Auth] User authenticated:', user.username, '(' + user.role + ')');
+                    startGameLoading();
+                });
+            }
+            
+            function startGameLoading() {
+                // Load game modules in order
+                const scripts = [
+                    'gameState.js',
+                    'network.js',
+                    'consoleManager.js',
+                    'serverErrorDisplay.js',
+                    'terrain-new.js?v=' + Date.now(),
+                    'textureAtlasGenerator.js?v=' + Date.now(),
+                    'planetMapping.js?v=' + Date.now(),
+                    'RollingTerrainMesh.js?v=' + Date.now(),
+                    'skyShaderSystem.js?v=' + Date.now(),
+                    'zodiacConstellationSystem.js?v=' + Date.now(),
+                    'waterReflectionManager.js?v=' + Date.now(),
+                    'board_clean.js?v=' + Date.now(),
+                    'camera.js',
+                    'soundManager.js',
+                    'pieces3d.js',
+                    '/moveValidator.js',
+                    'movementBridge.js',
+                    'coveringSystem.js',
+                    'visualFeedback.js?v=' + Date.now(),
+                    'growingTreeSystem.js?v=' + Date.now(),
+                    'terrainTreeSystem.js?v=' + Date.now(),
+                    'poplarTreeSystem.js?v=' + Date.now(),
+                    'cherryTreeSystem.js?v=' + Date.now(),
+                    'hybridTreeManager.js?v=' + Date.now(),
+                    'terrainTreeIntegration.js',
+                    'debugTreeSystem.js',
+                    'shadowSystem.js',
+                    'celShaderSimple.js',
+                    'grassSystem.js',
+                    'textureBlendingSystem.js',
+                    'decorativeVisuals.js?v=' + Date.now(),
+                    'performanceManager.js',
+                    'validationTests.js',
+                    'modifierStack.js',
+                    'parameterSystem.js?v=' + Date.now(),
+                    'devInterface.js',
+                    'memoryProfiler.js',
+                    'lodManager.js',
+                    'jesusSummonSystem.js?v=' + Date.now(),
+                    'game.js?v=' + Date.now()
+                ];
+                
+                function loadScript(index) {
+                    if (index >= scripts.length) {
+                        // All scripts loaded, initialize game
+                        console.log('All game modules loaded, initializing game...');
+                        if (typeof initializeGame === 'function') {
+                            setTimeout(initializeGame, 100);
+                        } else {
+                            console.error('initializeGame function not found');
+                        }
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = scripts[index];
+                    script.onload = () => {
+                        console.log(`Loaded ${scripts[index]}`);
+                        loadScript(index + 1);
+                    };
+                    script.onerror = () => {
+                        console.error(`Failed to load ${scripts[index]}`);
+                        loadScript(index + 1); // Continue loading other scripts
+                    };
+                    document.body.appendChild(script);
+                }
+                
+                loadScript(0);
+            }
+            
+            // Start by loading auth modules
+            loadAuthScript(0, initAuthAndGame);
         }
         
         function showError(message) {

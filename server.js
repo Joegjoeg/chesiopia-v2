@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -7,6 +8,8 @@ const fs = require('fs').promises;
 const GameState = require('./gameState');
 const MoveValidator = require('./moveValidator');
 const TerrainGenerator = require('./terrain');
+const AuthManager = require('./auth');
+const EmailService = require('./emailService');
 
 class ChessopiaServer {
     constructor() {
@@ -25,6 +28,10 @@ class ChessopiaServer {
         this.gameState = new GameState(this.terrainGenerator);
         this.moveValidator = new MoveValidator();
         
+        // Auth system
+        this.emailService = new EmailService();
+        this.authManager = new AuthManager(this.emailService);
+        
         // Set up general change detection
         this.gameState.setChangeCallback((changeType, data) => {
             console.log(`[Server] Game state change detected: ${changeType}`, data);
@@ -33,15 +40,31 @@ class ChessopiaServer {
         
         // World storage
         this.worldDataPath = path.join(__dirname, 'world-data-v2.json');
+        this.parameterDefaultsPath = path.join(__dirname, 'parameter-defaults.json');
         this.worldSeed = null;
         this.terrainCache = new Map(); // Cache terrain chunks in memory
         
         // Game time tracker (server-side authoritative time)
-        this.gameStartTime = Date.now();
-        this.dayLength = 60000; // 60 seconds per full day/night cycle
+        // epoch: real-world timestamp representing game time = 0
+        // dayLength: real milliseconds per game day (default 60s)
+        this.dayLength = 60000;
+
+        // Initialize epoch so current real-world date/time maps to game time
+        const nowMs = Date.now();
+        const realNow = new Date();
+        const startOfYear = new Date(realNow.getFullYear(), 0, 0);
+        const realDayOfYear = Math.floor((realNow - startOfYear) / (1000 * 60 * 60 * 24));
+        const gameDayOfYear = Math.floor((realDayOfYear / 365) * 120);
+        const gameYear = 1;
+        const timeOfDay = (realNow.getHours() + realNow.getMinutes() / 60) / 24;
+        const totalGameDays = (gameYear - 1) * 120 + gameDayOfYear + timeOfDay;
+        this.epoch = nowMs - (totalGameDays * this.dayLength);
         
         // Error forwarding system
         this.setupErrorInterceptor();
+        
+        // Initialize auth (async)
+        this.authManager.init().catch(err => console.error('[Server] Auth init error:', err));
         
         this.setupMiddleware();
         this.setupRoutes();
@@ -152,9 +175,17 @@ class ChessopiaServer {
         this.app.use('/models', express.static(path.join(__dirname, 'models')));
         this.app.use('/Models', express.static(path.join(__dirname, 'Models')));
         this.app.use('/Images', express.static(path.join(__dirname, 'Images')));
+
+        // Shared modules available to client
+        this.app.get('/moveValidator.js', (req, res) => {
+            res.sendFile(path.join(__dirname, 'moveValidator.js'));
+        });
     }
     
     setupRoutes() {
+        // Auth routes
+        this.setupAuthRoutes();
+        
         this.app.get('/', (req, res) => {
             res.sendFile(path.join(__dirname, 'client/index.html'));
         });
@@ -263,19 +294,244 @@ class ChessopiaServer {
                 message: 'Test client error triggered'
             });
         });
+        
+        // Endpoint for getting saved parameter defaults
+        this.app.get('/api/defaults', async (req, res) => {
+            console.log(`[Server] GET /api/defaults from ${req.ip}`);
+            try {
+                const data = await fs.readFile(this.parameterDefaultsPath, 'utf8');
+                const parsed = JSON.parse(data);
+                console.log(`[Server] GET /api/defaults -> ${Object.keys(parsed).length} keys`);
+                res.json(parsed);
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    console.log('[Server] GET /api/defaults -> no file yet, returning {}');
+                    res.json({});
+                } else {
+                    console.error('[Server] Error reading parameter defaults:', error);
+                    res.status(500).json({ error: 'Failed to read defaults' });
+                }
+            }
+        });
+
+        // Endpoint for saving parameter defaults (only overridden values)
+        this.app.post('/api/defaults', async (req, res) => {
+            console.log(`[Server] POST /api/defaults from ${req.ip}`);
+            try {
+                const defaults = req.body;
+                console.log('[Server] POST body keys:', Object.keys(defaults));
+                if (!defaults || typeof defaults !== 'object') {
+                    console.warn('[Server] POST /api/defaults rejected: invalid payload');
+                    return res.status(400).json({ error: 'Invalid defaults payload' });
+                }
+                await fs.writeFile(this.parameterDefaultsPath, JSON.stringify(defaults, null, 2));
+                console.log(`[Server] Saved ${Object.keys(defaults).length} parameter defaults to ${this.parameterDefaultsPath}`);
+                res.json({ success: true, message: 'Defaults saved' });
+            } catch (error) {
+                console.error('[Server] Error saving parameter defaults:', error);
+                res.status(500).json({ error: 'Failed to save defaults' });
+            }
+        });
+
+        // Endpoint for clearing saved parameter defaults
+        this.app.delete('/api/defaults', async (req, res) => {
+            console.log(`[Server] DELETE /api/defaults from ${req.ip}`);
+            try {
+                await fs.unlink(this.parameterDefaultsPath);
+                console.log('[Server] Parameter defaults cleared');
+                res.json({ success: true, message: 'Defaults cleared' });
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    console.log('[Server] DELETE /api/defaults -> no file to delete');
+                    res.json({ success: true, message: 'No defaults to clear' });
+                } else {
+                    console.error('[Server] Error clearing parameter defaults:', error);
+                    res.status(500).json({ error: 'Failed to clear defaults' });
+                }
+            }
+        });
+    }
+    
+    setupAuthRoutes() {
+        const app = this.app;
+        const auth = this.authManager;
+        
+        // Register - request verification code
+        app.post('/api/auth/register', async (req, res) => {
+            const { email, username, password } = req.body;
+            console.log(`[Auth] Register request for ${email}`);
+            
+            if (!email || !username || !password) {
+                return res.status(400).json({ success: false, error: 'Email, username, and password required.' });
+            }
+            
+            const result = await auth.requestVerification(email, username, password);
+            res.status(result.success ? 200 : 400).json(result);
+        });
+        
+        // Verify email code
+        app.post('/api/auth/verify', async (req, res) => {
+            const { email, code } = req.body;
+            console.log(`[Auth] Verify request for ${email}`);
+            
+            if (!email || !code) {
+                return res.status(400).json({ success: false, error: 'Email and code required.' });
+            }
+            
+            const result = await auth.verifyCode(email, code);
+            res.status(result.success ? 200 : 400).json(result);
+        });
+        
+        // Login
+        app.post('/api/auth/login', async (req, res) => {
+            const { email, username, identifier, password } = req.body;
+            const loginIdentifier = identifier || email || username;
+            console.log(`[Auth] Login request for ${loginIdentifier}`);
+            
+            if (!loginIdentifier || !password) {
+                return res.status(400).json({ success: false, error: 'Email/username and password required.' });
+            }
+            
+            const result = await auth.login(loginIdentifier, password);
+            res.status(result.success ? 200 : 401).json(result);
+        });
+        
+        // Get current user
+        app.get('/api/auth/me', (req, res) => {
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return res.status(401).json({ error: 'Authentication required' });
+            }
+            
+            const token = authHeader.substring(7);
+            const result = auth.verifyToken(token);
+            
+            if (!result.valid) {
+                return res.status(401).json({ error: 'Invalid or expired token' });
+            }
+            
+            const user = auth.getUserById(result.userId);
+            if (!user) {
+                return res.status(401).json({ error: 'User not found' });
+            }
+            
+            res.json({ success: true, user });
+        });
+        
+        // Logout (mainly client-side token clear, but we can log it)
+        app.post('/api/auth/logout', (req, res) => {
+            res.json({ success: true, message: 'Logged out' });
+        });
     }
     
     setupSocketHandlers() {
+        // Socket auth middleware
+        this.io.use(async (socket, next) => {
+            try {
+                const token = socket.handshake.auth?.token;
+                
+                if (!token) {
+                    // Allow guest connections
+                    const guestId = 'guest_' + Math.random().toString(36).substr(2, 9);
+                    socket.data.user = {
+                        id: guestId,
+                        username: 'Guest',
+                        email: 'guest@local',
+                        role: 'guest'
+                    };
+                    console.log(`[Auth] Socket ${socket.id} connected as guest`);
+                    next();
+                    return;
+                }
+                
+                const result = this.authManager.verifyToken(token);
+                
+                if (!result.valid) {
+                    // Allow invalid tokens as guests too (for testing/bypass)
+                    const guestId = 'guest_' + Math.random().toString(36).substr(2, 9);
+                    socket.data.user = {
+                        id: guestId,
+                        username: 'Guest',
+                        email: 'guest@local',
+                        role: 'guest'
+                    };
+                    console.log(`[Auth] Socket ${socket.id} invalid token, connected as guest`);
+                    next();
+                    return;
+                }
+                
+                const user = this.authManager.getUserByEmail(result.email);
+                if (!user) {
+                    return next(new Error('User not found'));
+                }
+                
+                socket.data.user = user;
+                console.log(`[Auth] Socket ${socket.id} authenticated as ${user.username} (${user.role})`);
+                next();
+            } catch (error) {
+                console.error('[Auth] Socket auth error:', error);
+                next(new Error('Authentication error'));
+            }
+        });
+        
         this.io.on('connection', (socket) => {
             console.log(`Player connected: ${socket.id}`);
             
             // Send current game time on connection
             socket.emit('timeSync', this.getGameTime());
-            
+
+            // Handle time/date parameter changes from clients
+            socket.on('updateGameTime', (data) => {
+                console.log('[Server] Game time update from client:', data);
+                const now = Date.now();
+                const elapsed = now - this.epoch;
+                const totalDays = elapsed / this.dayLength;
+
+                if (data.dayLength !== undefined) {
+                    // Preserve current game time when changing speed
+                    const newDayLength = data.dayLength;
+                    this.epoch = now - (totalDays * newDayLength);
+                    this.dayLength = newDayLength;
+                }
+                if (data.timeOfDay !== undefined) {
+                    // Preserve current day/year, change time-of-day only
+                    const currentDay = Math.floor(totalDays);
+                    const newTotalDays = currentDay + (data.timeOfDay / 24);
+                    this.epoch = now - (newTotalDays * this.dayLength);
+                }
+                if (data.dayOfYear !== undefined) {
+                    // Preserve current year and time-of-day, change day-of-year
+                    const currentYear = Math.floor(totalDays / 120);
+                    const currentTimeOfDay = totalDays % 1;
+                    const newTotalDays = (currentYear * 120) + data.dayOfYear + currentTimeOfDay;
+                    this.epoch = now - (newTotalDays * this.dayLength);
+                }
+                if (data.year !== undefined) {
+                    // Preserve current day-of-year and time-of-day, change year
+                    const currentDayOfYear = Math.floor(totalDays) % 120;
+                    const currentTimeOfDay = totalDays % 1;
+                    const newTotalDays = ((data.year - 1) * 120) + currentDayOfYear + currentTimeOfDay;
+                    this.epoch = now - (newTotalDays * this.dayLength);
+                }
+
+                // Broadcast updated time to all clients
+                this.io.emit('timeSync', this.getGameTime());
+            });
+
             // Handle player joining
             socket.on('joinGame', (playerData) => {
-                console.log('[Server] Player joining game:', playerData);
-                const player = this.gameState.addPlayer(socket.id, playerData);
+                const user = socket.data.user;
+                console.log('[Server] Player joining game:', user.username, playerData);
+                
+                // Use authenticated user data, but allow client to override color if provided
+                const enrichedPlayerData = {
+                    name: user.username,
+                    color: playerData?.color || null,
+                    userId: user.id,
+                    role: user.role
+                };
+                
+                const player = this.gameState.addPlayer(user.id, enrichedPlayerData);
                 console.log('[Server] Created player:', player);
                 socket.emit('playerJoined', player);
                 socket.broadcast.emit('playerJoined', player);
@@ -297,6 +553,7 @@ class ChessopiaServer {
             // Handle piece movement
             socket.on('movePiece', (moveData) => {
                 const { pieceId, fromX, fromZ, toX, toZ } = moveData;
+                const userId = socket.data.user.id;
                 
                 // Ownership check: verify piece belongs to this player
                 const piece = this.gameState.pieces.get(pieceId);
@@ -304,7 +561,7 @@ class ChessopiaServer {
                     socket.emit('moveInvalid', { reason: 'Piece not found' });
                     return;
                 }
-                if (piece.playerId !== socket.id) {
+                if (piece.playerId !== userId) {
                     socket.emit('moveInvalid', { reason: 'Not your piece' });
                     return;
                 }
@@ -319,7 +576,7 @@ class ChessopiaServer {
                     toZ
                 );
                 
-                if (isValid) {
+                if (isValid.valid) {
                     // Execute move
                     const moveResult = this.gameState.executeMove(pieceId, toX, toZ);
                     
@@ -329,16 +586,17 @@ class ChessopiaServer {
                         this.io.emit('gameOver', gameOver);
                     }
                 } else {
-                    socket.emit('moveInvalid', { reason: 'Invalid move' });
+                    socket.emit('moveInvalid', { reason: isValid.reason || 'Invalid move' });
                 }
             });
             
             // Handle piece purchase
             socket.on('purchasePiece', (purchaseData) => {
                 const { pieceType, playerId } = purchaseData;
+                const userId = socket.data.user.id;
                 
-                // Ownership check: must match socket.id
-                if (playerId !== socket.id) {
+                // Ownership check: must match authenticated user
+                if (playerId !== userId) {
                     socket.emit('purchaseFailed', { reason: 'Not your account' });
                     return;
                 }
@@ -354,6 +612,7 @@ class ChessopiaServer {
             // Handle covering system
             socket.on('setCovering', (coverData) => {
                 const { coveringPieceId, coveredPieceId } = coverData;
+                const userId = socket.data.user.id;
                 
                 // Ownership check: both pieces must belong to this player
                 const coveringPiece = this.gameState.pieces.get(coveringPieceId);
@@ -362,7 +621,7 @@ class ChessopiaServer {
                     socket.emit('coveringFailed', { reason: 'Piece not found' });
                     return;
                 }
-                if (coveringPiece.playerId !== socket.id || coveredPiece.playerId !== socket.id) {
+                if (coveringPiece.playerId !== userId || coveredPiece.playerId !== userId) {
                     socket.emit('coveringFailed', { reason: 'Can only cover your own pieces' });
                     return;
                 }
@@ -377,10 +636,11 @@ class ChessopiaServer {
             
             // Handle initial army request
             socket.on('requestInitialArmy', () => {
+                const userId = socket.data.user.id;
                 console.log('=== REQUEST INITIAL ARMY EVENT RECEIVED ===');
-                console.log('[Server] Initial army request received from socket:', socket.id);
+                console.log('[Server] Initial army request received from user:', socket.data.user.username);
                 
-                const player = this.gameState.players.get(socket.id);
+                const player = this.gameState.players.get(userId);
                 if (player) {
                     // Find valid spawn positions (not blocked)
                     const validPositions = [];
@@ -523,16 +783,17 @@ class ChessopiaServer {
                     console.log(`[Server] Total pieces created for player: ${player.pieces.length}`);
                     
                     // Broadcast updated game state to all clients
-                    this.io.emit('gameState', this.gameState.getGameState());
+                    this.io.emit('gameState', this.gameState.getState());
                 }
             });
             
             // Handle spawn test pieces (temporary command)
             socket.on('spawnTestPieces', () => {
+                const userId = socket.data.user.id;
                 console.log('=== SPAWN TEST PIECES EVENT RECEIVED ===');
-                console.log('[Server] Spawn test pieces request received from socket:', socket.id);
+                console.log('[Server] Spawn test pieces request received from user:', socket.data.user.username);
                 
-                const player = this.gameState.players.get(socket.id);
+                const player = this.gameState.players.get(userId);
                 if (player) {
                     // Find valid spawn positions (not blocked)
                     const validPositions = [];
@@ -590,8 +851,14 @@ class ChessopiaServer {
             
             // Handle game reset (temporary command)
             socket.on('resetGame', () => {
+                const userRole = socket.data.user.role;
+                // Only devs can reset the game
+                if (userRole !== 'dev') {
+                    console.log(`[Server] Reset game denied for non-dev user: ${socket.data.user.username}`);
+                    return;
+                }
                 console.log('=== RESET GAME EVENT RECEIVED ===');
-                console.log('[Server] Reset game request received from socket:', socket.id);
+                console.log('[Server] Reset game request received from dev:', socket.data.user.username);
                 console.log('[Server] Current pieces before reset:', this.gameState.pieces.size);
                 console.log('[Server] Current players before reset:', this.gameState.players.size);
                 
@@ -655,7 +922,13 @@ class ChessopiaServer {
             
             // Handle admin commands
             socket.on('adminCommand', (command) => {
-                console.log(`[Server] Admin command from ${socket.id}:`, command);
+                const userRole = socket.data.user.role;
+                if (userRole !== 'dev') {
+                    console.log(`[Server] Admin command denied for non-dev: ${socket.data.user.username}`);
+                    socket.emit('adminResponse', { success: false, message: 'Dev access required' });
+                    return;
+                }
+                console.log(`[Server] Admin command from dev ${socket.data.user.username}:`, command);
                 this.handleAdminCommand(command, socket);
             });
             
@@ -682,9 +955,12 @@ class ChessopiaServer {
             
             // Handle disconnection
             socket.on('disconnect', () => {
-                console.log(`Player disconnected: ${socket.id}`);
-                this.gameState.removePlayer(socket.id);
-                this.io.emit('playerDisconnected', { playerId: socket.id });
+                const user = socket.data.user;
+                console.log(`Player disconnected: ${socket.id} (user: ${user?.username})`);
+                if (user) {
+                    this.gameState.removePlayer(user.id);
+                    this.io.emit('playerDisconnected', { playerId: user.id });
+                }
             });
         });
     }
@@ -874,7 +1150,7 @@ class ChessopiaServer {
         return {
             serverTime: Date.now(),
             dayLength: this.dayLength,
-            gameStartTime: this.gameStartTime,
+            epoch: this.epoch,
             // Add any server-authoritative parameters here
         };
     }
@@ -997,10 +1273,19 @@ class ChessopiaServer {
     }
     
     getGameTime() {
-        // Return current game time in milliseconds since game start
+        const now = Date.now();
+        const elapsed = now - this.epoch;
+        const totalDays = elapsed / this.dayLength;
+        const year = Math.floor(totalDays / 120) + 1;
+        const dayOfYear = Math.floor(totalDays) % 120;
+        const timeOfDay = (totalDays % 1) * 24;
+
         return {
-            elapsedTime: Date.now() - this.gameStartTime,
-            dayLength: this.dayLength
+            elapsedTime: elapsed,
+            dayLength: this.dayLength,
+            year,
+            dayOfYear,
+            timeOfDay
         };
     }
     

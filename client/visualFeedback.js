@@ -181,11 +181,6 @@ class VisualFeedbackSystem {
         indicator.renderOrder = 1000;
         this.scene.add(indicator);
         
-        // Add red ball debug indicator at same position
-        const debugBall = this.createDebugBall(x, z);
-        this.highlightMeshes.set('debug_ball', debugBall);
-        this.scene.add(debugBall);
-        
         // Force mesh to render on top
         this.scene.traverse((child) => {
             if (child.isMesh) {
@@ -194,27 +189,13 @@ class VisualFeedbackSystem {
         });
     }
     
-    createDebugBall(x, z) {
-        const geometry = new THREE.SphereGeometry(0.1);
-        const material = new THREE.MeshStandardMaterial({
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 1.0
-        });
-        
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(x + 0.5, this.getTerrainHeight(x, z) + 0.1, z + 0.5);
-        mesh.renderOrder = 1001;
-        
-        return mesh;
-    }
-    
     createHoverIndicator(x, z) {
         // Create custom geometry that matches board tile exactly
         const geometry = this.createTileGeometry(x, z);
         const material = this.hoverMaterial;
         
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'hoverIndicator';
         // Position at tile origin, geometry vertices handle the rest
         mesh.position.set(x, 0, z);
         
@@ -275,15 +256,6 @@ class VisualFeedbackSystem {
             this.highlightMeshes.delete('hover');
         }
         
-        // Also remove debug ball
-        const debugBall = this.highlightMeshes.get('debug_ball');
-        if (debugBall) {
-            this.scene.remove(debugBall);
-            debugBall.geometry.dispose();
-            debugBall.material.dispose();
-            this.highlightMeshes.delete('debug_ball');
-        }
-        
         this.hoveredTile = null;
     }
     
@@ -302,6 +274,7 @@ class VisualFeedbackSystem {
         });
         
         const line = new THREE.Line(lineGeometry, lineMaterial);
+        line.name = 'coveringLine';
         this.highlightMeshes.set('covering_line', line);
         this.scene.add(line);
         
@@ -377,6 +350,7 @@ class VisualFeedbackSystem {
         });
         
         const path = new THREE.Line(pathGeometry, pathMaterial);
+        path.name = 'movePath';
         this.highlightMeshes.set('move_path', path);
         this.scene.add(path);
         
@@ -503,7 +477,7 @@ class VisualFeedbackSystem {
         material.emissiveIntensity = 0.5;
         
         const mesh = new THREE.Mesh(geometry, material);
-        
+        mesh.name = 'selectionIndicator';
         // Use terrain height
         const terrainHeight = this.getTerrainHeight(x, z);
         mesh.position.set(x + 0.5, terrainHeight + 0.1, z + 0.5);
@@ -517,7 +491,7 @@ class VisualFeedbackSystem {
         const geometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
         
         const mesh = new THREE.Mesh(geometry, material);
-        
+        mesh.name = move.isCapture ? 'captureIndicator' : 'moveIndicator';
         // Use terrain height and raise higher to prevent dipping below squares
         const terrainHeight = this.getTerrainHeight(move.x, move.z);
         mesh.position.set(move.x + 0.5, terrainHeight + 0.3, move.z + 0.5);
@@ -550,6 +524,7 @@ class VisualFeedbackSystem {
         const material = this.coveringMaterial;
         
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'coveringIndicator';
         mesh.position.set(x + 0.5, 1, z + 0.5);
         
         // Add rotation animation
@@ -570,6 +545,7 @@ class VisualFeedbackSystem {
         });
         
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'captureEffect';
         mesh.position.set(x + 0.5, 0.5, z + 0.5);
         
         // Add explosion animation
@@ -590,18 +566,19 @@ class VisualFeedbackSystem {
             opacity: 0.8,
             side: THREE.DoubleSide
         });
-        
+
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'spawnEffect';
         mesh.position.set(x + 0.5, 0.1, z + 0.5);
         mesh.rotation.x = -Math.PI / 2;
-        
-        // Add spawn animation
+
+        // Animate ring expansion
         mesh.userData = {
             type: 'spawn',
             startTime: Date.now(),
-            duration: 1500
+            duration: 1000
         };
-        
+
         return mesh;
     }
     
@@ -708,6 +685,7 @@ class VisualFeedbackSystem {
             });
             
             const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+            dot.name = 'movePathDot';
             
             // Position along path
             const points = path.geometry.attributes.position.array;
@@ -761,7 +739,7 @@ class VisualFeedbackSystem {
         });
         
         const mesh = new THREE.Mesh(geometry, material);
-        
+        mesh.name = 'cooldownIndicator';
         // Use terrain height
         const terrainHeight = this.getTerrainHeight(piece.x, piece.z);
         mesh.position.set(piece.x + 0.5, terrainHeight + 0.15, piece.z + 0.5);
@@ -782,10 +760,12 @@ class VisualFeedbackSystem {
         });
         
         const arc = new THREE.Mesh(arcGeometry, arcMaterial);
+        arc.name = 'cooldownArc';
         arc.position.copy(mesh.position);
         arc.rotation.copy(mesh.rotation);
         
         const group = new THREE.Group();
+        group.name = 'cooldownGroup';
         group.add(mesh);
         group.add(arc);
         
@@ -812,6 +792,7 @@ class VisualFeedbackSystem {
         // Simple splash: create a burst of small white particles
         const particleCount = Math.min(12, this.maxParticles);
         const particles = new THREE.Group();
+        particles.name = 'splashParticles';
         
         for (let i = 0; i < particleCount; i++) {
             const geometry = new THREE.SphereGeometry(0.05, 4, 4);
@@ -821,6 +802,7 @@ class VisualFeedbackSystem {
                 opacity: 0.8
             });
             const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = 'splashParticle';
             
             // Random position around splash center
             const angle = (Math.PI * 2 * i) / particleCount;

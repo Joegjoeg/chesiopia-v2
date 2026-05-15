@@ -70,6 +70,20 @@ class RollingTerrainMesh {
         // Throttled logging
         this._lastLogTime = 0;
         this._logInterval = 1000; // ms
+
+        // Debug tracking
+        this._debugTrackEnabled = false;
+        this._lastTrackTime = 0;
+        this._trackInterval = 2000; // ms
+        this._trackHistory = []; // last few roll events
+        if (typeof window !== 'undefined') {
+            if (!window.__terrainDebug) window.__terrainDebug = {};
+            window.__terrainDebug.rollingTerrain = this;
+            window.__terrainDebug.toggleTrack = () => {
+                this._debugTrackEnabled = !this._debugTrackEnabled;
+                console.log(`[TerrainTrack] ${this._debugTrackEnabled ? 'ENABLED' : 'DISABLED'}`);
+            };
+        }
     }
 
     // ---- helpers ------------------------------------------------------------
@@ -102,33 +116,46 @@ class RollingTerrainMesh {
         }
         this.geometry.attributes.position.needsUpdate = true;
         this.geometry.computeVertexNormals();
-        this._log('init', `origin=(${this.originX},${this.originZ}) size=${this.N}x${this.N}`);
+        const c = this._getCornerCoords();
+        this._log('init', `origin=(${this.originX},${this.originZ}) size=${this.N}x${this.N} camera(${centerX.toFixed(1)},${centerZ.toFixed(1)}) corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
     }
 
     // Call every frame (or every update) with current camera position.
-    // Only touches geometry when a threshold is crossed.
+    // Keeps the mesh centered on the camera target so the target never
+    // drifts toward the edge.
     update(cameraPos) {
-        let dx = 0, dz = 0;
-        const minX = this.originX + this.threshold;
-        const maxX = this.originX + (this.N - 1 - this.threshold);
-        const minZ = this.originZ + this.threshold;
-        const maxZ = this.originZ + (this.N - 1 - this.threshold);
+        const targetOriginX = Math.floor(cameraPos.x) - Math.floor(this.N / 2);
+        const targetOriginZ = Math.floor(cameraPos.z) - Math.floor(this.N / 2);
 
-        if (cameraPos.x > maxX) {
-            dx = Math.min(this.maxStep, Math.ceil(cameraPos.x - maxX));
-        } else if (cameraPos.x < minX) {
-            dx = -Math.min(this.maxStep, Math.ceil(minX - cameraPos.x));
+        let dx = targetOriginX - this.originX;
+        let dz = targetOriginZ - this.originZ;
+
+        // Clamp to max step so we don't do giant recalcs in one frame
+        if (dx !== 0) {
+            dx = Math.max(-this.maxStep, Math.min(this.maxStep, dx));
+        }
+        if (dz !== 0) {
+            dz = Math.max(-this.maxStep, Math.min(this.maxStep, dz));
         }
 
-        if (cameraPos.z > maxZ) {
-            dz = Math.min(this.maxStep, Math.ceil(cameraPos.z - maxZ));
-        } else if (cameraPos.z < minZ) {
-            dz = -Math.min(this.maxStep, Math.ceil(minZ - cameraPos.z));
-        }
+        // Always track, even if no roll happens
+        const meshMinX = this.originX;
+        const meshMaxX = this.originX + (this.N - 1);
+        const meshMinZ = this.originZ;
+        const meshMaxZ = this.originZ + (this.N - 1);
+        this._debugTrack(cameraPos, meshMinX, meshMaxX, meshMinZ, meshMaxZ, dx, dz);
 
         if (dx === 0 && dz === 0) return;
 
-        this._roll(dx, dz);
+        this._trackHistory.push({
+            t: Date.now(),
+            camera: { x: cameraPos.x.toFixed(1), z: cameraPos.z.toFixed(1) },
+            roll: { dx, dz },
+            origin: { x: this.originX, z: this.originZ }
+        });
+        if (this._trackHistory.length > 10) this._trackHistory.shift();
+
+        this._roll(dx, dz, cameraPos);
     }
 
     // Refresh a rectangular world region that falls inside the current window.
@@ -163,7 +190,7 @@ class RollingTerrainMesh {
 
     // ---- internals ----------------------------------------------------------
 
-    _roll(dx, dz) {
+    _roll(dx, dz, cameraPos) {
         // Move origin (mesh stays at origin in world space)
         this.originX += dx;
         this.originZ += dz;
@@ -186,11 +213,76 @@ class RollingTerrainMesh {
         this.geometry.attributes.position.needsUpdate = true;
         this.geometry.computeVertexNormals();
 
-        this._log('roll', `dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ})`);
+        const c = this._getCornerCoords();
+        const camStr = cameraPos ? `camera(${cameraPos.x.toFixed(1)},${cameraPos.z.toFixed(1)}) ` : '';
+        this._log('roll', `dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ}) ${camStr}corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
 
         if (typeof this.board.onTerrainMeshUpdated === 'function') {
             this.board.onTerrainMeshUpdated();
         }
+    }
+
+    // Average world position of the four corner vertices.
+    // This is a more robust "center" than origin + N/2 because it reflects
+    // the actual computed heights.
+    getCenterFromCorners() {
+        const pos = this.geometry.attributes.position.array;
+        const corners = [
+            this._bIndex(0, 0),
+            this._bIndex(this.N - 1, 0),
+            this._bIndex(0, this.N - 1),
+            this._bIndex(this.N - 1, this.N - 1)
+        ];
+        let cx = 0, cy = 0, cz = 0;
+        for (const idx of corners) {
+            cx += pos[idx * 3 + 0] + this.mesh.position.x;
+            cy += pos[idx * 3 + 1] + this.mesh.position.y;
+            cz += pos[idx * 3 + 2] + this.mesh.position.z;
+        }
+        return { x: cx / 4, y: cy / 4, z: cz / 4 };
+    }
+
+    _getCornerCoords() {
+        const farX = this.originX + (this.N - 1) * this.S;
+        const farZ = this.originZ + (this.N - 1) * this.S;
+        return {
+            nw: `(${this.originX.toFixed(0)},${this.originZ.toFixed(0)})`,
+            ne: `(${farX.toFixed(0)},${this.originZ.toFixed(0)})`,
+            sw: `(${this.originX.toFixed(0)},${farZ.toFixed(0)})`,
+            se: `(${farX.toFixed(0)},${farZ.toFixed(0)})`
+        };
+    }
+
+    _debugTrack(cameraPos, minX, maxX, minZ, maxZ, dx, dz) {
+        if (!this._debugTrackEnabled) return;
+        const now = Date.now();
+        if (now - this._lastTrackTime < this._trackInterval) return;
+        this._lastTrackTime = now;
+
+        const center = this.getCenterFromCorners();
+        const distToCenter = Math.sqrt(
+            (cameraPos.x - center.x) ** 2 +
+            (cameraPos.z - center.z) ** 2
+        );
+        const halfSize = (this.N - 1) * this.S * 0.5;
+
+        const farX = this.originX + (this.N - 1) * this.S;
+        const farZ = this.originZ + (this.N - 1) * this.S;
+        const nw = `(${this.originX.toFixed(0)},${this.originZ.toFixed(0)})`;
+        const ne = `(${farX.toFixed(0)},${this.originZ.toFixed(0)})`;
+        const sw = `(${this.originX.toFixed(0)},${farZ.toFixed(0)})`;
+        const se = `(${farX.toFixed(0)},${farZ.toFixed(0)})`;
+
+        console.log(
+            `%c[TerrainTrack] target(${cameraPos.x.toFixed(1)},${cameraPos.z.toFixed(1)})  ` +
+            `terrainOrigin(${this.originX},${this.originZ})  ` +
+            `cornerCenter(${center.x.toFixed(1)},${center.z.toFixed(1)})  ` +
+            `distToCenter=${distToCenter.toFixed(1)}  ` +
+            `safeZone[${minX.toFixed(0)}..${maxX.toFixed(0)}, ${minZ.toFixed(0)}..${maxZ.toFixed(0)}]  ` +
+            `halfSize=${halfSize.toFixed(0)}  ` +
+            `corners NW${nw} NE${ne} SW${sw} SE${se}`,
+            distToCenter > halfSize * 0.5 ? 'color:#ff4444' : 'color:#44ff44'
+        );
     }
 
     _log(tag, msg) {

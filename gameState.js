@@ -62,7 +62,9 @@ class GameState {
             const player = {
                 id: socketId,
                 name: playerData.name || `Player ${this.players.size + 1}`,
-                color: this.getNextPlayerColor(),
+                color: playerData.color || this.getNextPlayerColor(),
+                userId: playerData.userId || socketId,
+                role: playerData.role || 'guest',
                 points: {
                     total: 50, // Starting points - increased for testing
                     captures: 0
@@ -323,6 +325,10 @@ class GameState {
             }
         }
         
+        // Capture origin before mutating
+        const originX = piece.x;
+        const originZ = piece.z;
+
         // Move piece
         piece.x = toX;
         piece.z = toZ;
@@ -339,8 +345,8 @@ class GameState {
             piece, 
             capturedPiece, 
             pointsEarned: captureReward,
-            fromX: piece.x, 
-            fromZ: piece.z, 
+            fromX: originX, 
+            fromZ: originZ, 
             toX, 
             toZ 
         });

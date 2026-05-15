@@ -15,6 +15,7 @@ class ChessopiaGame {
         this.celShaderSystem = null;
         this.grassSystem = null;
         this.textureBlendingSystem = null;
+        this.lodManager = null;
         
         this.selectedPiece = null;
         this.validMoves = [];
@@ -155,8 +156,25 @@ class ChessopiaGame {
             }
         };
         
-        // Set background color
-        this.renderer.setClearColor(0x87CEEB, 1);
+        // Set background color (black for space, sky shader handles atmosphere)
+        this.renderer.setClearColor(0x000000, 1);
+
+        // WebGL context loss/restore handling (critical for Android)
+        const canvas = this.renderer.domElement;
+        canvas.addEventListener('webglcontextlost', (event) => {
+            event.preventDefault();
+            console.warn('[Game] WebGL context lost - pausing render loop');
+            this._contextLost = true;
+            if (this._animFrameId) {
+                cancelAnimationFrame(this._animFrameId);
+                this._animFrameId = null;
+            }
+        });
+        canvas.addEventListener('webglcontextrestored', () => {
+            console.log('[Game] WebGL context restored - resuming');
+            this._contextLost = false;
+            this.startGameLoop();
+        });
     }
 
     detectDeviceCapabilities() {
@@ -178,8 +196,8 @@ class ChessopiaGame {
             caps.details.maxTextureSize = webglCaps.maxTextureSize;
             caps.details.maxVertexTextures = webglCaps.maxVertexTextures;
             caps.details.maxTextureImageUnits = webglCaps.maxTextureImageUnits;
-            caps.details.hardwareConcurrency = navigator.hardwareConcurrency || 2;
-            caps.details.deviceMemory = navigator.deviceMemory || 4;
+            caps.details.hardwareConcurrency = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
+            caps.details.deviceMemory = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
             caps.details.pixelRatio = window.devicePixelRatio || 1;
             caps.details.screenWidth = window.screen.width;
             caps.details.screenHeight = window.screen.height;
@@ -286,7 +304,7 @@ class ChessopiaGame {
             75,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            5000
         );
         
         // Verify fog is still applied after camera setup
@@ -294,6 +312,22 @@ class ChessopiaGame {
         this.camera.position.set(5, 20, 5);
         this.camera.lookAt(0, 0, 0);
         console.log('[Game] Camera setup completed');
+
+        // Camera raycast debug dot
+        this._raycaster = new THREE.Raycaster();
+        this._mouseNDC = new THREE.Vector2(0, 0);
+        const dotGeo = new THREE.SphereGeometry(0.15, 8, 8);
+        const dotMat = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.5,
+            depthTest: false
+        });
+        this.raycastDot = new THREE.Mesh(dotGeo, dotMat);
+        this.raycastDot.visible = false;
+        this.scene.add(this.raycastDot);
+        this.raycastDotEnabled = false;
+
         console.log('[Game] setupScene() about to complete');
         console.log('[Game] setupScene() completed!');
     }
@@ -331,23 +365,28 @@ class ChessopiaGame {
         console.log('[Game] setupSystems() started!');
         // Initialize game systems
         this.gameState = new ClientGameState();
+
+        // Initialize performance manager first (needed by LODManager)
+        this.performanceManager = new PerformanceManager(this);
+        console.log('[Game] PerformanceManager created');
+
+        // Initialize LOD manager for adaptive level-of-detail (needed by HybridTreeManager)
+        this.lodManager = new LODManager({ performanceManager: this.performanceManager });
+        console.log('[Game] LODManager created');
+
         // Create hybrid tree manager with patch-based alternation between TerrainTreeSystem and LocalTreeSystem
         this.oldTreeSystem = null; // Disable old tree system
-        this.hybridTreeManager = new HybridTreeManager(this.scene, null); // Hybrid manager for both systems
+        this.hybridTreeManager = new HybridTreeManager(this.scene, null, this.lodManager); // Hybrid manager for both systems
         this.terrainTreeSystem = this.hybridTreeManager.terrainTreeSystem; // Reference for compatibility
         this.treeSystem = this.hybridTreeManager.localTreeSystem; // Reference for compatibility
         console.log('[Game] Hybrid tree manager created - terrainTreeSystem:', !!this.terrainTreeSystem, 'localTreeSystem:', !!this.treeSystem);
-
-        // Initialize performance manager for automatic quality scaling
-        this.performanceManager = new PerformanceManager(this);
-        console.log('[Game] PerformanceManager created');
 
         // Initialize baked shadow system
         this.shadowSystem = new BakedShadowSystem(this.scene);
         console.log('[Game] BakedShadowSystem created');
 
         this.terrainSystem = new TerrainSystem(this.scene, this.terrainTreeSystem);
-        this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem, this.terrainTreeSystem, this);
+        this.boardSystem = new CleanBoardSystem(this.scene, this.terrainSystem, this.terrainTreeSystem, this, this.renderer);
 
         // Backfill the terrain reference now that it exists
         if (this.hybridTreeManager) {
@@ -381,9 +420,15 @@ class ChessopiaGame {
         
         // Set up chunk loaded callback to regenerate terrain mesh
         this._lastChunkMeshRebuild = 0;
+        const previousCallback = this.terrainSystem.onChunkLoaded;
         this.terrainSystem.onChunkLoaded = (chunkX, chunkZ) => {
+            // Preserve board_clean.js's refreshRegion callback for rolling terrain
+            if (previousCallback) previousCallback(chunkX, chunkZ);
+
+            // Legacy dynamic mesh rebuild (skip for viewport/rolling terrain)
             if (!this.boardSystem || !this.boardSystem.continuousMesh) return;
-            // Only force rebuild if chunk is inside current mesh bounds
+            if (this.boardSystem.useViewportMesh) return;
+
             const mb = this.boardSystem.meshBounds;
             if (!mb) return;
             const chunkWorldX = chunkX * this.terrainSystem.chunkSize;
@@ -418,26 +463,9 @@ class ChessopiaGame {
         this.decorativeVisuals = new DecorativeVisualsSystem(this.scene, this.terrainSystem, this);
         console.log('[Game] DecorativeVisualsSystem created:', !!this.decorativeVisuals);
         
-        // Initialize grass and texture blending systems after board system is created
-        console.log('[Game] Creating GrassSystem and TextureBlendingSystem for adaptive terrain...');
-        
-        // Create grass system
-        if (typeof GrassSystem !== 'undefined') {
-            try {
-                this.grassSystem = new GrassSystem(this.scene, this.boardSystem, this.terrainSystem);
-                this.boardSystem.grassSystem = this.grassSystem;
-                console.log('[Game] GrassSystem created and assigned to board:', !!this.grassSystem);
-            } catch (error) {
-                console.error('[Game] Failed to create GrassSystem:', error);
-                this.grassSystem = null;
-                this.boardSystem.grassSystem = null;
-            }
-        } else {
-            console.log('[Game] GrassSystem class not available');
-            this.grassSystem = null;
-            this.boardSystem.grassSystem = null;
-        }
-        
+        // Initialize texture blending system after board system is created
+        console.log('[Game] Creating TextureBlendingSystem for adaptive terrain...');
+
         // Create texture blending system
         if (typeof TextureBlendingSystem !== 'undefined') {
             try {
@@ -457,18 +485,42 @@ class ChessopiaGame {
         
         // Generate initial terrain sized to device capability tier
         const caps = this.deviceCapabilities;
-        await this.terrainSystem.generateInitialTerrain(0, 0, caps.terrainLoadRadius);
-        
+        // Load only the center chunks needed for the initial view.
+        // The full grid is loaded progressively in warmChunkCache below.
+        const initialLoadRadius = this.terrainSystem.chunkSize * 1.5; // 24 units = ~25 chunks
+        await this.terrainSystem.generateInitialTerrain(0, 0, initialLoadRadius);
+
         // Apply detected capability tier to board & streaming
         this.boardSystem.useViewportMesh = true;
         this.boardSystem.renderDistance = caps.renderDistance;
         console.log(`[Game] Device tier: ${caps.tier}, gridSize: ${caps.gridSize}, meshMultiplier: ${caps.meshMultiplier}, renderDistance: ${caps.renderDistance}`);
-        this.boardSystem.createBoard(0, 0, 3, caps.meshMultiplier, caps.gridSize);
+        await this.boardSystem.createBoard(0, 0, 3, caps.meshMultiplier, caps.gridSize);
 
-        
+        if (typeof JesusSummonSystem !== 'undefined') {
+            this.jesusSummonSystem = new JesusSummonSystem({
+                scene: this.scene,
+                boardSystem: this.boardSystem,
+                terrainSystem: this.terrainSystem
+            });
+            window.jesusSummonSystem = this.jesusSummonSystem;
+            console.log('[Game] JesusSummonSystem initialized');
+        } else {
+            window.jesusSummonSystem = null;
+            console.warn('[Game] JesusSummonSystem class not available');
+        }
+
+        // Background-load a larger chunk cache so camera movement is stutter-free.
+        // This runs async — the game is already interactive from the initial batch.
+        this.terrainSystem.warmChunkCache(0, 0, Math.ceil(caps.gridSize / 2));
+
         // Tree population is deferred until after init() completes so that
         // boardSystem.getTerrainHeight() and the terrain mesh are fully ready.
         console.log('[Game] Terrain tree system exists:', !!this.terrainTreeSystem);
+
+        // Initialize memory profiler (updates only when dev tools are open)
+        this.memoryProfiler = new MemoryProfiler(this);
+        window.memoryProfiler = this.memoryProfiler;
+        console.log('[Game] MemoryProfiler initialized (press M to toggle)');
     }
     
     async setupEventListeners() {
@@ -511,225 +563,6 @@ class ChessopiaGame {
             }
         });
         
-        // Dev buttons
-        const clearAllPiecesBtn = document.getElementById('clearAllPiecesBtn');
-        if (clearAllPiecesBtn) {
-            clearAllPiecesBtn.addEventListener('click', () => {
-                console.log('[Game] Clear all pieces button clicked');
-                if (this.networkManager) {
-                    this.networkManager.resetGame();
-                }
-            });
-        }
-        
-        const spawnTestPiecesBtn = document.getElementById('spawnTestPiecesBtn');
-        if (spawnTestPiecesBtn) {
-            spawnTestPiecesBtn.addEventListener('click', () => {
-                console.log('[Game] Spawn test pieces button clicked');
-                // Request additional pieces from server instead of rejoining
-                if (this.networkManager) {
-                    // Send a request to spawn test pieces for current player
-                    this.networkManager.emit('spawnTestPieces', {});
-                }
-            });
-        }
-        
-        const recreateMapBtn = document.getElementById('recreateMapBtn');
-        if (recreateMapBtn) {
-            recreateMapBtn.addEventListener('click', async () => {
-                console.log('[Game] Recreate map button clicked');
-                try {
-                    const response = await fetch('/api/world/recreate', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                        console.log('[Game] Map recreated successfully with seed:', result.seed);
-                        
-                        // Clear all terrain data and trees
-                        this.terrainSystem.chunks.clear();
-                        if (this.hybridTreeManager) {
-                            this.hybridTreeManager.terrainTreeSystem.treeQuads.clear();
-                            this.hybridTreeManager.terrainTreeSystem.treeGeometry.clear();
-                        }
-                        
-                        // Clear board system terrain cache
-                        if (this.boardSystem) {
-                            this.boardSystem.clearTerrainCache();
-                        }
-                        
-                        // Refresh terrain around camera
-                        const cameraPos = this.cameraController.camera.position;
-                        await this.terrainSystem.generateInitialTerrain(
-                            Math.floor(cameraPos.x), 
-                            Math.floor(cameraPos.z), 
-                            this.terrainSystem.loadDistance
-                        );
-                        
-                        // Update board system with new terrain
-                        if (this.boardSystem) {
-                            this.boardSystem.updateTerrainMesh();
-                        }
-                        
-                        // Force camera position update to refresh terrain heights
-                        this.cameraController.updateCameraPosition();
-                        
-                        alert(`Map recreated! New seed: ${result.seed}`);
-                    } else {
-                        console.error('[Game] Failed to recreate map:', result.message);
-                        alert('Failed to recreate map: ' + result.message);
-                    }
-                } catch (error) {
-                    console.error('[Game] Error recreating map:', error);
-                    alert('Error recreating map: ' + error.message);
-                }
-            });
-        }
-        
-        const testServerErrorBtn = document.getElementById('testServerErrorBtn');
-        if (testServerErrorBtn) {
-            testServerErrorBtn.addEventListener('click', async () => {
-                console.log('[Game] Test server error button clicked');
-                try {
-                    const response = await fetch('/api/test-error', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    const result = await response.json();
-                    if (result.success) {
-                        console.log('[Game] Test error triggered successfully');
-                        alert('Test error triggered! Check the Server Errors panel.');
-                    } else {
-                        console.error('[Game] Failed to trigger test error:', result.message);
-                        alert('Failed to trigger test error: ' + result.message);
-                    }
-                } catch (error) {
-                    console.error('[Game] Error triggering test error:', error);
-                    alert('Error triggering test error: ' + error.message);
-                }
-            });
-        }
-
-        // Day time slider (0-24h)
-        const dayTimeSlider = document.getElementById('dayTimeSlider');
-        if (dayTimeSlider && this.boardSystem) {
-            // Add flag to prevent auto-update while dragging
-            dayTimeSlider.addEventListener('mousedown', () => {
-                this.boardSystem._isDraggingDayTimeSlider = true;
-            });
-            dayTimeSlider.addEventListener('mouseup', () => {
-                this.boardSystem._isDraggingDayTimeSlider = false;
-            });
-            dayTimeSlider.addEventListener('mouseleave', () => {
-                this.boardSystem._isDraggingDayTimeSlider = false;
-            });
-
-            dayTimeSlider.addEventListener('input', (e) => {
-                const hours = parseFloat(e.target.value);
-                const dayProgress = hours / 24;
-                const currentDay = Math.floor(this.boardSystem.serverGameTime / this.boardSystem.serverDayLength);
-                this.boardSystem.serverGameTime = (currentDay + dayProgress) * this.boardSystem.serverDayLength;
-                // Reset sync timestamp so sun position matches slider exactly (no drift)
-                this.boardSystem.lastTimeSyncTimestamp = Date.now();
-                console.log(`[Game] Day time set to ${hours.toFixed(1)}h`);
-            });
-        }
-
-        // Day speed slider (3s-240s per day)
-        const daySpeedSlider = document.getElementById('daySpeedSlider');
-        const daySpeedValue = document.getElementById('daySpeedValue');
-        if (daySpeedSlider && daySpeedValue && this.boardSystem) {
-            daySpeedSlider.addEventListener('input', (e) => {
-                const secondsPerDay = parseInt(e.target.value);
-                const oldDayLength = this.boardSystem.serverDayLength;
-                const newDayLength = secondsPerDay * 1000;
-
-                // Preserve current time of day when changing speed
-                const dayProgress = (this.boardSystem.serverGameTime % oldDayLength) / oldDayLength;
-                const currentDay = Math.floor(this.boardSystem.serverGameTime / oldDayLength);
-
-                // Recalculate serverGameTime to maintain same time of day
-                this.boardSystem.serverDayLength = newDayLength;
-                this.boardSystem.serverGameTime = (currentDay + dayProgress) * newDayLength;
-
-                daySpeedValue.textContent = `${secondsPerDay}s/day`;
-                console.log(`[Game] Day speed set to ${secondsPerDay}s/day`);
-            });
-        }
-
-        // Time of year slider (0-365 days)
-        const yearTimeSlider = document.getElementById('yearTimeSlider');
-        if (yearTimeSlider && this.boardSystem) {
-            // Add flag to prevent auto-update while dragging
-            yearTimeSlider.addEventListener('mousedown', () => {
-                this.boardSystem._isDraggingYearTimeSlider = true;
-            });
-            yearTimeSlider.addEventListener('mouseup', () => {
-                this.boardSystem._isDraggingYearTimeSlider = false;
-            });
-            yearTimeSlider.addEventListener('mouseleave', () => {
-                this.boardSystem._isDraggingYearTimeSlider = false;
-            });
-
-            yearTimeSlider.addEventListener('input', (e) => {
-                const dayOfYear = parseInt(e.target.value);
-                // Update season based on day of year
-                const seasonLength = 365 / 4; // 91.25 days per season
-                const seasonIndex = Math.floor(dayOfYear / seasonLength);
-                const seasons = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
-                const newSeason = seasons[Math.min(seasonIndex, 3)];
-                const seasonProgress = (dayOfYear % seasonLength) / seasonLength;
-
-                this.boardSystem.currentSeason = newSeason;
-                this.boardSystem.seasonProgress = seasonProgress;
-                this.boardSystem.dayOfYear = dayOfYear;
-                console.log(`[Game] Time of year set to day ${dayOfYear}, season ${newSeason}`);
-            });
-        }
-        
-        const toggleCelShadingBtn = document.getElementById('toggleCelShadingBtn');
-        if (toggleCelShadingBtn) {
-            console.log('[Game] Toggle cel shading button found and event listener added');
-            toggleCelShadingBtn.addEventListener('click', () => {
-                console.log('[Game] Toggle cel shading button clicked');
-                console.log('[Game] CelShaderSystem available:', !!this.celShaderSystem);
-                console.log('[Game] Scene available:', !!this.scene);
-                if (this.celShaderSystem) {
-                    this.celShaderSystem.toggleCelShading(this.scene); // Use simple shader
-                } else {
-                    console.error('[Game] CelShaderSystem not available!');
-                }
-            });
-        } else {
-            console.log('[Game] Toggle cel shading button not found!');
-        }
-
-        const respawnBtn = document.getElementById('respawnBtn');
-        if (respawnBtn) {
-            respawnBtn.addEventListener('click', () => {
-                console.log('[Game] Respawn button clicked - starting flying castle animation');
-                this.startRespawnAnimation();
-            });
-        }
-
-        // Space bar toggles dev tools visibility
-        this._devToolsVisible = false;
-        window.addEventListener('keydown', (e) => {
-            if (e.key === ' ') {
-                const devControls = document.getElementById('devControls');
-                if (devControls) {
-                    this._devToolsVisible = !this._devToolsVisible;
-                    devControls.style.display = this._devToolsVisible ? 'block' : 'none';
-                }
-            }
-        });
     }
 
     startRespawnAnimation() {
@@ -842,7 +675,7 @@ class ChessopiaGame {
         this.networkManager.on('timeSync', (data) => {
             console.log('[Game] Time sync received:', data);
             if (this.boardSystem) {
-                this.boardSystem.updateServerGameTime(data.elapsedTime, data.dayLength);
+                this.boardSystem.updateServerGameTime(data);
             }
         });
     }
@@ -877,7 +710,7 @@ class ChessopiaGame {
         let lastOptReport = 0;
 
         const animate = (currentTime) => {
-            requestAnimationFrame(animate);
+            this._animFrameId = requestAnimationFrame(animate);
 
             const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
             lastTime = currentTime;
@@ -885,6 +718,16 @@ class ChessopiaGame {
             // Update performance manager for automatic quality scaling
             if (this.performanceManager) {
                 this.performanceManager.update(deltaTime);
+            }
+
+            // Update LOD manager for adaptive level-of-detail
+            if (this.lodManager && this.camera) {
+                this.lodManager.update(this.camera, deltaTime);
+            }
+
+            // Update memory profiler (only when dev tools open, throttled internally)
+            if (this.memoryProfiler) {
+                this.memoryProfiler.update(currentTime);
             }
 
             if (currentTime - lastOptReport > 3000) {
@@ -896,6 +739,13 @@ class ChessopiaGame {
 
             // Update systems
             this.cameraController.update();
+
+            // Expose live camera state for debugging
+            if (typeof window !== 'undefined') {
+                if (!window.__terrainDebug) window.__terrainDebug = {};
+                window.__terrainDebug.cameraPosition = this.camera.position.clone();
+                window.__terrainDebug.cameraTarget = this.cameraController.getTarget().clone();
+            }
 
             // Update terrain trees based on camera position (terrain trees are part of terrain geometry)
             if (this.terrainTreeSystem) {
@@ -918,15 +768,36 @@ class ChessopiaGame {
                     const windDirection = Math.atan2(this.decorativeVisuals.windDirection.y, this.decorativeVisuals.windDirection.x);
                     this.boardSystem.setWindParameters(windSpeed, windDirection);
                 }
+
+                // Animate water plane cloud texture
+                if (this.boardSystem && this.boardSystem.updateWaterTexture) {
+                    this.boardSystem.updateWaterTexture(deltaTime);
+                }
+
+                // Lock water plane to camera x,z so it always stays in view
+                if (this.boardSystem && this.boardSystem.updateWaterPlanePosition) {
+                    this.boardSystem.updateWaterPlanePosition(this.camera.position);
+                }
+
+                if (this.boardSystem && this.boardSystem.updateWaterSurface) {
+                    this.boardSystem.updateWaterSurface(deltaTime, currentTime * 0.001, this.camera);
+                }
             }
 
 
             // Animate terrain tree wind swaying
             if (this.hybridTreeManager && this.decorativeVisuals) {
                 const t = currentTime * 0.001;
-                const ws = this.decorativeVisuals.windSpeed || 0.6;
+                const ps = window.parameterSystem;
+                const globalWs = ps ? ps.getParameter('windSpeed') : (this.decorativeVisuals.windSpeed || 0.6);
+                const sens = ps ? ps.getParameter('treeWindSensitivity') : 1.0;
+                const ws = globalWs * sens;
                 const wd = this.decorativeVisuals.windDirection || { x: 1, y: 0 };
                 this.hybridTreeManager.update(t, ws, wd);
+            }
+
+            if (this.jesusSummonSystem) {
+                this.jesusSummonSystem.update(deltaTime);
             }
 
             // Update baked geometry shadows
@@ -940,11 +811,6 @@ class ChessopiaGame {
                 this.shadowSystem.update(currentTime * 0.001, sunAzimuth, windState);
             }
 
-            // Grass system disabled - using board grass texture instead
-            if (this.grassSystem) {
-                console.log('[Game DEBUG] Grass system should be null but is not - this should not happen');
-            }
-
             // Update pond weed ripple effect on underwater terrain
             if (this.pondWeedSystem && this.boardSystem) {
                 this.pondWeedSystem.update(currentTime * 0.001, this.boardSystem.grassTexture);
@@ -956,11 +822,13 @@ class ChessopiaGame {
             //     this.textureBlendingSystem.updateAnimation(currentTime * 0.001, this.camera.position); // Convert to seconds
             // }
 
-            // Update terrain streaming
-            this.terrainSystem.updateStreaming(this.camera.position);
+            // Update terrain streaming around the camera target (focal point) so chunks
+            // stay loaded while orbiting, rather than following the camera position
+            this.terrainSystem.updateStreaming(this.cameraController.getTarget());
 
-            // Update board streaming
-            this.boardSystem.updateStreaming(this.camera.position, this.camera);
+            // Update board streaming around camera target (focal point) so mesh
+            // stays centered while orbiting, rather than chasing the camera eye
+            this.boardSystem.updateStreaming(this.cameraController.getTarget(), this.camera);
 
             // Update terrain tree foliage based on season
             if (this.terrainTreeSystem && this.boardSystem) {
@@ -971,73 +839,96 @@ class ChessopiaGame {
             // Update shadow quality based on performance
             this.updateShadowQuality(deltaTime * 1000); // Convert to ms
 
-            // Count vertices in scene by object type
-            let totalVertices = 0;
-            let totalTriangles = 0;
-            const vertexCounts = {
-                terrain: 0,
-                trees: 0,
-                billboards: 0,
-                pieces: 0,
-                decorative: 0,
-                other: 0
-            };
-            const otherObjects = new Map(); // Track other objects by name
-
-            this.scene.traverse((object) => {
-                if (object.isMesh && object.geometry) {
-                    const positionAttribute = object.geometry.getAttribute('position');
-                    if (positionAttribute) {
-                        const count = positionAttribute.count;
-                        totalVertices += count;
-
-                        // Categorize by object type (check object or parent userData)
-                        const isTree = object.userData?.isTree || (object.parent?.userData?.isTree);
-                        const isBillboard = object.userData?.isBillboard || (object.parent?.userData?.isBillboard);
-                        const isPiece = object.userData?.isPiece || (object.parent?.userData?.isPiece);
-                        const isDecorative = object.userData?.isDecorative || (object.parent?.userData?.isDecorative);
-
-                        if (object.name === 'dynamicContinuousMesh' || object.name === 'viewportMesh' || object.name === 'rollingTerrain' || object.name === 'terrainSingleMesh') {
-                            vertexCounts.terrain += count;
-                        } else if (isTree) {
-                            vertexCounts.trees += count;
-                        } else if (isBillboard) {
-                            vertexCounts.billboards += count;
-                        } else if (isPiece) {
-                            vertexCounts.pieces += count;
-                        } else if (isDecorative) {
-                            vertexCounts.decorative += count;
-                        } else {
-                            vertexCounts.other += count;
-                            // Track other objects by name
-                            const objName = object.name || 'unnamed';
-                            otherObjects.set(objName, (otherObjects.get(objName) || 0) + count);
-                        }
-                    }
-                    const indexAttribute = object.geometry.getIndex();
-                    if (indexAttribute) {
-                        totalTriangles += indexAttribute.count / 3;
-                    } else if (positionAttribute) {
-                        totalTriangles += positionAttribute.count / 3;
-                    }
-                }
-            });
-
             // Update dev tools section with vertex/triangle counts every 10 frames
             if (Math.floor(currentTime / 16) % 10 === 0) {
+                let totalVertices = 0;
+                let totalTriangles = 0;
+                const vertexCounts = {
+                    terrain: 0,
+                    trees: 0,
+                    billboards: 0,
+                    pieces: 0,
+                    decorative: 0,
+                    other: 0
+                };
+                const otherObjects = new Map(); // Track other objects by name
+
+                this.scene.traverse((object) => {
+                    if (object.isMesh && object.geometry) {
+                        const positionAttribute = object.geometry.getAttribute('position');
+                        if (positionAttribute) {
+                            const count = positionAttribute.count;
+                            totalVertices += count;
+
+                            // Categorize by object type (check object or parent userData)
+                            const isTree = object.userData?.isTree || (object.parent?.userData?.isTree);
+                            const isBillboard = object.userData?.isBillboard || (object.parent?.userData?.isBillboard);
+                            const isPiece = object.userData?.isPiece || (object.parent?.userData?.isPiece);
+                            const isDecorative = object.userData?.isDecorative || (object.parent?.userData?.isDecorative);
+
+                            if (object.name === 'dynamicContinuousMesh' || object.name === 'viewportMesh' || object.name === 'rollingTerrain' || object.name === 'terrainSingleMesh') {
+                                vertexCounts.terrain += count;
+                            } else if (isTree) {
+                                vertexCounts.trees += count;
+                            } else if (isBillboard) {
+                                vertexCounts.billboards += count;
+                            } else if (isPiece) {
+                                vertexCounts.pieces += count;
+                            } else if (isDecorative) {
+                                vertexCounts.decorative += count;
+                            } else {
+                                vertexCounts.other += count;
+                                // Track other objects by name
+                                const objName = object.name || 'unnamed';
+                                otherObjects.set(objName, (otherObjects.get(objName) || 0) + count);
+                            }
+                        }
+                        const indexAttribute = object.geometry.getIndex();
+                        if (indexAttribute) {
+                            totalTriangles += indexAttribute.count / 3;
+                        } else if (positionAttribute) {
+                            totalTriangles += positionAttribute.count / 3;
+                        }
+                    }
+                });
+
                 const vEl = document.getElementById('vertexCount');
                 const tEl = document.getElementById('triangleCount');
                 if (vEl) vEl.textContent = `${(totalVertices / 1000).toFixed(1)}K`;
                 if (tEl) tEl.textContent = `${(totalTriangles / 1000).toFixed(1)}K`;
 
-                // Log detailed breakdown every 60 frames (approx 1 second)
-                if (Math.floor(currentTime / 16) % 60 === 0) {
-                    console.log(`[VERTEX PROFILE] Total: ${(totalVertices/1000).toFixed(1)}K | Terrain: ${(vertexCounts.terrain/1000).toFixed(1)}K | Trees: ${(vertexCounts.trees/1000).toFixed(1)}K | Billboards: ${(vertexCounts.billboards/1000).toFixed(1)}K | Pieces: ${(vertexCounts.pieces/1000).toFixed(1)}K | Decorative: ${(vertexCounts.decorative/1000).toFixed(1)}K | Other: ${(vertexCounts.other/1000).toFixed(1)}K`);
-                    // Log other objects breakdown if significant
-                    if (vertexCounts.other > 10000) {
-                        console.log(`[OTHER OBJECTS] ${Array.from(otherObjects.entries()).map(([name, verts]) => `${name}: ${(verts/1000).toFixed(1)}K`).join(' | ')}`);
-                    }
+                // Log detailed breakdown every 60 frames (approx 1 second) — disabled
+                // if (Math.floor(currentTime / 16) % 60 === 0) {
+                //     console.log(`[VERTEX PROFILE] Total: ${(totalVertices/1000).toFixed(1)}K | Terrain: ${(vertexCounts.terrain/1000).toFixed(1)}K | Trees: ${(vertexCounts.trees/1000).toFixed(1)}K | Billboards: ${(vertexCounts.billboards/1000).toFixed(1)}K | Pieces: ${(vertexCounts.pieces/1000).toFixed(1)}K | Decorative: ${(vertexCounts.decorative/1000).toFixed(1)}K | Other: ${(vertexCounts.other/1000).toFixed(1)}K`);
+                //     // Log other objects breakdown if significant
+                //     if (vertexCounts.other > 10000) {
+                //         console.log(`[OTHER OBJECTS] ${Array.from(otherObjects.entries()).map(([name, verts]) => `${name}: ${(verts/1000).toFixed(1)}K`).join(' | ')}`);
+                //     }
+                // }
+            }
+
+            // Mouse pointer raycast for distance readout and debug dot
+            if (this.raycastDotEnabled && this.raycastDot) {
+                this._raycaster.setFromCamera(this._mouseNDC, this.camera);
+                // Use Three.js optimized recursive traversal instead of manual JS traverse + array alloc
+                const intersects = this._raycaster.intersectObjects(this.scene.children, true);
+                const hit = intersects.find(i => i.object !== this.raycastDot);
+                if (hit) {
+                    this.raycastDot.position.copy(hit.point);
+                    this.raycastDot.visible = true;
+                    const distEl = document.getElementById('cameraRayDist');
+                    const objEl = document.getElementById('cameraRayObj');
+                    if (distEl) distEl.textContent = hit.distance.toFixed(1);
+                    if (objEl) objEl.textContent = hit.object.name || hit.object.type || '?';
+                } else {
+                    this.raycastDot.visible = false;
+                    const distEl = document.getElementById('cameraRayDist');
+                    const objEl = document.getElementById('cameraRayObj');
+                    if (distEl) distEl.textContent = '-';
+                    if (objEl) objEl.textContent = '-';
                 }
+            } else if (this.raycastDot) {
+                this.raycastDot.visible = false;
             }
 
             // Render
@@ -1108,13 +999,16 @@ class ChessopiaGame {
     
     onMouseMove(event) {
         if (!this.isInitialized) return;
-        
+
         const rect = this.renderer.domElement.getBoundingClientRect();
         const mouse = new THREE.Vector2(
             ((event.clientX - rect.left) / rect.width) * 2 - 1,
             -((event.clientY - rect.top) / rect.height) * 2 + 1
         );
-        
+
+        // Store for raycast dot
+        this._mouseNDC.copy(mouse);
+
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, this.camera);
         
@@ -1328,11 +1222,19 @@ class ChessopiaGame {
     }
     
     handlePlayerJoined(data) {
-        console.log('Player joined:', data.name);
+        console.log('Player joined:', data.name, 'userId:', data.userId, 'role:', data.role);
         
-        // Set current player if this is the local player
-        if (this.networkManager.socket && data.id === this.networkManager.socket.id) {
+        // Set current player if this is the local player (match by userId if available)
+        const user = window.authState ? window.authState.getUser() : null;
+        if (user && data.userId === user.id) {
             this.gameState.setCurrentPlayerId(data.id);
+            console.log('[Game] Set current player ID to:', data.id);
+            
+            // Update player info display
+            const playerNameEl = document.getElementById('playerName');
+            if (playerNameEl) {
+                playerNameEl.textContent = data.name + (data.role === 'dev' ? ' [DEV]' : '');
+            }
         }
         
         // Update player list UI

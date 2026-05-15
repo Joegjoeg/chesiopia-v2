@@ -79,10 +79,10 @@ class TerrainSystem {
     }
     
     async downloadEntireWorld() {
-        console.log('[Terrain] STARTING WORLD DOWNLOAD - THIS SHOULD APPEAR!');
+        // console.log('[Terrain] STARTING WORLD DOWNLOAD - THIS SHOULD APPEAR!');
         
         try {
-            console.log('[Terrain] On-demand world initialization - no pre-download needed');
+            // console.log('[Terrain] On-demand world initialization - no pre-download needed');
             
             // Set default color palette (will be generated from chunk data)
             this.colorPalette = [
@@ -93,7 +93,7 @@ class TerrainSystem {
             ];
             
             this.worldDownloaded = true;
-            console.log('[Terrain] On-demand initialization complete - chunks will load as needed');
+            // console.log('[Terrain] On-demand initialization complete - chunks will load as needed');
             
         } catch (error) {
             console.error('[Terrain] ERROR IN INITIALIZATION:', error);
@@ -101,43 +101,8 @@ class TerrainSystem {
         }
     }
     
-    async loadChunk(chunkX, chunkZ) {
-        const chunkKey = `${chunkX},${chunkZ}`;
-        
-        // Check if already loaded
-        if (this.chunks.has(chunkKey)) {
-            return this.chunks.get(chunkKey).data;
-        }
-        
-        try {
-            const seq = ++this.debug.chunkSeq;
-            const dist = Math.max(Math.abs(chunkX - this.lastCameraChunk.x), Math.abs(chunkZ - this.lastCameraChunk.z));
-            this._debugLog('[TerrainDebug] req', { seq, chunkKey, dist, path: 1 });
-            console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
-            const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
-            
-            if (!response.ok) {
-                throw new Error(`Failed to load chunk ${chunkKey}: ${response.status}`);
-            }
-            
-            const chunkData = await response.json();
-            console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
-            this._debugLog('[TerrainDebug] loaded', { seq, chunkKey, tiles: chunkData.length, path: 1 });
-            
-            // Cache the chunk
-            this.chunks.set(chunkKey, {
-                data: chunkData,
-                loaded: true
-            });
-            
-            return chunkData;
-        } catch (error) {
-            console.error(`[Terrain] Error loading chunk ${chunkKey}:`, error);
-            return null;
-        }
-    }
     async generateInitialTerrain(centerX, centerZ, radius) {
-        console.log(`[Terrain] generateInitialTerrain called - worldDownloaded: ${this.worldDownloaded}`);
+        // console.log(`[Terrain] generateInitialTerrain called - worldDownloaded: ${this.worldDownloaded}`);
         // If world not downloaded yet, download it first
         if (!this.worldDownloaded) {
             console.log('[Terrain] World not downloaded, triggering download...');
@@ -149,17 +114,56 @@ class TerrainSystem {
         const centerChunkX = Math.floor(centerX / this.chunkSize);
         const centerChunkZ = Math.floor(centerZ / this.chunkSize);
         
-        console.log(`[Terrain] Loading chunks around (${centerChunkX}, ${centerChunkZ}) with radius ${chunkRadius}`);
+        // console.log(`[Terrain] Loading chunks around (${centerChunkX}, ${centerChunkZ}) with radius ${chunkRadius}`);
         
-        const chunkPromises = [];
+        // Build load list and sort by distance so center loads first
+        const chunksToLoad = [];
         for (let x = centerChunkX - chunkRadius; x <= centerChunkX + chunkRadius; x++) {
             for (let z = centerChunkZ - chunkRadius; z <= centerChunkZ + chunkRadius; z++) {
-                chunkPromises.push(this.loadChunk(x, z));
+                const dist = Math.max(Math.abs(x - centerChunkX), Math.abs(z - centerChunkZ));
+                chunksToLoad.push({ x, z, dist });
             }
         }
-        
-        await Promise.all(chunkPromises);
-        console.log(`[Terrain] Initial terrain generation complete. Loaded ${this.chunks.size} chunks`);
+        chunksToLoad.sort((a, b) => a.dist - b.dist);
+
+        // Load in batches so the browser isn't overwhelmed with parallel HTTP requests
+        const batchSize = 6;
+        for (let i = 0; i < chunksToLoad.length; i += batchSize) {
+            const batch = chunksToLoad.slice(i, i + batchSize);
+            await Promise.all(batch.map(c => this.loadChunk(c.x, c.z)));
+        }
+
+        // console.log(`[Terrain] Initial terrain generation complete. Loaded ${this.chunks.size} chunks`);
+    }
+
+    // Load a large cache progressively in the background so camera movement is stutter-free
+    async warmChunkCache(centerX, centerZ, targetRadius) {
+        const chunkRadius = Math.ceil(targetRadius / this.chunkSize);
+        const centerChunkX = Math.floor(centerX / this.chunkSize);
+        const centerChunkZ = Math.floor(centerZ / this.chunkSize);
+
+        // Skip the inner radius already loaded by generateInitialTerrain
+        const skipRadius = Math.ceil(chunkRadius * 0.4);
+
+        for (let ring = skipRadius; ring <= chunkRadius; ring++) {
+            const ringChunks = [];
+            for (let x = centerChunkX - ring; x <= centerChunkX + ring; x++) {
+                for (let z = centerChunkZ - ring; z <= centerChunkZ + ring; z++) {
+                    if (Math.abs(x - centerChunkX) === ring || Math.abs(z - centerChunkZ) === ring) {
+                        const key = `${x},${z}`;
+                        if (!this.chunks.has(key) && !this._loadingPromises?.has(key)) {
+                            ringChunks.push(this.loadChunk(x, z));
+                        }
+                    }
+                }
+            }
+            if (ringChunks.length > 0) {
+                await Promise.all(ringChunks);
+            }
+            // Yield to event loop so we don't block rendering
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        // console.log(`[Terrain] Warm cache complete. Total chunks: ${this.chunks.size}`);
     }
     
     getHeight(x, y) {
@@ -275,7 +279,7 @@ class TerrainSystem {
         
         // Check if already loaded
         if (this.chunks.has(chunkKey)) {
-            if (this.treeSystem) {
+            if (this.treeSystem && typeof this.treeSystem.updateTreesForChunk === 'function') {
                 this.treeSystem.updateTreesForChunk(chunkX, chunkZ, this.chunkSize);
             }
             return this.chunks.get(chunkKey).data;
@@ -304,7 +308,7 @@ class TerrainSystem {
             const seq = ++this.debug.chunkSeq;
             const dist = Math.max(Math.abs(chunkX - this.lastCameraChunk.x), Math.abs(chunkZ - this.lastCameraChunk.z));
             this._debugLog('[TerrainDebug] req', { seq, chunkKey, dist });
-            console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
+            // console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
             const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
             
             if (!response.ok) {
@@ -312,7 +316,7 @@ class TerrainSystem {
             }
             
             const chunkData = await response.json();
-            console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
+            // console.log(`[Terrain] Loaded chunk ${chunkKey} with ${chunkData.length} tiles`);
             this._debugLog('[TerrainDebug] loaded', { seq, chunkKey, tiles: chunkData.length });
             
             // Cache the chunk
@@ -341,7 +345,7 @@ class TerrainSystem {
     }
     
     async updateChunks(cameraChunkX, cameraChunkZ) {
-        console.log(`[Terrain] Updating chunks for camera at: ${cameraChunkX},${cameraChunkZ}`);
+        // console.log(`[Terrain] Updating chunks for camera at: ${cameraChunkX},${cameraChunkZ}`);
         
         const chunksToLoad = [];
         const chunksToUnload = [];
@@ -349,7 +353,7 @@ class TerrainSystem {
         // ALWAYS ensure camera's current chunk is loaded first
         const currentChunkKey = `${cameraChunkX},${cameraChunkZ}`;
         if (!this.chunks.has(currentChunkKey)) {
-            console.log(`[Terrain] PRIORITY: Loading camera's current chunk ${currentChunkKey}`);
+            // console.log(`[Terrain] PRIORITY: Loading camera's current chunk ${currentChunkKey}`);
             chunksToLoad.push({ x: cameraChunkX, z: cameraChunkZ });
         }
         
@@ -363,7 +367,7 @@ class TerrainSystem {
                 if (!this.chunks.has(chunkKey)) {
                     // Skip if already added as priority
                     if (chunkKey !== currentChunkKey) {
-                        console.log(`[Terrain] Loading chunk ${chunkKey}`);
+                        // console.log(`[Terrain] Loading chunk ${chunkKey}`);
                         chunksToLoad.push({ x: chunkX, z: chunkZ });
                     }
                 }
@@ -379,7 +383,7 @@ class TerrainSystem {
             );
             
             if (distance > this.loadDistance + 1) {
-                console.log(`[Terrain] Unloading distant chunk ${chunkKey} (distance: ${distance})`);
+                // console.log(`[Terrain] Unloading distant chunk ${chunkKey} (distance: ${distance})`);
                 chunksToUnload.push(chunkKey);
             }
         }
