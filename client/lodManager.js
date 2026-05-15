@@ -72,23 +72,23 @@ class LODManager {
         this.groups.set(name, {
             name,
             levels,
-            cullDistance: config.cullDistance ?? Infinity,
-            frustumCull: config.frustumCull ?? true,
+            cullDistance: config.cullDistance != null ? config.cullDistance : Infinity,
+            frustumCull: config.frustumCull != null ? config.frustumCull : true,
             getPosition: config.getPosition,
             getBoundsRadius: config.getBoundsRadius || (() => 0),
             onLevelChange: config.onLevelChange || (() => {}),
             onCull: config.onCull || (() => {}),
             onVisible: config.onVisible || (() => {}),
-            maxVisible: config.maxVisible ?? Infinity,
+            maxVisible: config.maxVisible != null ? config.maxVisible : Infinity,
             updateInterval: Math.max(1, config.updateInterval || 1),
-            hysteresisFrames: Math.max(0, config.hysteresisFrames ?? 3),
+            hysteresisFrames: Math.max(0, config.hysteresisFrames != null ? config.hysteresisFrames : 3),
             items: new Map(), // id -> { id, item, currentLevel, pendingLevel, pendingFrames, wasVisible, distance }
             visibleCount: 0,
             _frameOffset: this.frameCount % 3,  // stagger group updates across frames
             _animFrame: 0  // for shouldAnimateGroup throttling
         });
 
-        console.log(`[LODManager] Registered group '${name}' with ${levels.length} levels, cull ${config.cullDistance ?? '∞'}`);
+        console.log(`[LODManager] Registered group '${name}' with ${levels.length} levels, cull ${config.cullDistance != null ? config.cullDistance : '∞'}`);
     }
 
     add(groupName, item, id) {
@@ -171,8 +171,8 @@ class LODManager {
 
     _updatePressure(deltaTime) {
         if (this.performanceManager) {
-            const level = this.performanceManager.qualityLevel ?? 4;
-            const maxLevel = this.performanceManager.maxQualityLevel ?? 4;
+            const level = this.performanceManager.qualityLevel != null ? this.performanceManager.qualityLevel : 4;
+            const maxLevel = this.performanceManager.maxQualityLevel != null ? this.performanceManager.maxQualityLevel : 4;
             const target = 1.0 - (level / maxLevel);
             this.pressure += (target - this.pressure) * this.adaptiveSmoothing;
         } else {

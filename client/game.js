@@ -371,8 +371,13 @@ class ChessopiaGame {
         console.log('[Game] PerformanceManager created');
 
         // Initialize LOD manager for adaptive level-of-detail (needed by HybridTreeManager)
-        this.lodManager = new LODManager({ performanceManager: this.performanceManager });
-        console.log('[Game] LODManager created');
+        if (typeof LODManager !== 'undefined') {
+            this.lodManager = new LODManager({ performanceManager: this.performanceManager });
+            console.log('[Game] LODManager created');
+        } else {
+            console.warn('[Game] LODManager not available - skipping adaptive LOD');
+            this.lodManager = null;
+        }
 
         // Create hybrid tree manager with patch-based alternation between TerrainTreeSystem and LocalTreeSystem
         this.oldTreeSystem = null; // Disable old tree system
