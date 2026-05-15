@@ -56,10 +56,16 @@ class ConsoleManager {
         };
         
         this.consoleBuffer.push(entry);
-        
+
         // Maintain buffer size
         if (this.consoleBuffer.length > this.maxBufferSize) {
             this.consoleBuffer.shift();
+        }
+
+        // Auto-forward errors to the server immediately so remote testers
+        // don't need to trigger a manual request to see shader / runtime errors.
+        if (level === 'error' && this.networkManager && this.networkManager.socket && this.networkManager.socket.connected) {
+            this.sendConsoleLogs();
         }
     }
     

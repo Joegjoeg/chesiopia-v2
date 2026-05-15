@@ -22,6 +22,8 @@ class CleanBoardSystem {
 
 
         this.game = game;
+        this._windSpeed = 1.0;
+        this._windDirection = new THREE.Vector2(1, 0);
         this.waterReflectionManager = null;
 
         this._initWaterReflectionManager();
@@ -796,7 +798,11 @@ class CleanBoardSystem {
         const userOpacity = this._waterPlaneUserOpacity ?? this._waterPlaneBaseOpacity ?? this._waterPlane.material.opacity ?? 1;
         const opacity = userOpacity * shaderOpacity * (1 - fade);
 
-        this._waterPlane.material.opacity = opacity;
+        if (this._waterPlane.material.uniforms && this._waterPlane.material.uniforms.uWaterOpacity) {
+            this._waterPlane.material.uniforms.uWaterOpacity.value = opacity;
+        } else {
+            this._waterPlane.material.opacity = opacity;
+        }
         this._waterPlane.visible = opacity > 0.01;
     }
 
@@ -1654,10 +1660,13 @@ class CleanBoardSystem {
         if (this._waterPlane) {
             this.scene.remove(this._waterPlane);
             this._waterPlane.geometry.dispose();
-            if (this._waterPlane.material.map) {
-                this._waterPlane.material.map.dispose();
+            const material = this._waterPlane.material;
+            if (material) {
+                const tex = material.userData?.waterTexture;
+                if (tex && tex.dispose) tex.dispose();
+                material.dispose();
             }
-            this._waterPlane.material.dispose();
+            this._waterPlane = null;
         }
 
         const waterLevel = this.waterLevel;
@@ -1678,24 +1687,17 @@ class CleanBoardSystem {
             geometry.userData.curved = false;
         }
 
-        // Load sky reflection texture
+        // Load sky reflection texture (used as fallback and UV scroll source)
         const textureLoader = new THREE.TextureLoader();
         const waterTexture = textureLoader.load('../Images/sky reflection1.jpg');
-        
-        // Configure texture for seamless scrolling
         waterTexture.wrapS = THREE.RepeatWrapping;
         waterTexture.wrapT = THREE.RepeatWrapping;
-        waterTexture.repeat.set(2, 1); // Repeat less to make clouds more prominent
+        waterTexture.repeat.set(2, 1);
+        waterTexture.colorSpace = THREE.SRGBColorSpace;
 
-        const material = new THREE.MeshStandardMaterial({
-            transparent: true,
-            opacity: 0.95,
-            roughness: 0.05,
-            metalness: 0.1,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            map: waterTexture
-        });
+        const material = this._createWaterShaderMaterial(waterTexture);
+        material.userData = material.userData || {};
+        material.userData.waterTexture = waterTexture;
 
         this._waterPlane = new THREE.Mesh(geometry, material);
         this._waterPlane.position.set(0, waterLevel, 0);
@@ -1703,8 +1705,8 @@ class CleanBoardSystem {
         // Render water after terrain so it depth-tests correctly against underwater terrain
         this._waterPlane.renderOrder = 1;
         this._waterPlane.visible = true;
-        this._waterPlaneBaseOpacity = material.opacity;
-        this._waterPlaneUserOpacity = material.opacity;
+        this._waterPlaneBaseOpacity = material.uniforms.uWaterOpacity.value;
+        this._waterPlaneUserOpacity = material.uniforms.uWaterOpacity.value;
         this._waterPlaneUserVisible = true;
         this.scene.add(this._waterPlane);
 
@@ -1727,8 +1729,164 @@ class CleanBoardSystem {
         }
     }
 
+    _createWaterShaderMaterial(waterTexture) {
+        const uniforms = {
+            uTime: { value: 0 },
+            uWaterLevel: { value: this.waterLevel },
+            uWaterOpacity: { value: 0.95 },
+            uDeepColor: { value: new THREE.Color(0.10, 0.25, 0.50) },
+            uShallowColor: { value: new THREE.Color(0.45, 0.71, 0.98) },
+            uFoamColor: { value: new THREE.Color(0.93, 0.97, 1.0) },
+            uFoamIntensity: { value: 0.65 },
+            uFoamCutoff: { value: 0.3 },
+            uFoamRange: { value: 0.4 },
+            uReflectionBlend: { value: 0.9 },
+            uReflectionEnabled: { value: 0.0 },
+            uReflectionMap: { value: waterTexture },
+            uReflectionMatrix: { value: new THREE.Matrix4() },
+            uFresnelPower: { value: 4.8 },
+            uSpecularStrength: { value: 0.9 },
+            uSpecularColor: { value: new THREE.Color(0.7, 0.85, 1.0) },
+            uSkyTexture: { value: waterTexture },
+            uSkyUvScale: { value: new THREE.Vector2(0.01, 0.006) },
+            uSkyUvOffset: { value: new THREE.Vector2(0, 0) },
+            uWindDir: { value: this._windDirection.clone() },
+            uWindStrength: { value: this._windSpeed ?? 1.0 },
+            uWaveAmplitudeLarge: { value: 0.35 },
+            uWaveAmplitudeMedium: { value: 0.18 },
+            uWaveAmplitudeDetail: { value: 0.08 },
+            uWaveFrequencyLarge: { value: 0.08 },
+            uWaveFrequencyMedium: { value: 0.18 },
+            uWaveFrequencyDetail: { value: 0.42 },
+            uWaveSpeedLarge: { value: 1.2 },
+            uWaveSpeedMedium: { value: 2.1 },
+            uWaveSpeedDetail: { value: 3.3 },
+            uNormalStrength: { value: 1.15 },
+            uSunDirection: { value: new THREE.Vector3(0.3, 0.9, 0.2).normalize() },
+            uCameraPosition: { value: new THREE.Vector3() }
+        };
+
+        const vertexShader = `
+            varying vec3 vWorldPos;
+            void main() {
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vWorldPos = worldPosition.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }
+        `;
+
+        const fragmentShader = `
+            precision highp float;
+
+            uniform float uTime;
+            uniform float uWaterLevel;
+            uniform float uWaterOpacity;
+            uniform vec3 uDeepColor;
+            uniform vec3 uShallowColor;
+            uniform vec3 uFoamColor;
+            uniform float uFoamIntensity;
+            uniform float uFoamCutoff;
+            uniform float uFoamRange;
+            uniform float uReflectionBlend;
+            uniform float uReflectionEnabled;
+            uniform sampler2D uReflectionMap;
+            uniform mat4 uReflectionMatrix;
+            uniform float uFresnelPower;
+            uniform float uSpecularStrength;
+            uniform vec3 uSpecularColor;
+            uniform sampler2D uSkyTexture;
+            uniform vec2 uSkyUvScale;
+            uniform vec2 uSkyUvOffset;
+            uniform vec2 uWindDir;
+            uniform float uWindStrength;
+            uniform float uWaveAmplitudeLarge;
+            uniform float uWaveAmplitudeMedium;
+            uniform float uWaveAmplitudeDetail;
+            uniform float uWaveFrequencyLarge;
+            uniform float uWaveFrequencyMedium;
+            uniform float uWaveFrequencyDetail;
+            uniform float uWaveSpeedLarge;
+            uniform float uWaveSpeedMedium;
+            uniform float uWaveSpeedDetail;
+            uniform float uNormalStrength;
+            uniform vec3 uSunDirection;
+
+            varying vec3 vWorldPos;
+
+            void accumulateWave(inout float height, inout vec2 grad, vec2 dir, float freq, float speed, float amp) {
+                float phase = dot(dir, vWorldPos.xz) * freq + uTime * speed;
+                float s = sin(phase);
+                float c = cos(phase);
+                height += s * amp;
+                grad += dir * c * freq * amp;
+            }
+
+            vec3 computeNormal(out float height) {
+                vec2 grad = vec2(0.0);
+                height = 0.0;
+                vec2 d1 = normalize(vec2(uWindDir.x, uWindDir.y));
+                vec2 d2 = normalize(vec2(-uWindDir.y, uWindDir.x));
+                vec2 d3 = normalize(vec2(uWindDir.x * 0.6 + uWindDir.y * 0.4, -uWindDir.x * 0.4 + uWindDir.y * 0.6));
+                accumulateWave(height, grad, d1, uWaveFrequencyLarge, uWaveSpeedLarge, uWaveAmplitudeLarge);
+                accumulateWave(height, grad, d2, uWaveFrequencyMedium, uWaveSpeedMedium, uWaveAmplitudeMedium);
+                accumulateWave(height, grad, d3, uWaveFrequencyDetail, uWaveSpeedDetail, uWaveAmplitudeDetail);
+                grad *= uNormalStrength * (0.5 + uWindStrength * 0.5);
+                return normalize(vec3(-grad.x, 1.0, -grad.y));
+            }
+
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            }
+
+            void main() {
+                float waveHeight;
+                vec3 normal = computeNormal(waveHeight);
+                vec3 viewDir = normalize(cameraPosition - vWorldPos);
+
+                vec2 skyUv = vWorldPos.xz * uSkyUvScale + uSkyUvOffset;
+                vec3 skyColor = texture2D(uSkyTexture, skyUv).rgb;
+
+                float shallowMix = clamp(0.5 + waveHeight * 0.25, 0.0, 1.0);
+                vec3 waterColor = mix(uDeepColor, uShallowColor, shallowMix);
+
+                vec4 reflectionProj = uReflectionMatrix * vec4(vWorldPos, 1.0);
+                vec2 reflectionUv = reflectionProj.xy / reflectionProj.w;
+                vec3 reflectionColor = texture2D(uReflectionMap, reflectionUv).rgb;
+                reflectionColor = mix(skyColor, reflectionColor, uReflectionEnabled);
+
+                float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), uFresnelPower);
+                vec3 color = mix(waterColor, reflectionColor, uReflectionBlend * fresnel);
+
+                float foamHeight = smoothstep(uFoamCutoff, uFoamCutoff + uFoamRange, waveHeight);
+                float foamNoise = hash(floor(vWorldPos.xz * 3.0)) * 0.5 + 0.5;
+                float foam = foamHeight * foamNoise;
+                color = mix(color, uFoamColor, foam * uFoamIntensity);
+
+                vec3 sunDir = normalize(uSunDirection);
+                vec3 halfVec = normalize(sunDir + viewDir);
+                float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
+                color += uSpecularColor * spec * uSpecularStrength;
+
+                float sparkle = pow(max(0.0, sin(dot(vWorldPos.xz, vec2(8.0, 13.0)) + uTime * 12.0)), 12.0);
+                color += uSpecularColor * sparkle * 0.08;
+
+                gl_FragColor = vec4(color, uWaterOpacity);
+            }
+        `;
+
+        return new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader,
+            fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            fog: false
+        });
+    }
+
     updateWaterTexture(deltaTime) {
-        if (!this._waterPlane || !this._waterPlane.visible || !this._waterPlane.material || !this._waterPlane.material.map) return;
+        if (!this._waterPlane || !this._waterPlane.visible) return;
         if (!this._waterTextureData) return;
 
         const now = performance.now() / 1000;
@@ -1746,25 +1904,47 @@ class CleanBoardSystem {
 
         const moveSpeed = baseSpeed * multiplier * dt * 0.15;
         // Texture offset moves opposite to visible flow in Three.js
-        this._waterTextureData.offset.x -= Math.cos(dir) * moveSpeed;
-        this._waterTextureData.offset.y += Math.sin(dir) * moveSpeed;
+        this._waterTextureData.offset.x = (this._waterTextureData.offset.x - Math.cos(dir) * moveSpeed) % 1;
+        this._waterTextureData.offset.y = (this._waterTextureData.offset.y + Math.sin(dir) * moveSpeed) % 1;
 
-        const tex = this._waterPlane.material.map;
-        tex.offset.x = this._waterTextureData.offset.x % 1;
-        tex.offset.y = this._waterTextureData.offset.y % 1;
+        const uniforms = this._waterPlane.material?.uniforms;
+        if (uniforms && uniforms.uSkyUvOffset) {
+            uniforms.uSkyUvOffset.value.set(this._waterTextureData.offset.x, this._waterTextureData.offset.y);
+        }
     }
 
     updateWaterReflections(camera) {
         if (!this.waterReflectionManager || !this._waterPlane) {
+            if (!this._reflectionDebugLogged) {
+                console.warn('[WaterReflection] Skipping - manager:', !!this.waterReflectionManager, 'plane:', !!this._waterPlane);
+                this._reflectionDebugLogged = true;
+            }
             return;
         }
         try {
             const updated = this.waterReflectionManager.update(this._waterPlane, camera);
-            if (updated && this._waterPlane.material) {
-                const reflectionTexture = this.waterReflectionManager.texture;
-                if (reflectionTexture && this._waterPlane.material.envMap !== reflectionTexture) {
-                    this._waterPlane.material.envMap = reflectionTexture;
-                    this._waterPlane.material.needsUpdate = true;
+            const reflectionTexture = this.waterReflectionManager.texture;
+            const uniforms = this._waterPlane.material?.uniforms;
+
+            if (!this._reflectionDebugCount) this._reflectionDebugCount = 0;
+            if (this._reflectionDebugCount < 5) {
+                console.log('[WaterReflection] update returned:', updated,
+                    'texture:', !!reflectionTexture,
+                    'waterVisible:', this._waterPlane.visible,
+                    'waterY:', this._waterPlane.position.y,
+                    'camY:', camera?.position?.y);
+                this._reflectionDebugCount++;
+            }
+
+            if (uniforms && uniforms.uReflectionMap) {
+                if (reflectionTexture) {
+                    uniforms.uReflectionMap.value = reflectionTexture;
+                    uniforms.uReflectionEnabled.value = 1.0;
+                } else if (!updated) {
+                    uniforms.uReflectionEnabled.value = 0.0;
+                }
+                if (uniforms.uReflectionMatrix) {
+                    uniforms.uReflectionMatrix.value.copy(this.waterReflectionManager.textureMatrix);
                 }
             }
         } catch (error) {
@@ -1772,12 +1952,29 @@ class CleanBoardSystem {
         }
     }
 
+    updateWaterSurface(deltaTime = 0, timeSeconds = 0, camera = null) {
+        if (!this._waterPlane || !this._waterPlane.material || !this._waterPlane.material.uniforms) return;
+        const uniforms = this._waterPlane.material.uniforms;
+        uniforms.uTime.value = timeSeconds;
+        uniforms.uWaterLevel.value = this.waterLevel;
+        if (uniforms.uWindDir) {
+            uniforms.uWindDir.value.copy(this._windDirection);
+        }
+        if (uniforms.uWindStrength) {
+            uniforms.uWindStrength.value = this._windSpeed;
+        }
+        if (camera && uniforms.uCameraPosition) {
+            uniforms.uCameraPosition.value.copy(camera.position);
+        }
+        this.updateWaterReflections(camera);
+    }
+
     _initWaterReflectionManager() {
         this.waterReflectionManager = null;
         if (typeof WaterReflectionManager === 'undefined') {
             return;
         }
-        const renderer = this.game && this.game.renderer;
+        const renderer = this.renderer || (this.game && this.game.renderer);
         if (!renderer || !this.scene) {
             return;
         }
@@ -1803,6 +2000,11 @@ class CleanBoardSystem {
         if (this._waterTextureData) {
             this._waterTextureData.windSpeed = windSpeed;
             this._waterTextureData.windDirection = windDirection;
+        }
+        const uniforms = this._waterPlane?.material?.uniforms;
+        if (uniforms) {
+            if (uniforms.uWindDir) uniforms.uWindDir.value.set(wx, wz);
+            if (uniforms.uWindStrength) uniforms.uWindStrength.value = windSpeed;
         }
     }
 

@@ -40,7 +40,7 @@ class WaterReflectionManager {
 
             this.mirrorCamera = new THREE.PerspectiveCamera();
             this.mirrorCamera.matrixAutoUpdate = true;
-            this.mirrorCamera.layers.set(WaterReflectionManager.REFLECTION_LAYER);
+            this.mirrorCamera.layers.enable(0);
         } else {
             this.renderTarget = null;
             this.mirrorCamera = null;
@@ -78,9 +78,11 @@ class WaterReflectionManager {
 
     update(waterMesh, camera) {
         if (!this.enabled || !this.renderTarget || !waterMesh || !camera) {
+            if (!this._debugLogged) { console.warn('[WRM] early exit - enabled:', this.enabled, 'rt:', !!this.renderTarget, 'mesh:', !!waterMesh, 'cam:', !!camera); this._debugLogged = true; }
             return false;
         }
         if (!waterMesh.visible) {
+            if (!this._debugVisible) { console.warn('[WRM] water mesh not visible'); this._debugVisible = true; }
             return false;
         }
 
@@ -93,12 +95,16 @@ class WaterReflectionManager {
         if (this.maxDistance > 0) {
             this.tempVector.copy(camera.position);
             this.tempVector.y = planePosition.y;
-            if (this.tempVector.distanceTo(planePosition) > this.maxDistance) {
+            const hDist = this.tempVector.distanceTo(planePosition);
+            if (hDist > this.maxDistance) {
+                if (!this._debugDist) { console.warn('[WRM] too far horizontally:', hDist.toFixed(1), 'max:', this.maxDistance); this._debugDist = true; }
                 return false;
             }
         }
 
-        if (this.maxHeight > 0 && Math.abs(camera.position.y - planePosition.y) > this.maxHeight) {
+        const vDist = Math.abs(camera.position.y - planePosition.y);
+        if (this.maxHeight > 0 && vDist > this.maxHeight) {
+            if (!this._debugHeight) { console.warn('[WRM] too high vertically:', vDist.toFixed(1), 'max:', this.maxHeight); this._debugHeight = true; }
             return false;
         }
 
@@ -107,6 +113,7 @@ class WaterReflectionManager {
 
         this.viewVector.copy(planePosition).sub(cameraPosition);
         if (this.viewVector.dot(this.normal) > 0) {
+            if (!this._debugBelow) { console.warn('[WRM] camera below water plane'); this._debugBelow = true; }
             return false;
         }
 
@@ -120,6 +127,8 @@ class WaterReflectionManager {
         this.target.copy(planePosition).sub(this.lookAtPosition);
         this.target.reflect(this.normal).negate();
         this.target.add(planePosition);
+
+        this.mirrorCamera.layers.mask = camera.layers.mask;
 
         this.mirrorCamera.position.copy(this.viewVector);
         this.mirrorCamera.up.copy(camera.up);
@@ -181,6 +190,12 @@ class WaterReflectionManager {
         if (this.renderer.xr) this.renderer.xr.enabled = currentXrEnabled;
         if (this.renderer.shadowMap) this.renderer.shadowMap.autoUpdate = currentShadowAutoUpdate;
         this.renderer.setRenderTarget(currentRenderTarget);
+
+        if (!this._debugSuccessCount) this._debugSuccessCount = 0;
+        if (this._debugSuccessCount < 3) {
+            console.log('[WRM] reflection pass rendered successfully - cam:', this.mirrorCamera.position.toArray().map(v => v.toFixed(1)));
+            this._debugSuccessCount++;
+        }
 
         return true;
     }
