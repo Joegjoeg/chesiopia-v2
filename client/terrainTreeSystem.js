@@ -304,7 +304,7 @@ class TerrainTreeSystem {
      * Place a tree at world (x, z). Caller supplies terrain height.
      * Returns the instance index, or -1 if capacity is full.
      */
-    addTree(worldX, worldZ, terrainHeight) {
+    addTree(worldX, worldZ, terrainHeight, metadata = {}) {
         if (this.treeCount >= this.maxTrees) {
             console.warn('[TerrainTreeSystem] Capacity reached (' + this.maxTrees + ')');
             return -1;
@@ -312,13 +312,14 @@ class TerrainTreeSystem {
 
         const i = this.treeCount;
 
-        // Per-tree variation
-        const scale  = (0.85 + Math.random() * 0.45 *2); // 0.85 - 1.30
+        // Per-tree variation, biased by biome maxScale
+        const maxScale = metadata.maxScale || 1.0;
+        const scale  = (0.85 + Math.random() * 0.45 * 2) * maxScale;
         const rotY   = Math.random() * Math.PI * 2;
 
         const board = window.game && window.game.boardSystem;
         const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(worldX, worldZ) : new THREE.Vector3(0, 1, 0);
-        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone() });
+        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone(), biome: metadata.biome, growthRate: metadata.growthRate });
 
         // Initialize height smoothing buffer
         if (!this._currentHeights) {
@@ -499,11 +500,7 @@ class TerrainTreeSystem {
         const meshExtent = 96; // ±96 units from camera (192x192 vertex grid)
         const waterCutoff = (board.waterLevel != null ? board.waterLevel : -1.5) + 0.05;
 
-        if (Math.random() < 0.02) {
-            console.log('[TerrainTreeSystem] updateTreeHeights called, treeCount:', this.treeCount, 'camera pos:', camera.position.x, camera.position.z);
-        }
-
-        let treesInRippleRange = 0;
+        let anyMatrixChanged = false;
 
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
@@ -517,20 +514,20 @@ class TerrainTreeSystem {
                 // Within mesh range: use terrain system (synchronous)
                 targetHeight = board.getUnifiedTerrainHeight(tree.x, tree.z);
             } else {
-                // Outside mesh range: use square heights (async - skip this frame if not ready)
-                // For now, keep current height to avoid jarring updates
+                // Outside mesh range: keep current height; update async occasionally
                 targetHeight = this._currentHeights[i] || tree.y;
 
-                // Trigger async update in background using square heights
+                // Trigger async update in background using square heights (throttled)
                 if (typeof board.getSquareHeights === 'function') {
                     board.getSquareHeights(tree.x, tree.z).then(height => {
-                        // Discard underwater height updates
                         if (height < waterCutoff) return;
-                        // Update height when server response arrives
                         if (this._currentHeights && this._currentHeights[i] !== undefined) {
                             this._currentHeights[i] = height;
                             tree.y = height;
                             this.updateTreeInstanceMatrix(i, tree);
+                            for (const part of this.parts) {
+                                part.mesh.instanceMatrix.needsUpdate = true;
+                            }
                         }
                     });
                 }
@@ -552,12 +549,17 @@ class TerrainTreeSystem {
             // Update the Y position in the tree data
             tree.y = newHeight;
 
-            // Update the instance matrix for this tree (with terrain tilt)
-            this.updateTreeInstanceMatrix(i, tree);
+            // Only rewrite matrices if height changed meaningfully
+            if (Math.abs(newHeight - currentHeight) > 0.001) {
+                this.updateTreeInstanceMatrix(i, tree);
+                anyMatrixChanged = true;
+            }
         }
 
-        if (Math.random() < 0.02) {
-            console.log('[TerrainTreeSystem] Trees in ripple range (<5.0 from water):', treesInRippleRange, '/', this.treeCount);
+        if (anyMatrixChanged) {
+            for (const part of this.parts) {
+                part.mesh.instanceMatrix.needsUpdate = true;
+            }
         }
     }
 

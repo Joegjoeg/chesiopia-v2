@@ -7,10 +7,14 @@ class DevInterface {
         this.isVisible = false;
         this.container = null;
         this.parameterSystem = window.parameterSystem;
-        this.categories = ['terrain', 'planet', 'lighting', 'time', 'environment', 'graphics', 'performance', 'lod', 'water', 'beach', 'grass', 'tree', 'biome', 'modifier', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus'];
+        this.categories = ['terrain', 'planet', 'lighting', 'time', 'environment', 'graphics', 'taa', 'performance', 'lod', 'water', 'shoreline', 'landCover', 'cliff', 'tree', 'blending', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus'];
         this.categoryCache = new Map(); // Cache DOM elements for each category
         this.activeCategories = new Set(); // Multiple categories can be active
         this._jesusStatusInterval = null;
+        this._taaStatusInterval = null;
+        this._taaStatusRefs = null;
+        this.memoryPanelMount = null;
+        this._edgePairCache = this._loadEdgePairsFromStorage();
         
         this.init();
         console.log('[DevInterface] Enhanced dev interface initialized');
@@ -73,6 +77,153 @@ class DevInterface {
             window.authState.onChange(updateVisibility);
             updateVisibility();
         }
+    }
+
+    _slugBiomeName(name, idx) {
+        if (!name || typeof name !== 'string') {
+            return `biome${idx}`;
+        }
+        return name
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            || `biome${idx}`;
+    }
+
+    _edgePairKeyCandidates(a, b) {
+        const base = `edge_${a}_${b}`;
+        const names = this._biomeNames || [];
+        const nameA = names[a];
+        const nameB = names[b];
+        if (!nameA || !nameB) {
+            return [base];
+        }
+        const canonical = `edge_${a}_${b}_${this._slugBiomeName(nameA, a)}_${this._slugBiomeName(nameB, b)}`;
+        if (canonical === base) return [canonical];
+        return [canonical, base];
+    }
+
+    _edgePairKey(a, b) {
+        return this._edgePairKeyCandidates(a, b)[0];
+    }
+
+    _edgePairStorageKey() {
+        return 'chesiopia-edge-pairs';
+    }
+
+    _loadEdgePairsFromStorage() {
+        try {
+            if (typeof window === 'undefined' || !window.localStorage) return {};
+            const raw = window.localStorage.getItem(this._edgePairStorageKey());
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (err) {
+            console.warn('[DevInterface] Failed to load edge pair cache:', err);
+            return {};
+        }
+    }
+
+    _persistEdgePairs() {
+        try {
+            if (typeof window === 'undefined' || !window.localStorage) return;
+            window.localStorage.setItem(this._edgePairStorageKey(), JSON.stringify(this._edgePairCache || {}));
+        } catch (err) {
+            console.warn('[DevInterface] Failed to persist edge pair cache:', err);
+        }
+    }
+
+    _getPairEdgeSettings(biomeA, biomeB) {
+        if (!this._edgePairCache) this._edgePairCache = {};
+        const candidates = this._edgePairKeyCandidates(biomeA, biomeB);
+        for (const key of candidates) {
+            const stored = this._edgePairCache[key];
+            if (stored) {
+                const clone = Object.assign({}, stored);
+                if (key !== candidates[0]) {
+                    this._edgePairCache[candidates[0]] = clone;
+                    delete this._edgePairCache[key];
+                    this._persistEdgePairs();
+                }
+                return { key: candidates[0], data: clone };
+            }
+        }
+        return { key: candidates[0], data: null };
+    }
+
+    _savePairEdgeSettings(biomeA, biomeB) {
+        if (!this._edgePairCache) this._edgePairCache = {};
+        const key = this._edgePairKey(biomeA, biomeB);
+        const snapshot = {
+            mode: this.parameterSystem.getParameter('biomeEdgeMode'),
+            scale: this.parameterSystem.getParameter('biomeEdgeScale'),
+            strength: this.parameterSystem.getParameter('biomeEdgeStrength'),
+            splatScale: this.parameterSystem.getParameter('biomeSplatterScale'),
+            splatAmt: this.parameterSystem.getParameter('biomeSplatterAmount'),
+            edgeSplatMix: this.parameterSystem.getParameter('biomeEdgeSplatterMix')
+        };
+        this._edgePairCache[key] = snapshot;
+        const candidates = this._edgePairKeyCandidates(biomeA, biomeB);
+        candidates.forEach(candidate => {
+            if (candidate !== key) delete this._edgePairCache[candidate];
+        });
+        this._persistEdgePairs();
+        return { key, data: Object.assign({}, snapshot) };
+    }
+
+    _applyPairEdgeSettings(biomeA, biomeB, saved) {
+        const ps = this.parameterSystem;
+        const applyValue = (paramName, val) => {
+            const paramCfg = ps.params.get(paramName);
+            const nextVal = val !== undefined && val !== null
+                ? val
+                : (paramCfg ? paramCfg.defaultValue : undefined);
+            if (nextVal !== undefined) {
+                ps.setParameter(paramName, nextVal, 'ui-sync', { clamp: false });
+            }
+        };
+        ps.setParameter('biomeEdgeA', biomeA, 'ui-sync');
+        ps.setParameter('biomeEdgeB', biomeB, 'ui-sync');
+        if (saved) {
+            applyValue('biomeEdgeMode', saved.mode);
+            applyValue('biomeEdgeScale', saved.scale);
+            applyValue('biomeEdgeStrength', saved.strength);
+            applyValue('biomeSplatterScale', saved.splatScale);
+            applyValue('biomeSplatterAmount', saved.splatAmt);
+            applyValue('biomeEdgeSplatterMix', saved.edgeSplatMix);
+        } else {
+            applyValue('biomeEdgeMode');
+            applyValue('biomeEdgeScale');
+            applyValue('biomeEdgeStrength');
+            applyValue('biomeSplatterScale');
+            applyValue('biomeSplatterAmount');
+            applyValue('biomeEdgeSplatterMix');
+        }
+    }
+
+    _addRigKeyframesAtTime(section, rig, hours, board) {
+        if (!section || !rig || !rig.lights || !board || typeof board.interpolateRig !== 'function') return;
+        const clampedHours = Math.max(0, Math.min(24, hours));
+        const time = Math.round(clampedHours * 10) / 10;
+        const lightKeys = Object.keys(rig.lights);
+        lightKeys.forEach(key => {
+            const kfs = rig.lights[key];
+            if (!Array.isArray(kfs)) return;
+            const state = board.interpolateRig(kfs, time);
+            const newKf = {
+                time,
+                color: state && state.color ? '#' + state.color.getHexString() : '#ffffff',
+                intensity: state ? Math.round(state.intensity * 100) / 100 : 0
+            };
+            kfs.push(newKf);
+            kfs.sort((a, b) => a.time - b.time);
+            if (section._rigTrackRefs && section._rigTrackRefs[key]) {
+                section._rigTrackRefs[key]._selectedIndex = kfs.indexOf(newKf);
+            }
+        });
+        this._refreshRigUI(section, rig);
+        this._saveRigToStorage(rig);
     }
     
     createInterface() {
@@ -137,6 +288,41 @@ class DevInterface {
         header.appendChild(title);
         header.appendChild(closeBtn);
         this.container.appendChild(header);
+
+        // Memory telemetry mount (populated by MemoryProfiler)
+        this.memoryPanelMount = document.createElement('div');
+        this.memoryPanelMount.id = 'devMemoryPanelMount';
+        this.memoryPanelMount.style.cssText = `
+            margin-bottom: 6px;
+            padding: 6px 8px 8px 8px;
+            border-radius: 6px;
+            background: rgba(0, 15, 0, 0.45);
+            border: 1px solid rgba(0, 255, 0, 0.12);
+            box-shadow: inset 0 0 12px rgba(0, 255, 60, 0.05);
+        `;
+
+        const memoryHeader = document.createElement('div');
+        memoryHeader.textContent = 'MEMORY MONITOR';
+        memoryHeader.style.cssText = `
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: #8fffb8;
+            margin-bottom: 4px;
+        `;
+        this.memoryPanelMount.appendChild(memoryHeader);
+
+        this.memoryPanelBody = document.createElement('div');
+        this.memoryPanelBody.dataset.memoryPanelBody = '1';
+        this.memoryPanelBody.textContent = 'Initializing memory profiler…';
+        this.memoryPanelBody.style.cssText = `
+            font-size: 9px;
+            color: #6aa;
+            opacity: 0.8;
+        `;
+        this.memoryPanelMount.appendChild(this.memoryPanelBody);
+
+        this.container.appendChild(this.memoryPanelMount);
         
         // Create compact tab navigation (toggle buttons)
         const tabNav = document.createElement('div');
@@ -147,7 +333,7 @@ class DevInterface {
             flex-wrap: wrap;
         `;
 
-        const categoryLabels = { grass: 'GSS', graphics: 'GRA', tree: 'TRE', biome: 'BIO', beach: 'BEA', modifier: 'MOD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES' };
+        const categoryLabels = { shoreline: 'Shore', landCover: 'Land', graphics: 'GRA', taa: 'TAA', tree: 'TRE', blending: 'BLD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES' };
         this.categories.forEach(category => {
             const tab = document.createElement('button');
             tab.textContent = (categoryLabels[category] || category.slice(0, 3)).toUpperCase();
@@ -345,6 +531,10 @@ class DevInterface {
         
         document.body.appendChild(this.container);
     }
+
+    getMemoryPanelMount() {
+        return this.memoryPanelBody || this.memoryPanelMount;
+    }
     
     toggleCategory(category) {
         // Toggle category on/off
@@ -357,6 +547,9 @@ class DevInterface {
                     this.contentArea.removeChild(content);
                 }
             }
+            if (category === 'taa') {
+                this._stopTaaStatusPolling();
+            }
         } else {
             // Show this category
             this.activeCategories.add(category);
@@ -365,6 +558,9 @@ class DevInterface {
                 this.categoryCache.set(category, categoryContent);
             }
             this.contentArea.appendChild(this.categoryCache.get(category));
+            if (category === 'taa') {
+                this._startTaaStatusPolling();
+            }
         }
         this.updateTabStyles();
         if (category === 'verts') {
@@ -402,11 +598,8 @@ class DevInterface {
         if (category === 'verts') {
             return this._createGeometryContent();
         }
-        if (category === 'modifier') {
-            return this._createModifierContent();
-        }
-        if (category === 'biome') {
-            return this._createBiomeContent();
+        if (category === 'blending') {
+            return this._createBlendingContent();
         }
         if (category === 'rig') {
             return this._createRigContent();
@@ -414,12 +607,22 @@ class DevInterface {
         if (category === 'checkerboard') {
             return this._createCheckerboardContent();
         }
+        if (category === 'cliff') {
+            return this._createCliffContent();
+        }
         if (category === 'models') {
             return this._createModelsContent();
         }
         if (category === 'jesus') {
             return this._createJesusContent();
         }
+        if (category === 'taa') {
+            return this._createTaaContent();
+        }
+        return this._buildParameterSection(category);
+    }
+
+    _buildParameterSection(category) {
         const parameters = this.parameterSystem.getParametersByCategory(category);
         const section = document.createElement('div');
         section.dataset.categorySection = category;
@@ -430,7 +633,6 @@ class DevInterface {
             background: rgba(0, 20, 0, 0.3);
         `;
 
-        // Compact category header with close button
         const categoryHeader = document.createElement('div');
         categoryHeader.style.cssText = `
             display: flex;
@@ -471,9 +673,17 @@ class DevInterface {
 
         const paramsContainer = document.createElement('div');
         paramsContainer.style.cssText = 'display: flex; flex-direction: column; gap: 3px;';
-        
-        // Create compact parameter controls
+
         Object.entries(parameters).forEach(([name, config]) => {
+            // Skip params that don't match their showIf condition
+            if (config.showIf) {
+                const controllingValue = this.parameterSystem.getParameter(config.showIf.param);
+                const expected = config.showIf.value;
+                const expectedArr = Array.isArray(expected) ? expected : [expected];
+                if (!expectedArr.includes(controllingValue)) {
+                    return;
+                }
+            }
             const paramRow = document.createElement('div');
             paramRow.style.cssText = `
                 display: flex;
@@ -483,7 +693,6 @@ class DevInterface {
                 border-bottom: 1px solid rgba(0, 255, 0, 0.05);
             `;
 
-            // Compact label
             const label = document.createElement('span');
             const displayLabel = config.shortLabel || config.description || name;
             label.textContent = displayLabel.slice(0, 26);
@@ -497,8 +706,7 @@ class DevInterface {
                 white-space: nowrap;
             `;
             paramRow.appendChild(label);
-            
-            // Compact controls
+
             if (config.type === 'boolean') {
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -560,7 +768,22 @@ class DevInterface {
                 }
                 select.addEventListener('change', (e) => {
                     console.log(`[DevInterface] Select "${name}" changed to:`, e.target.value);
-                    this.parameterSystem.setParameter(name, e.target.value);
+                    const rawValue = e.target.value;
+                    const nextValue = typeof config.value === 'number' ? parseFloat(rawValue) : rawValue;
+                    this.parameterSystem.setParameter(name, nextValue);
+                    if (config.rebuildCategory) {
+                        const cat = config.category;
+                        if (cat && this.activeCategories.has(cat)) {
+                            const old = this.categoryCache.get(cat);
+                            if (old && old.parentNode === this.contentArea) {
+                                this.contentArea.removeChild(old);
+                            }
+                            this.categoryCache.delete(cat);
+                            const newContent = this.createCategoryContent(cat);
+                            this.categoryCache.set(cat, newContent);
+                            this.contentArea.appendChild(newContent);
+                        }
+                    }
                 });
                 paramRow.appendChild(select);
             } else if (config.type === 'modifierStack') {
@@ -591,7 +814,6 @@ class DevInterface {
                 summary.appendChild(editBtn);
                 paramRow.appendChild(summary);
             } else {
-                // Relative delta slider + number in compact row
                 const slider = document.createElement('input');
                 slider.type = 'range';
                 slider.min = -100;
@@ -638,7 +860,6 @@ class DevInterface {
                     const rawDelta = sliderVal - lastSliderVal;
                     lastSliderVal = sliderVal;
 
-                    // Speed scales with distance from centre: crawl near centre, sprint at edges
                     const dist = Math.abs(sliderVal);
                     const paramStep = config.step || 1;
                     const sensitivity = paramStep * (0.1 + dist / 200);
@@ -646,7 +867,6 @@ class DevInterface {
                     const currentValue = this.parameterSystem.getParameter(name) || config.value;
                     let newValue = currentValue + rawDelta * sensitivity;
 
-                    // Clamp to parameter bounds
                     const min = config.min !== undefined ? config.min : -Infinity;
                     const max = config.max !== undefined ? config.max : Infinity;
                     newValue = Math.max(min, Math.min(max, newValue));
@@ -665,7 +885,6 @@ class DevInterface {
                     let value = parseFloat(e.target.value);
                     const min = config.min !== undefined ? config.min : -Infinity;
                     const max = config.max !== undefined ? config.max : Infinity;
-                    // Clamp direct input too
                     value = Math.max(min, Math.min(max, value));
                     if (value >= min && value <= max) {
                         slider.value = value;
@@ -680,7 +899,6 @@ class DevInterface {
                 paramRow.appendChild(numberInput);
             }
 
-            // Compact reset button (only shows when overridden)
             const resetBtn = document.createElement('button');
             resetBtn.textContent = '↺';
             resetBtn.title = 'Reset to default';
@@ -712,6 +930,129 @@ class DevInterface {
 
         section.appendChild(paramsContainer);
         return section;
+    }
+
+    _createTaaContent() {
+        const section = this._buildParameterSection('taa');
+        const statusCard = document.createElement('div');
+        statusCard.style.cssText = `
+            margin-bottom: 6px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            background: rgba(0, 20, 0, 0.35);
+            border: 1px solid rgba(0, 255, 0, 0.1);
+            box-shadow: inset 0 0 6px rgba(0, 255, 0, 0.05);
+            font-size: 9px;
+            color: #b9ffcf;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        `;
+
+        const grid = document.createElement('div');
+        grid.style.cssText = `
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 2px 6px;
+            align-items: center;
+        `;
+
+        const refs = {
+            support: document.createElement('span'),
+            enabled: document.createElement('span'),
+            active: document.createElement('span'),
+            samples: document.createElement('span'),
+            jitter: document.createElement('span'),
+            resolution: document.createElement('span'),
+            reset: document.createElement('span')
+        };
+
+        const makeRow = (label, ref) => {
+            const lbl = document.createElement('span');
+            lbl.textContent = label;
+            lbl.style.cssText = 'text-transform: uppercase; letter-spacing: 0.5px; color: #7effa3; font-size: 8px;';
+            ref.style.cssText = 'text-align: right; font-weight: 600; color: #e4ffe8;';
+            grid.appendChild(lbl);
+            grid.appendChild(ref);
+        };
+
+        makeRow('Support', refs.support);
+        makeRow('Enabled', refs.enabled);
+        makeRow('Active', refs.active);
+        makeRow('Samples', refs.samples);
+        makeRow('Jitter', refs.jitter);
+        makeRow('Resolution', refs.resolution);
+        makeRow('History', refs.reset);
+
+        const buttonRow = document.createElement('div');
+        buttonRow.style.cssText = 'display:flex; justify-content:flex-end; margin-top:4px;';
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reset History';
+        resetBtn.style.cssText = `
+            background: rgba(0, 255, 0, 0.08);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            color: #aaffc4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            cursor: pointer;
+        `;
+        resetBtn.onclick = () => {
+            const taa = window.game && window.game.temporalAA;
+            if (taa) {
+                taa.resetHistory('devtools');
+                this._updateTaaStatusCard();
+                console.log('[DevInterface] Temporal AA history reset via dev tools');
+            } else {
+                console.warn('[DevInterface] Temporal AA system not available');
+            }
+        };
+        buttonRow.appendChild(resetBtn);
+
+        statusCard.appendChild(grid);
+        statusCard.appendChild(buttonRow);
+        section.insertBefore(statusCard, section.children[1] || null);
+
+        this._taaStatusRefs = refs;
+        this._updateTaaStatusCard();
+        if (this.activeCategories.has('taa')) {
+            this._startTaaStatusPolling();
+        }
+        return section;
+    }
+
+    _updateTaaStatusCard() {
+        if (!this._taaStatusRefs) return;
+        const refs = this._taaStatusRefs;
+        const game = window.game;
+        const taa = game && game.temporalAA;
+        if (!taa) {
+            Object.values(refs).forEach(ref => { ref.textContent = '—'; ref.style.color = '#888'; });
+            return;
+        }
+        const status = taa.getStatus();
+        refs.support.textContent = status.supported ? 'Yes' : 'No';
+        refs.enabled.textContent = status.enabled ? 'ON' : 'OFF';
+        refs.active.textContent = status.active ? 'Accumulating' : 'Warming';
+        refs.samples.textContent = status.accumulatedSamples.toString();
+        refs.jitter.textContent = `${status.jitterIndex + 1}/${status.jitterSpan}`;
+        refs.resolution.textContent = `${status.resolution} @${status.pixelRatio}x`;
+        refs.reset.textContent = `${status.historyResets} (${status.lastResetReason || '-'})`;
+        refs.enabled.style.color = status.enabled ? '#a4ffb0' : '#ff9a9a';
+        refs.active.style.color = status.active ? '#a4ffb0' : '#ffd27f';
+    }
+
+    _startTaaStatusPolling() {
+        if (this._taaStatusInterval || !this._taaStatusRefs) return;
+        this._taaStatusInterval = setInterval(() => this._updateTaaStatusCard(), 750);
+        this._updateTaaStatusCard();
+    }
+
+    _stopTaaStatusPolling() {
+        if (this._taaStatusInterval) {
+            clearInterval(this._taaStatusInterval);
+            this._taaStatusInterval = null;
+        }
     }
     
     // Legacy - no longer used with additive categories
@@ -761,8 +1102,18 @@ class DevInterface {
         rows.forEach(row => {
             const slider = row.querySelector('input[type="range"]');
             const num = row.querySelector('input[type="number"]');
-            if (slider && !slider.matches(':focus')) slider.value = 0;
+            if (slider && !slider.matches(':focus')) {
+                if (slider.dataset.mode === 'absolute') {
+                    slider.value = value;
+                } else {
+                    slider.value = 0;
+                }
+            }
             if (num && !num.matches(':focus')) num.value = value;
+            const checkbox = row.querySelector('input[type="checkbox"]');
+            if (checkbox && !checkbox.matches(':focus')) {
+                checkbox.checked = !!value;
+            }
             const valueDisplay = row.querySelector('.param-value');
             if (valueDisplay) valueDisplay.textContent = value;
 
@@ -860,8 +1211,23 @@ class DevInterface {
     saveDefaults() {
         const all = this.parameterSystem.getAllParameters();
         const overrides = {};
+        const equalsDefault = (cfg) => {
+            if (!cfg) return true;
+            const { value, defaultValue } = cfg;
+            const isObject = (val) => val && typeof val === 'object';
+            if (isObject(value) || isObject(defaultValue)) {
+                try {
+                    return JSON.stringify(value) === JSON.stringify(defaultValue);
+                } catch (err) {
+                    console.warn('[DevInterface.saveDefaults] Deep compare failed for', cfg.name, err);
+                    return false;
+                }
+            }
+            return value === defaultValue;
+        };
         Object.entries(all).forEach(([name, cfg]) => {
-            if (cfg.value !== cfg.default) overrides[name] = cfg.value;
+            if (cfg && cfg.persist === false) return;
+            if (!equalsDefault(cfg)) overrides[name] = cfg.value;
         });
         const count = Object.keys(overrides).length;
         console.log('[DevInterface.saveDefaults] overrides collected:', JSON.stringify(overrides, null, 2));
@@ -1498,6 +1864,14 @@ class DevInterface {
         }
         panel.style.display = 'flex';
         panel.innerHTML = '';
+        const grassTypeOptions = [
+            { value: 0, label: 'None' },
+            { value: 1, label: 'Meadow' },
+            { value: 2, label: 'Prairie' },
+            { value: 3, label: 'Alpine' },
+            { value: 4, label: 'Marsh' },
+            { value: 5, label: 'Dry Steppe' }
+        ];
         // Title
         const title = document.createElement('div');
         title.textContent = `${this._biomeNames[i]} Options`;
@@ -1519,6 +1893,29 @@ class DevInterface {
         });
         colorRow.appendChild(colorInput);
         panel.appendChild(colorRow);
+
+        // Grass type dropdown
+        const grassRow = document.createElement('div');
+        grassRow.style.cssText = `display: flex; align-items: center; gap: 6px;`;
+        const grassLabel = document.createElement('span');
+        grassLabel.textContent = 'Grass';
+        grassLabel.style.cssText = `font-size: 9px; color: #aaffaa; width: 50px;`;
+        grassRow.appendChild(grassLabel);
+        const grassSelect = document.createElement('select');
+        grassSelect.style.cssText = `flex:1; background: rgba(0,0,0,0.4); border: 1px solid rgba(0,255,0,0.2); color: #00ff00; padding: 1px 3px; border-radius: 2px; font-size: 9px;`;
+        const grassValue = this.parameterSystem.getParameter(`grassType${i}`) ?? 0;
+        grassTypeOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.value === grassValue) option.selected = true;
+            grassSelect.appendChild(option);
+        });
+        grassSelect.addEventListener('change', (e) => {
+            this.parameterSystem.setParameter(`grassType${i}`, parseFloat(e.target.value));
+        });
+        grassRow.appendChild(grassSelect);
+        panel.appendChild(grassRow);
         // Start height
         if (i > 0) {
             const thRow = document.createElement('div');
@@ -1544,13 +1941,29 @@ class DevInterface {
         }
         // Edge blending section
         if (i < 7) {
+            const savedInfo = this._getPairEdgeSettings(i, i + 1);
+            const saved = savedInfo.data;
+            this._applyPairEdgeSettings(i, i + 1, saved);
+
             const edgeTitle = document.createElement('div');
-            edgeTitle.textContent = `Edge to ${this._biomeNames[i+1]}`;
-            edgeTitle.style.cssText = `font-size: 9px; font-weight: 600; color: #aaffaa; margin-top: 4px; border-bottom: 1px solid rgba(0,255,0,0.08); padding-bottom: 2px;`;
+            edgeTitle.style.cssText = `display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-weight: 600; color: #aaffaa; margin-top: 4px; border-bottom: 1px solid rgba(0,255,0,0.08); padding-bottom: 2px;`;
+            const edgeLabel = document.createElement('span');
+            edgeLabel.textContent = `Edge to ${this._biomeNames[i+1]}`;
+            edgeTitle.appendChild(edgeLabel);
+            const saveBtn = document.createElement('button');
+            const setSaveState = (isSaved) => {
+                saveBtn.textContent = isSaved ? '\u2714 Saved' : 'Save';
+                saveBtn.style.cssText = `background: ${isSaved ? 'rgba(0,255,0,0.2)' : 'rgba(0,255,0,0.08)'}; border: 1px solid rgba(0,255,0,0.25); color: #00ff00; padding: 1px 5px; border-radius: 2px; cursor: pointer; font-size: 8px;`;
+                saveBtn.title = isSaved ? 'Overwrite saved edge settings for this pair' : 'Lock current edge settings to this biome pair';
+            };
+            setSaveState(!!saved);
+            saveBtn.onclick = () => {
+                this._savePairEdgeSettings(i, i + 1);
+                setSaveState(true);
+                this._showToast(`Edge ${this._biomeNames[i]}\u2192${this._biomeNames[i+1]} saved`);
+            };
+            edgeTitle.appendChild(saveBtn);
             panel.appendChild(edgeTitle);
-            // Set global edge params to this pair
-            this.parameterSystem.setParameter('biomeEdgeA', i);
-            this.parameterSystem.setParameter('biomeEdgeB', i+1);
             // Mode
             const modeRow = document.createElement('div');
             modeRow.style.cssText = `display: flex; align-items: center; gap: 6px; margin-top: 2px;`;
@@ -1701,6 +2114,32 @@ class DevInterface {
         this._modifierEdgeBSelect = edgeBSelect;
         this._rebuildModifierTree();
         return section;
+    }
+
+    // ---------- Blending (Biome + Modifier Stack) ----------
+
+    _createBlendingContent() {
+        const container = document.createElement('div');
+        container.dataset.categorySection = 'blending';
+        container.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        `;
+
+        // Biome palette section
+        const biomeSection = this._createBiomeContent();
+        container.appendChild(biomeSection);
+
+        // Auto-generated parameter sliders for blending category
+        const paramsSection = this._buildParameterSection('blending');
+        container.appendChild(paramsSection);
+
+        // Modifier stack section
+        const modifierSection = this._createModifierContent();
+        container.appendChild(modifierSection);
+
+        return container;
     }
 
     _rebuildModifierTree() {
@@ -1944,31 +2383,105 @@ class DevInterface {
             section.appendChild(panel);
         });
 
+        // Global add slider
+        const addSliderBlock = document.createElement('div');
+        addSliderBlock.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px;
+            border: 1px dashed rgba(0,255,0,0.2);
+            border-radius: 3px;
+            background: rgba(0, 30, 0, 0.25);
+        `;
+
+        const addSliderLabel = document.createElement('div');
+        addSliderLabel.textContent = 'ADD NEW — drag handle, release to drop keyframes for every light';
+        addSliderLabel.style.cssText = `font-size: 8px; color: #88aa88; letter-spacing: 0.3px;`;
+        addSliderBlock.appendChild(addSliderLabel);
+
+        const addSliderRow = document.createElement('div');
+        addSliderRow.style.cssText = `display: flex; align-items: center; gap: 6px;`;
+
+        const addSlider = document.createElement('input');
+        addSlider.type = 'range';
+        addSlider.min = '0';
+        addSlider.max = '24';
+        addSlider.step = '0.1';
+        const initialHours = this._getCurrentHours(board);
+        addSlider.value = initialHours !== null ? initialHours : 12;
+        addSlider.style.cssText = `
+            flex: 1;
+            appearance: none;
+            height: 4px;
+            border-radius: 3px;
+            background: rgba(0,255,0,0.15);
+            border: 1px solid rgba(0,255,0,0.3);
+            outline: none;
+            cursor: grab;
+            transition: box-shadow 0.2s ease;
+        `;
+
+        const sliderValue = document.createElement('span');
+        sliderValue.textContent = `${parseFloat(addSlider.value).toFixed(1)}h`;
+        sliderValue.style.cssText = `font-size: 9px; color: #00ff00; min-width: 32px; text-align: right;`;
+
+        addSliderRow.appendChild(addSlider);
+        addSliderRow.appendChild(sliderValue);
+        addSliderBlock.appendChild(addSliderRow);
+
+        const sliderHint = document.createElement('div');
+        sliderHint.textContent = 'Use this single timeline instead of adding dots per row.';
+        sliderHint.style.cssText = `font-size: 8px; color: #668866;`;
+        addSliderBlock.appendChild(sliderHint);
+        section.appendChild(addSliderBlock);
+
+        let sliderDragging = false;
+        let sliderFeedbackTimeout = null;
+        const updateSliderValue = () => {
+            sliderValue.textContent = `${parseFloat(addSlider.value).toFixed(1)}h`;
+        };
+        const flashSlider = () => {
+            if (sliderFeedbackTimeout) clearTimeout(sliderFeedbackTimeout);
+            addSlider.style.boxShadow = '0 0 8px rgba(0,255,0,0.6)';
+            sliderFeedbackTimeout = setTimeout(() => {
+                addSlider.style.boxShadow = 'none';
+            }, 180);
+        };
+        const commitSliderDrop = () => {
+            const hours = parseFloat(addSlider.value);
+            if (Number.isNaN(hours) || !board) return;
+            this._addRigKeyframesAtTime(section, rig, hours, board);
+            flashSlider();
+        };
+        const finishSliderDrag = () => {
+            if (!sliderDragging) return;
+            sliderDragging = false;
+            commitSliderDrop();
+        };
+        addSlider.addEventListener('pointerdown', (e) => {
+            sliderDragging = true;
+            if (addSlider.setPointerCapture) {
+                addSlider.setPointerCapture(e.pointerId);
+            }
+        });
+        addSlider.addEventListener('pointerup', finishSliderDrag);
+        addSlider.addEventListener('pointercancel', finishSliderDrag);
+        addSlider.addEventListener('lostpointercapture', finishSliderDrag);
+        addSlider.addEventListener('change', () => {
+            if (!sliderDragging) commitSliderDrop();
+        });
+        addSlider.addEventListener('input', updateSliderValue);
+
         // Hint text
         const hint = document.createElement('div');
-        hint.textContent = 'Tip: click a coloured dot to edit, drag to move time, click empty track to add';
+        hint.textContent = 'Tip: select a coloured dot to edit its colour + intensity. Drag the global slider to drop new ones.';
         hint.style.cssText = `font-size: 8px; color: #668866; margin-top: 2px; line-height: 1.3;`;
         section.appendChild(hint);
 
         // Global actions
         const actionRow = document.createElement('div');
         actionRow.style.cssText = `display: flex; gap: 4px; margin-top: 2px;`;
-
-        const addBtn = document.createElement('button');
-        addBtn.textContent = '+ Add Keyframe';
-        addBtn.style.cssText = `background: rgba(0,255,0,0.1); border: 1px solid rgba(0,255,0,0.3); color: #00ff00; font-size: 9px; padding: 3px 6px; border-radius: 3px; cursor: pointer; flex: 1;`;
-        addBtn.onclick = () => {
-            const hours = this._getCurrentHours(board);
-            if (hours === null) return;
-            lightNames.forEach(({ key }) => {
-                const kfs = rig.lights[key];
-                const state = board.interpolateRig(kfs, hours);
-                kfs.push({ time: Math.round(hours * 10) / 10, color: '#' + state.color.getHexString(), intensity: Math.round(state.intensity * 100) / 100 });
-                kfs.sort((a, b) => a.time - b.time);
-            });
-            this._refreshRigUI(section, rig);
-            this._saveRigToStorage(rig);
-        };
 
         const resetBtn = document.createElement('button');
         resetBtn.textContent = 'Reset Defaults';
@@ -1982,7 +2495,6 @@ class DevInterface {
             this._saveRigToStorage(rig);
         };
 
-        actionRow.appendChild(addBtn);
         actionRow.appendChild(resetBtn);
         section.appendChild(actionRow);
 
@@ -1991,34 +2503,39 @@ class DevInterface {
         section._rigData = rig;
 
         // Global drag handler on document
-        let dragInfo = null;
-        let dragStartX = 0;
-        let dragStartY = 0;
+        const dragState = {
+            info: null,
+            startX: 0,
+            startY: 0
+        };
+        section._rigDragState = dragState;
         const DRAG_THRESHOLD = 3;
         const onMouseMove = (e) => {
-            if (!dragInfo) return;
-            if (!dragInfo.active) {
-                const dx = e.clientX - dragStartX;
-                const dy = e.clientY - dragStartY;
+            const info = dragState.info;
+            if (!info) return;
+            if (!info.active) {
+                const dx = e.clientX - dragState.startX;
+                const dy = e.clientY - dragState.startY;
                 if (Math.sqrt(dx*dx + dy*dy) < DRAG_THRESHOLD) return;
-                dragInfo.active = true;
+                info.active = true;
             }
-            const rect = dragInfo.track.getBoundingClientRect();
+            const rect = info.track.getBoundingClientRect();
             let t = (e.clientX - rect.left) / rect.width;
             t = Math.max(0, Math.min(1, t));
             let time = Math.round(t * 24 * 10) / 10;
-            const kfs = rig.lights[dragInfo.lightKey];
-            const kf = kfs[dragInfo.index];
+            const kfs = rig.lights[info.lightKey];
+            const kf = kfs[info.index];
             if (kf && Math.abs(kf.time - time) > 0.05) {
                 kf.time = time;
                 kfs.sort((a, b) => a.time - b.time);
-                dragInfo.index = kfs.indexOf(kf);
+                info.index = kfs.indexOf(kf);
+                info.track._selectedIndex = info.index;
                 this._refreshRigUI(section, rig);
             }
         };
         const onMouseUp = () => {
-            if (dragInfo) {
-                dragInfo = null;
+            if (dragState.info) {
+                dragState.info = null;
                 this._saveRigToStorage(rig);
             }
         };
@@ -2037,7 +2554,178 @@ class DevInterface {
             if (animId) cancelAnimationFrame(animId);
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            dragState.info = null;
         };
+
+        return section;
+    }
+
+    _createCliffContent() {
+        const section = document.createElement('div');
+        section.dataset.categorySection = 'cliff';
+        section.style.cssText = `
+            border: 1px solid rgba(0, 255, 0, 0.18);
+            border-radius: 5px;
+            padding: 6px;
+            background: rgba(5, 25, 5, 0.7);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(0,255,0,0.15);padding-bottom:3px;`;
+        const title = document.createElement('span');
+        title.textContent = 'HERO CLIFFS';
+        title.style.cssText = `font-size:10px;font-weight:700;color:#00ff99;letter-spacing:0.8px;`;
+        const hint = document.createElement('span');
+        hint.textContent = 'Slope-driven rock detail';
+        hint.style.cssText = `font-size:8px;color:#66ffaa;opacity:0.8;`;
+        header.appendChild(title);
+        header.appendChild(hint);
+        section.appendChild(header);
+
+        const params = this.parameterSystem?.getAllParameters?.() || {};
+        const getCfg = (name) => params[name] || {};
+        const getValue = (name) => this.parameterSystem?.getParameter ? this.parameterSystem.getParameter(name) : getCfg(name).value;
+
+        const controls = document.createElement('div');
+        controls.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+        section.appendChild(controls);
+
+        const makeToggle = (name, label, description) => {
+            const cfg = getCfg(name);
+            const row = document.createElement('label');
+            row.dataset.parameter = name;
+            row.style.cssText = `display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.25);padding:4px 6px;border-radius:3px;border:1px solid rgba(0,255,0,0.15);gap:8px;`;
+
+            const info = document.createElement('div');
+            info.style.cssText = 'display:flex;flex-direction:column;';
+            const lbl = document.createElement('span');
+            lbl.textContent = label;
+            lbl.style.cssText = 'font-size:9px;color:#aaffaa;font-weight:600;';
+            const desc = document.createElement('span');
+            desc.textContent = description || cfg.description || '';
+            desc.style.cssText = 'font-size:8px;color:#77aa77;';
+            info.appendChild(lbl);
+            info.appendChild(desc);
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.dataset.parameter = name;
+            checkbox.checked = !!getValue(name);
+            checkbox.style.cssText = 'width:16px;height:16px;accent-color:#00ff99;cursor:pointer;';
+            checkbox.addEventListener('change', (e) => {
+                this.parameterSystem?.setParameter(name, e.target.checked);
+            });
+
+            row.appendChild(info);
+            row.appendChild(checkbox);
+            controls.appendChild(row);
+        };
+
+        const sliderGrid = document.createElement('div');
+        sliderGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;';
+        controls.appendChild(sliderGrid);
+
+        const makeSlider = (name, label) => {
+            const cfg = getCfg(name);
+            if (!cfg) return;
+            const row = document.createElement('div');
+            row.dataset.parameter = name;
+            row.style.cssText = 'border:1px solid rgba(0,255,0,0.12);border-radius:3px;padding:4px;background:rgba(0,0,0,0.3);display:flex;flex-direction:column;gap:4px;';
+
+            const top = document.createElement('div');
+            top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+            const lbl = document.createElement('span');
+            lbl.textContent = label;
+            lbl.style.cssText = 'font-size:9px;color:#aaffaa;font-weight:600;';
+            const valueDisplay = document.createElement('span');
+            valueDisplay.className = 'param-value';
+            const currentVal = Number(getValue(name) ?? cfg.value ?? cfg.defaultValue ?? 0);
+            valueDisplay.textContent = currentVal.toFixed(2);
+            valueDisplay.style.cssText = 'font-size:9px;color:#00ffaa;';
+            top.appendChild(lbl);
+            top.appendChild(valueDisplay);
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.dataset.parameter = name;
+            slider.dataset.mode = 'absolute';
+            slider.min = cfg.min ?? 0;
+            slider.max = cfg.max ?? 1;
+            slider.step = cfg.step ?? 0.01;
+            slider.value = currentVal;
+            slider.style.cssText = 'width:100%;cursor:pointer;accent-color:#00ff99;';
+
+            const number = document.createElement('input');
+            number.type = 'number';
+            number.dataset.parameter = name;
+            number.value = currentVal;
+            number.step = cfg.step ?? 0.01;
+            number.min = cfg.min ?? 0;
+            number.max = cfg.max ?? 1;
+            number.style.cssText = 'width:100%;background:rgba(0,0,0,0.35);border:1px solid rgba(0,255,0,0.2);color:#ceffce;font-size:9px;padding:2px;border-radius:2px;';
+
+            const updateValue = (nextVal, sourceEl) => {
+                const clamped = Math.max(number.min !== '' ? parseFloat(number.min) : nextVal, Math.min(number.max !== '' ? parseFloat(number.max) : nextVal, nextVal));
+                if (sourceEl !== slider) slider.value = clamped;
+                if (sourceEl !== number) number.value = clamped;
+                valueDisplay.textContent = Number(clamped).toFixed(2);
+                this.parameterSystem?.setParameter(name, clamped, 'user', { clamp: true });
+            };
+
+            slider.addEventListener('input', (e) => updateValue(parseFloat(e.target.value), slider));
+            number.addEventListener('change', (e) => {
+                const parsed = parseFloat(e.target.value);
+                if (!Number.isNaN(parsed)) updateValue(parsed, number);
+            });
+
+            row.appendChild(top);
+            row.appendChild(slider);
+            row.appendChild(number);
+            sliderGrid.appendChild(row);
+        };
+
+        const colorRow = document.createElement('div');
+        colorRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+        controls.appendChild(colorRow);
+
+        const makeColor = (name, label) => {
+            const cfg = getCfg(name);
+            const wrapper = document.createElement('label');
+            wrapper.dataset.parameter = name;
+            wrapper.style.cssText = 'display:flex;flex-direction:column;gap:3px;padding:4px;border:1px solid rgba(0,255,0,0.12);border-radius:3px;background:rgba(0,0,0,0.3);min-width:120px;flex:1;';
+            const lbl = document.createElement('span');
+            lbl.textContent = label;
+            lbl.style.cssText = 'font-size:9px;color:#aaffaa;font-weight:600;';
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.dataset.parameter = name;
+            input.value = cfg.value || cfg.defaultValue || '#ffffff';
+            input.style.cssText = 'width:100%;height:22px;border:none;background:none;cursor:pointer;';
+            input.addEventListener('input', (e) => {
+                this.parameterSystem?.setParameter(name, e.target.value);
+            });
+            wrapper.appendChild(lbl);
+            wrapper.appendChild(input);
+            colorRow.appendChild(wrapper);
+        };
+
+        makeToggle('cliffEnabled', 'Enable Cliffs', 'Master toggle for rock material');
+        makeToggle('cliffDebug', 'Debug Mask', 'Visualize slope mask');
+
+        makeSlider('cliffThreshold', 'Slope Threshold');
+        makeSlider('cliffBlendWidth', 'Blend Width');
+        makeSlider('cliffRubbleAmount', 'Rubble Amount');
+        makeSlider('cliffStrataScale', 'Strata Scale');
+        makeSlider('cliffStrataAmount', 'Strata Amount');
+        makeSlider('cliffDarkenAmount', 'Darken');
+        makeSlider('cliffMossAmount', 'Moss Amount');
+
+        makeColor('cliffBaseColor', 'Base Rock');
+        makeColor('cliffLightColor', 'Highlight Rock');
+        makeColor('cliffMossColor', 'Moss Tint');
 
         return section;
     }
@@ -2103,6 +2791,14 @@ class DevInterface {
         section._fadeSlider = fadeSlider;
         section._fadeValueDisplay = fadeValueDisplay;
 
+        // Initialize slider from current system state if available
+        const currentFadeStrength = window.game?.textureBlendingSystem?.checkerFadeStrength;
+        if (typeof currentFadeStrength === 'number') {
+            const clamped = Math.max(0, Math.min(1, currentFadeStrength));
+            fadeSlider.value = clamped;
+            fadeValueDisplay.textContent = clamped.toFixed(2);
+        }
+
         return section;
     }
 
@@ -2117,21 +2813,16 @@ class DevInterface {
             const tbs = game.textureBlendingSystem;
             console.log('[DevInterface] textureBlendingSystem exists:', !!tbs);
             console.log('[DevInterface] shaderMaterial exists:', !!tbs.shaderMaterial);
+            tbs.checkerFadeStrength = value;
             
             if (tbs.shaderMaterial && tbs.shaderMaterial.uniforms) {
                 console.log('[DevInterface] uniforms exist:', !!tbs.shaderMaterial.uniforms);
                 console.log('[DevInterface] uFadeEnabled exists:', !!tbs.shaderMaterial.uniforms.uFadeEnabled);
-                console.log('[DevInterface] uTerrainOpacity exists:', !!tbs.shaderMaterial.uniforms.uTerrainOpacity);
                 
                 // Update the fade enabled uniform
-                if (tbs.shaderMaterial.uniforms.uFadeEnabled) {
-                    tbs.shaderMaterial.uniforms.uFadeEnabled.value = value;
-                    console.log('[DevInterface] Set uFadeEnabled to:', value);
-                }
-                // Also update terrain opacity if available
-                if (tbs.shaderMaterial.uniforms.uTerrainOpacity) {
-                    tbs.shaderMaterial.uniforms.uTerrainOpacity.value = value;
-                    console.log('[DevInterface] Set uTerrainOpacity to:', value);
+                if (tbs.shaderMaterial.uniforms.uCheckerFadeStrength) {
+                    tbs.shaderMaterial.uniforms.uCheckerFadeStrength.value = value;
+                    console.log('[DevInterface] Set uCheckerFadeStrength to:', value);
                 }
                 tbs.shaderMaterial.needsUpdate = true;
                 console.log('[DevInterface] Set needsUpdate to true');
@@ -2268,9 +2959,12 @@ class DevInterface {
                 track._selectedIndex = idx;
                 const section = track.closest('[data-category-section="rig"]');
                 if (section && section._rigData) this._refreshRigUI(section, section._rigData);
-                dragStartX = e.clientX;
-                dragStartY = e.clientY;
-                dragInfo = { track, lightKey, index: idx, active: false };
+                const dragState = section?._rigDragState;
+                if (dragState) {
+                    dragState.startX = e.clientX;
+                    dragState.startY = e.clientY;
+                    dragState.info = { track, lightKey, index: idx, active: false };
+                }
             };
             track.appendChild(handle);
         });
@@ -2283,6 +2977,15 @@ class DevInterface {
             editor.style.display = 'none';
             editor.innerHTML = '';
         }
+    }
+
+    _updateRigHandleAppearance(track, idx, kf) {
+        if (!track) return;
+        const handles = track.querySelectorAll('[data-rig-handle]');
+        const handle = handles[idx];
+        if (!handle) return;
+        handle.style.background = kf.color;
+        handle.title = `${kf.time.toFixed(1)}h — ${kf.color} @ ${kf.intensity.toFixed(2)}`;
     }
 
     _buildRigKeyframeEditor(editor, kfs, idx, rig, track) {
@@ -2313,7 +3016,7 @@ class DevInterface {
         colorInput.style.cssText = `width: 28px; height: 20px; border: none; padding: 0; cursor: pointer; background: none;`;
         colorInput.oninput = () => {
             kf.color = colorInput.value;
-            this._refreshRigUI(editor.closest('[data-category-section="rig"]'), rig);
+            this._updateRigHandleAppearance(track, idx, kf);
             this._saveRigToStorage(rig);
         };
         editor.appendChild(colorInput);
@@ -2323,19 +3026,32 @@ class DevInterface {
         intLabel.style.cssText = `font-size: 9px; color: #88cc88;`;
         editor.appendChild(intLabel);
 
-        const intInput = document.createElement('input');
-        intInput.type = 'number';
-        intInput.min = '0';
-        intInput.max = '5';
-        intInput.step = '0.01';
-        intInput.value = kf.intensity.toFixed(2);
-        intInput.title = 'Keyframe intensity';
-        intInput.style.cssText = `width: 48px; background: #111; color: #00ff00; border: 1px solid rgba(0,255,0,0.25); font-size: 10px; border-radius: 2px; padding: 2px 3px;`;
-        intInput.oninput = () => {
-            kf.intensity = parseFloat(intInput.value) || 0;
+        const intControls = document.createElement('div');
+        intControls.style.cssText = `display: flex; align-items: center; gap: 4px; min-width: 150px;`;
+
+        const intSlider = document.createElement('input');
+        intSlider.type = 'range';
+        intSlider.min = '0';
+        intSlider.max = '5';
+        intSlider.step = '0.01';
+        intSlider.value = kf.intensity.toFixed(2);
+        intSlider.style.cssText = `flex: 1; appearance: none; height: 4px; border-radius: 3px; background: rgba(0,255,0,0.15); border: 1px solid rgba(0,255,0,0.3);`; 
+
+        const intValue = document.createElement('span');
+        intValue.textContent = kf.intensity.toFixed(2);
+        intValue.style.cssText = `font-size: 9px; color: #00ff00; min-width: 34px; text-align: right;`;
+
+        intSlider.oninput = () => {
+            const val = parseFloat(intSlider.value);
+            kf.intensity = Number.isNaN(val) ? 0 : val;
+            intValue.textContent = kf.intensity.toFixed(2);
+            this._updateRigHandleAppearance(track, idx, kf);
             this._saveRigToStorage(rig);
         };
-        editor.appendChild(intInput);
+
+        intControls.appendChild(intSlider);
+        intControls.appendChild(intValue);
+        editor.appendChild(intControls);
 
         const timeLabel = document.createElement('span');
         timeLabel.textContent = `${kf.time.toFixed(1)}h`;

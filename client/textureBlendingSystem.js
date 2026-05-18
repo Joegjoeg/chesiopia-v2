@@ -12,6 +12,7 @@ class TextureBlendingSystem {
         this.sphericalEnabled = true;
         this.debugForceSpherical = false;
         this.fadeEnabled = true;
+        this.checkerFadeStrength = 1.0;
         this.curvatureScale = 1.0;
         this.deformStartHeight = 10;
         this.deformEndHeight = 100;
@@ -52,7 +53,126 @@ class TextureBlendingSystem {
         this.checkerBaseEnd = 16.0;
         this.checkerHeightFactor = 0.02;  // radius = base / (1 + camHeight * factor)
         
+        // Cliff / slope material system
+        this.cliffEnabled = true;
+        this.cliffThreshold = 0.45;        // slope start: ~65 degrees (cos 65° ≈ 0.42)
+        this.cliffBlendWidth = 0.25;       // transition band width in dot-space
+        this.cliffRubbleAmount = 0.65;     // loose scree visibility
+        this.cliffStrataScale = 0.12;      // horizontal banding frequency
+        this.cliffStrataAmount = 0.55;     // banding visibility
+        this.cliffDarkenAmount = 0.35;     // vertical face darkening
+        this.cliffBaseColor = new THREE.Color(0.38, 0.34, 0.30);
+        this.cliffLightColor = new THREE.Color(0.58, 0.52, 0.46);
+        this.cliffMossColor = new THREE.Color(0.28, 0.38, 0.22);
+        this.cliffMossAmount = 0.40;
+        this.cliffDebug = false;
+        
+        // Forest floor mask & textures
+        this.forestMaskResolution = 256;
+        this.forestMaskData = new Uint8Array(this.forestMaskResolution * this.forestMaskResolution);
+        this.forestMaskTexture = new THREE.DataTexture(
+            this.forestMaskData,
+            this.forestMaskResolution,
+            this.forestMaskResolution,
+            THREE.RedFormat,
+            THREE.UnsignedByteType
+        );
+        this.forestMaskTexture.internalFormat = 'R8';
+        this.forestMaskTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this.forestMaskTexture.wrapT = THREE.ClampToEdgeWrapping;
+        this.forestMaskTexture.minFilter = THREE.LinearFilter;
+        this.forestMaskTexture.magFilter = THREE.LinearFilter;
+        this.forestMaskTexture.colorSpace = THREE.NoColorSpace;
+        this.forestMaskTexture.needsUpdate = true;
+        this.forestMaskOrigin = new THREE.Vector2(0, 0);
+        this.forestMaskWorldSize = 1;
+        this._hasForestMaskData = false;
+        this.forestEnabled = true;
+        this.forestBlendMax = 0.65;
+        this.forestMaskStrength = 1.5;
+        this.forestBiomeBias = 1.0;
+        this.forestTexScale = 0.18;
+        this.forestNoiseScale = 0.08;
+        this.forestBaseInfluence = 0.2;
+
+        this.forestFloorTextures = this._createForestFloorTextureMap();
+        this.activeForestTextureKey = 'default';
+        this._biomeToForestTexture = {
+            forest: 'forest',
+            lowland: 'grassland',
+            grassland: 'grassland',
+            taiga: 'taiga',
+            snow: 'taiga'
+        };
+        this._lastForestTextureKey = null;
+
         console.log('[TextureBlending] System initialized');
+    }
+
+    _createForestFloorTextureMap() {
+        return {
+            default: this._generateForestFloorTexture('#3b2a1c', '#4f3a25', '#2a2116'),
+            forest: this._generateForestFloorTexture('#2e3a23', '#45532c', '#1c2415'),
+            taiga: this._generateForestFloorTexture('#2c2d30', '#484647', '#1f1f24'),
+            grassland: this._generateForestFloorTexture('#3a3f1e', '#566027', '#252912')
+        };
+    }
+
+    _generateForestFloorTexture(baseHex, midHex, accentHex) {
+        const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+        if (!canvas) {
+            return null;
+        }
+
+        const size = 256;
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = baseHex;
+        ctx.fillRect(0, 0, size, size);
+
+        const layers = [midHex, accentHex];
+        layers.forEach((color, layerIndex) => {
+            ctx.fillStyle = color;
+            const spots = 180 + layerIndex * 80;
+            for (let i = 0; i < spots; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const radius = (Math.random() * 6 + 2) * (layerIndex === 0 ? 1 : 0.6);
+                const opacity = 0.08 + Math.random() * 0.12;
+                ctx.globalAlpha = opacity;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+        ctx.globalAlpha = 1;
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+    }
+
+    setActiveForestFloorTexture(key) {
+        if (!this.forestFloorTextures) return;
+        const texture = this.forestFloorTextures[key] || this.forestFloorTextures.default;
+        if (!texture) return;
+        this.activeForestTextureKey = key;
+        this._lastForestTextureKey = key;
+        if (this.shaderMaterial?.uniforms?.uForestFloorTexture) {
+            this.shaderMaterial.uniforms.uForestFloorTexture.value = texture;
+        }
+    }
+
+    updateForestTextureForBiome(biome) {
+        if (!this.forestFloorTextures) return;
+        const key = this._biomeToForestTexture[biome] || 'default';
+        if (key === this._lastForestTextureKey) {
+            return;
+        }
+        this.setActiveForestFloorTexture(key);
     }
     
     // Get seasonal grass color from board system
@@ -168,6 +288,79 @@ class TextureBlendingSystem {
         return variedColor;
     }
     
+    updateForestMaskFromDensity(payload) {
+        if (!this.forestMaskData || !this.forestMaskTexture) {
+            return;
+        }
+
+        if (!payload || !payload.densityGrid || payload.densityGrid.size === 0 || !payload.size || payload.size <= 0) {
+            this._clearForestMask();
+            return;
+        }
+
+        const { densityGrid } = payload;
+        const origin = payload.origin || { x: 0, z: 0 };
+        const worldSize = Math.max(0.0001, payload.size);
+
+        const resolution = this.forestMaskResolution;
+        const data = this.forestMaskData;
+        data.fill(0);
+
+        const stamp = [
+            { dx: 0, dz: 0, weight: 1.0 },
+            { dx: 1, dz: 0, weight: 0.6 },
+            { dx: -1, dz: 0, weight: 0.6 },
+            { dx: 0, dz: 1, weight: 0.6 },
+            { dx: 0, dz: -1, weight: 0.6 },
+            { dx: 1, dz: 1, weight: 0.35 },
+            { dx: -1, dz: 1, weight: 0.35 },
+            { dx: 1, dz: -1, weight: 0.35 },
+            { dx: -1, dz: -1, weight: 0.35 }
+        ];
+
+        for (const [key, count] of densityGrid.entries()) {
+            const [tileXRaw, tileZRaw] = key.split(',');
+            const tileX = Number(tileXRaw);
+            const tileZ = Number(tileZRaw);
+            if (!Number.isFinite(tileX) || !Number.isFinite(tileZ)) continue;
+
+            const worldX = tileX + 0.5;
+            const worldZ = tileZ + 0.5;
+            const u = (worldX - origin.x) / worldSize;
+            const v = (worldZ - origin.z) / worldSize;
+            if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+
+            const px = Math.floor(u * resolution);
+            const pz = Math.floor(v * resolution);
+            const intensity = Math.min(1, count / 3);
+
+            for (const sample of stamp) {
+                const sx = px + sample.dx;
+                const sz = pz + sample.dz;
+                if (sx < 0 || sx >= resolution || sz < 0 || sz >= resolution) continue;
+                const idx = sz * resolution + sx;
+                const current = data[idx] / 255;
+                const added = intensity * sample.weight;
+                const value = Math.min(1, current + added);
+                data[idx] = Math.floor(value * 255);
+            }
+        }
+
+        this.forestMaskTexture.needsUpdate = true;
+        this.forestMaskOrigin.set(origin.x, origin.z);
+        this.forestMaskWorldSize = worldSize;
+        this._hasForestMaskData = true;
+    }
+
+    _clearForestMask() {
+        if (!this.forestMaskData || !this.forestMaskTexture) {
+            return;
+        }
+        this.forestMaskData.fill(0);
+        this.forestMaskTexture.needsUpdate = true;
+        this._hasForestMaskData = false;
+    }
+
     createGrassTexture() {
         // Load grass.jpg instead of generating a canvas texture
         const texture = new THREE.TextureLoader().load('../Images/grass.jpg');
@@ -280,15 +473,25 @@ class TextureBlendingSystem {
             #include <common>
             #include <fog_pars_vertex>
             uniform float uWaterLevel;
+            uniform float uBiomeWaterLevel;
+            uniform float uFlatBedDepth;
             uniform float uTime;
-            varying vec3 vColor;
             varying vec3 vWorldPosition;
             varying vec3 vOriginalWorldPosition;
             varying vec3 vBiomeColor;
             varying vec2 vUv;
             varying float vDeformFactor;
+            varying float vForestBiomeWeight;
+            varying vec2 vForestMaskUv;
+            varying float vBeachBiomeWeight;
+            varying float vLowlandWeight;
+            varying float vGrasslandWeight;
+            varying float vMountainWeight;
+            varying vec3 vWorldNormal;
 
             uniform vec3 uSeasonalGrassColor;
+            uniform vec2 uForestMaskOrigin;
+            uniform float uForestMaskWorldSize;
 
             // Spherical deformation uniforms
             uniform float uSphereRadius;
@@ -309,6 +512,11 @@ class TextureBlendingSystem {
             uniform float uBiomeSplatterScale;
             uniform float uBiomeSplatterAmount;
             uniform float uBiomeEdgeSplatterMix;
+
+            // Biome patch noise uniforms
+            uniform float uBiomePatchScale;
+            uniform float uBiomePatchStrength;
+            uniform float uBiomePatchSeed;
 
             // Biome palette uniforms
             uniform vec3 uBiomeColors[8];
@@ -340,13 +548,20 @@ class TextureBlendingSystem {
                 return v;
             }
 
-            vec3 getBiomeColor(float height, vec2 worldXZ) {
-                float blend = 0.5;
-                float h = height - uWaterLevel;
+            float gBeachBiomeWeight;
+            float gLowlandWeight;
+            float gGrasslandWeight;
+            float gMountainWeight;
 
-                float t1 = uBiomeThresholds[0];
-                float t2 = uBiomeThresholds[1];
-                float t3 = uBiomeThresholds[2];
+            vec4 getBiomeColor(float height, vec2 worldXZ) {
+                float blend = 0.5;
+                float patchNoise = fbm(worldXZ * uBiomePatchScale + vec2(uBiomePatchSeed));
+                float h = height - uBiomeWaterLevel + patchNoise * uBiomePatchStrength;
+                float tideOffset = uWaterLevel - uBiomeWaterLevel;
+
+                float t1 = uBiomeThresholds[0] + tideOffset;
+                float t2 = uBiomeThresholds[1] + tideOffset;
+                float t3 = uBiomeThresholds[2] + tideOffset;
                 float t4 = uBiomeThresholds[3];
                 float t5 = uBiomeThresholds[4];
                 float t6 = uBiomeThresholds[5];
@@ -406,21 +621,31 @@ class TextureBlendingSystem {
                 float mountainW  = w6 * (1.0 - w7);
                 float snowW      = w7;
 
-                return uBiomeColors[0] * deepW + uBiomeColors[1] * shallowW + uBiomeColors[2] * beachW
+                vec3 color = uBiomeColors[0] * deepW + uBiomeColors[1] * shallowW + uBiomeColors[2] * beachW
                      + uBiomeColors[3] * lowlandW + uBiomeColors[4] * grasslandW + uBiomeColors[5] * forestW
                      + uBiomeColors[6] * mountainW + uBiomeColors[7] * snowW;
+                gBeachBiomeWeight = beachW;
+                gLowlandWeight = lowlandW;
+                gGrasslandWeight = grasslandW;
+                gMountainWeight = mountainW;
+                return vec4(color, forestW);
             }
 
             void main() {
-                vColor = color;
-
                 vec4 worldPosition = modelMatrix * vec4(position, 1.0);
                 vWorldPosition = worldPosition.xyz;
                 vOriginalWorldPosition = worldPosition.xyz;
+                vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
                 // Compute UVs from world position so noise/texture stays locked to world coordinates
                 vUv = worldPosition.xz * 0.15;
 
-                vBiomeColor = getBiomeColor(vWorldPosition.y, vWorldPosition.xz);
+                vec4 biomeInfo = getBiomeColor(vWorldPosition.y, vWorldPosition.xz);
+                vBiomeColor = biomeInfo.rgb;
+                vForestBiomeWeight = biomeInfo.a;
+                vBeachBiomeWeight = clamp(gBeachBiomeWeight, 0.0, 1.0);
+                vLowlandWeight = gLowlandWeight;
+                vGrasslandWeight = gGrasslandWeight;
+                vMountainWeight = gMountainWeight;
 
                 // Compute final world position including optional spherical curvature
                 vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -467,6 +692,9 @@ class TextureBlendingSystem {
                     vUv = finalWorld.xz * 0.15;
                 }
 
+                float maskDenom = max(uForestMaskWorldSize, 0.0001);
+                vForestMaskUv = (vWorldPosition.xz - uForestMaskOrigin) / maskDenom;
+
                 vec4 mvPosition = viewMatrix * vec4(finalWorld, 1.0);
                 gl_Position = projectionMatrix * mvPosition;
                 #include <fog_vertex>
@@ -485,8 +713,11 @@ class TextureBlendingSystem {
         uniform float uEndDistance;
         uniform float uTime;
         uniform float uWaterLevel;
+        uniform float uBiomeWaterLevel;
         uniform float uGrassUvScale;
         uniform float uGrassWindMultiplier;
+        uniform vec2 uWindDirection;
+        uniform float uWindStrength;
         uniform vec3 uGrassColorTint;
         uniform vec3 uGrassColorLight;
         uniform float uGrassBlendAmount;
@@ -496,30 +727,59 @@ class TextureBlendingSystem {
         uniform float uGrassBladeStretchX;
         uniform float uGrassBladeStretchY;
         uniform float uGrassMicroAmount;
+        uniform float uGrassType[8];
         uniform float uSunIntensity;
         uniform vec3 uFadeCenter;
         uniform float uFadeInnerRadius;
         uniform float uFadeOuterRadius;
         uniform float uFadeEnabled;
         uniform float uCheckerScale;
+        uniform float uCheckerFadeStrength;
         uniform vec3 uPlanetCenter;
         uniform float uSphereRadius;
+        uniform sampler2D uForestMaskTexture;
+        uniform sampler2D uForestFloorTexture;
+        uniform float uForestBlendMax;
+        uniform float uForestMaskStrength;
+        uniform float uForestBiomeBias;
+        uniform float uForestTexScale;
+        uniform float uForestNoiseScale;
+        uniform float uForestEnabled;
+        uniform float uForestBaseInfluence;
+        uniform float uBeachEnabled;
+        uniform vec3 uBeachSandColor;
+        uniform vec3 uBeachStoneColor;
+        uniform vec3 uBeachWetColor;
+        uniform float uBeachStoneAmount;
+        uniform float uBeachStoneScale;
+        uniform float uBeachWetWidth;
+        uniform float uBeachWetIntensity;
+        uniform float uWetFadeSpeed;
+        uniform float uWetFadeDelay;
+        uniform float uBeachShrubAmount;
+        uniform vec3 uBeachShrubColor;
+        uniform float uBeachBiomeBias;
+        uniform float uBeachHeightBlend;
+        uniform float uDebugBeachState;
 
         // Water system uniforms
         uniform float uWaterEnabled;
         uniform float uShallowThreshold;
         uniform vec3 uDeepWaterColor;
         uniform vec3 uShallowWaterColor;
+        uniform vec3 uCameraWorldPos;
         uniform float uDebugWaterState;
         uniform float uDebugRadialUp;
         uniform float uDebugWaveNormals;
         uniform float uDebugFresnel;
         uniform float uDebugFoam;
         uniform float uFoamIntensity;
+        uniform float uFoamWindSensitivity;
         uniform float uWaveAmplitudeSwell;
         uniform float uWaveAmplitudeWind;
         uniform float uWaveAmplitudeRipple;
         uniform float uWaveScale;
+        uniform float uWaveHeight;
         uniform float uWaterDepthMax;
         uniform float uWaveSwellSpeed;
         uniform float uWaveWindSpeed;
@@ -539,30 +799,40 @@ class TextureBlendingSystem {
         uniform float uSparkleIntensity;
         uniform float uSparkleScale;
         uniform float uSparkleSpeed;
-        uniform vec3 uCameraWorldPos;
-        uniform vec2 uWindDirection;
-        uniform float uWindStrength;
+        uniform float uLakeBedBlend;
+        uniform float uLakeSurfaceOpacity;
 
-        // Beach system uniforms
-        uniform float uBeachEnabled;
-        uniform vec3 uBeachSandColor;
-        uniform vec3 uBeachStoneColor;
-        uniform vec3 uBeachWetColor;
-        uniform float uBeachStoneAmount;
-        uniform float uBeachStoneScale;
-        uniform float uBeachWetWidth;
-        uniform float uBeachWetIntensity;
-        uniform float uBeachShrubAmount;
-        uniform vec3 uBeachShrubColor;
-        uniform float uBeachUvScale;
-        uniform float uDebugBeachState;
-
-        varying vec3 vColor;
         varying vec3 vWorldPosition;
         varying vec3 vOriginalWorldPosition;
         varying vec3 vBiomeColor;
         varying vec2 vUv;
         varying float vDeformFactor;
+        varying float vForestBiomeWeight;
+        varying vec2 vForestMaskUv;
+        varying float vBeachBiomeWeight;
+        varying float vLowlandWeight;
+        varying float vGrasslandWeight;
+        varying float vMountainWeight;
+        varying vec3 vWorldNormal;
+
+        // Environmental simulation uniforms
+        uniform float uEnvPressure;
+        uniform float uEnvHumidity;
+        uniform float uEnvTemperature;
+
+        // Cliff uniforms
+        uniform float uCliffEnabled;
+        uniform float uCliffThreshold;
+        uniform float uCliffBlendWidth;
+        uniform float uCliffRubbleAmount;
+        uniform float uCliffStrataScale;
+        uniform float uCliffStrataAmount;
+        uniform float uCliffDarkenAmount;
+        uniform vec3 uCliffBaseColor;
+        uniform vec3 uCliffLightColor;
+        uniform vec3 uCliffMossColor;
+        uniform float uCliffMossAmount;
+        uniform float uCliffDebug;
 
         float hash(vec2 p) {
             return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -590,6 +860,67 @@ class TextureBlendingSystem {
             return v;
         }
 
+        void grassPalette(float typeId, out vec3 baseColor, out vec3 highlightColor, out float patchContrast) {
+            if (typeId < 0.5) {
+                baseColor = vec3(0.0);
+                highlightColor = vec3(0.0);
+                patchContrast = 0.0;
+                return;
+            }
+            if (typeId < 1.5) {
+                // Meadow
+                baseColor = vec3(0.20, 0.46, 0.18);
+                highlightColor = vec3(0.44, 0.74, 0.32);
+                patchContrast = 0.9;
+                return;
+            }
+            if (typeId < 2.5) {
+                // Prairie
+                baseColor = vec3(0.32, 0.45, 0.18);
+                highlightColor = vec3(0.78, 0.72, 0.34);
+                patchContrast = 0.8;
+                return;
+            }
+            if (typeId < 3.5) {
+                // Alpine
+                baseColor = vec3(0.13, 0.36, 0.17);
+                highlightColor = vec3(0.42, 0.62, 0.36);
+                patchContrast = 0.7;
+                return;
+            }
+            if (typeId < 4.5) {
+                // Marsh
+                baseColor = vec3(0.26, 0.35, 0.19);
+                highlightColor = vec3(0.52, 0.57, 0.27);
+                patchContrast = 1.05;
+                return;
+            }
+            // Dry Steppe
+            baseColor = vec3(0.43, 0.38, 0.18);
+            highlightColor = vec3(0.78, 0.67, 0.33);
+            patchContrast = 0.85;
+        }
+
+        void accumulateGrassLayer(float typeId, float biomeWeight, float biomeSeed, float grassDetail, vec3 worldPos, vec3 tint, vec3 lightColor, inout vec3 accum, inout float maskAccum) {
+            if (typeId < 0.5 || biomeWeight <= 0.0001) return;
+            vec3 baseColor;
+            vec3 highlightColor;
+            float patchContrast;
+            grassPalette(typeId, baseColor, highlightColor, patchContrast);
+            if (patchContrast <= 0.0) return;
+
+            float noiseScale = 0.35 + biomeSeed * 0.03;
+            float patchNoise = fbm(worldPos.xz * noiseScale + vec2(biomeSeed * 11.3 + 19.0));
+            float patchVariant = fract(patchNoise * 3.731 + biomeSeed * 0.37);
+            float patchMask = smoothstep(0.25, 0.85, patchNoise * patchContrast);
+            vec3 patchColor = mix(baseColor, highlightColor, clamp(0.25 + patchVariant * 0.6 + grassDetail * 0.2, 0.0, 1.0));
+            patchColor = mix(patchColor, tint, 0.25);
+            patchColor = mix(patchColor, lightColor, 0.2 * grassDetail);
+            float weight = biomeWeight * patchMask;
+            accum += patchColor * weight;
+            maskAccum += weight;
+        }
+
         // Grid-based sparkle / micro-glitter for water surface
         float gridSparkle(vec2 pos, float scale, float speed, float t) {
             vec2 gridPos = pos * scale;
@@ -604,23 +935,87 @@ class TextureBlendingSystem {
             return point * shimmer;
         }
 
-        // Gerstner wave normal (no geometry displacement)
-        vec3 gerstnerNormal(vec2 pos, float t, float ampSwell, float ampWind, float ampRipple, float scale) {
-            vec3 n = vec3(0.0, 1.0, 0.0);
-            float d = uWaterDetailScale;
-            // Layer 1 — large swell
+        // Directional Gerstner wave normal — crests align to wind direction
+        vec3 gerstnerNormal(vec2 pos, float t, float ampSwell, float ampWind, float ampRipple, float scale, out float waveHeight) {
+            vec2 windDir = normalize(uWindDirection);
+            vec2 windPerp = vec2(-windDir.y, windDir.x);
+            float d = max(uWaterDetailScale, 0.001);
+            waveHeight = 0.0;
+            vec2 grad = vec2(0.0);
+
+            // Layer 1 — large swell along wind
             float kSwell = 0.02 * uWaveSwellFreq / d;
-            n.x += cos(pos.x * kSwell + t * uWaveSwellSpeed) * ampSwell * d * scale * kSwell;
-            n.z += sin(pos.y * kSwell + t * uWaveSwellSpeed) * ampSwell * d * scale * kSwell;
-            // Layer 2 — wind waves
+            float phaseSwell = dot(pos, windDir) * kSwell + t * uWaveSwellSpeed;
+            grad += windDir * ampSwell * scale * kSwell * cos(phaseSwell);
+            waveHeight += ampSwell * scale * sin(phaseSwell);
+
+            // Layer 2 — wind waves at 60° to wind
             float kWind = 0.08 * uWaveWindFreq / d;
-            n.x += cos(pos.x * kWind + t * uWaveWindSpeed) * ampWind * d * scale * kWind;
-            n.z += sin(pos.y * kWind + t * uWaveWindSpeed) * ampWind * d * scale * kWind;
-            // Layer 3 — ripples
+            vec2 wind2 = normalize(windDir * 0.5 + windPerp * 0.866);
+            float phaseWind = dot(pos, wind2) * kWind + t * uWaveWindSpeed;
+            grad += wind2 * ampWind * scale * kWind * cos(phaseWind);
+            waveHeight += ampWind * scale * sin(phaseWind);
+
+            // Layer 3 — ripples across wind
             float kRipple = 0.3 * uWaveRippleFreq / d;
-            n.x += cos(pos.x * kRipple + t * uWaveRippleSpeed) * ampRipple * d * scale * kRipple;
-            n.z += sin(pos.y * kRipple + t * uWaveRippleSpeed) * ampRipple * d * scale * kRipple;
-            return normalize(n);
+            float phaseRipple = dot(pos, windPerp) * kRipple + t * uWaveRippleSpeed;
+            grad += windPerp * ampRipple * scale * kRipple * cos(phaseRipple);
+            waveHeight += ampRipple * scale * sin(phaseRipple);
+
+            return normalize(vec3(-grad.x, 1.0, -grad.y));
+        }
+
+        // ===== CLIFF / SLOPE MATERIAL SYSTEM =====
+
+        // Slope steepness: 0=flat ground, 1=vertical cliff
+        float getCliffMask(vec3 worldNormal) {
+            float upness = abs(dot(worldNormal, vec3(0.0, 1.0, 0.0)));
+            float halfW = uCliffBlendWidth * 0.5;
+            float start = max(0.0, uCliffThreshold - halfW);
+            float end   = min(1.0, uCliffThreshold + halfW);
+            return 1.0 - smoothstep(start, end, upness);
+        }
+
+        // Horizontal rock strata bands using fbm
+        float getCliffStrata(vec3 worldPos, float scale, float amount) {
+            float band = sin(worldPos.y * scale + fbm(worldPos.xz * 0.3) * 2.0);
+            return smoothstep(-0.3, 0.3, band) * amount;
+        }
+
+        // Procedural triplanar cliff color with rubble and strata
+        vec3 getCliffColor(vec3 worldPos, vec3 worldNormal, float steepness) {
+            vec2 cliffCoord = worldPos.xz + worldPos.yx * 0.07;
+
+            // Base rock variation noise
+            float rockNoise = fbm(cliffCoord * 0.35);
+            float detailNoise = fbm(cliffCoord * 1.2 + vec2(7.0, 13.0));
+
+            // Strata banding
+            float strata = getCliffStrata(worldPos, uCliffStrataScale, uCliffStrataAmount);
+
+            // Base rock with noise variation
+            vec3 rockColor = mix(uCliffBaseColor, uCliffLightColor, rockNoise * 0.5 + 0.25);
+
+            // Add strata bands (darker layers)
+            rockColor = mix(rockColor, uCliffBaseColor * 0.65, strata);
+
+            // Loose rubble / scree — high freq noise on steep faces
+            float rubble = fbm(cliffCoord * 2.5 + vec2(31.0, 47.0));
+            rubble = smoothstep(0.35, 0.65, rubble);
+            rockColor = mix(rockColor, uCliffLightColor * 0.80, rubble * uCliffRubbleAmount * steepness);
+
+            // Micro detail noise
+            rockColor += (detailNoise - 0.5) * 0.04;
+
+            // Moss / lichen on less-vertical or north-ish facing parts
+            float mossNoise = fbm(cliffCoord * 0.8 + vec2(101.0, 53.0));
+            float mossMask = (1.0 - steepness * 0.6) * mossNoise * uCliffMossAmount;
+            rockColor = mix(rockColor, uCliffMossColor, clamp(mossMask, 0.0, 1.0));
+
+            // Darken very vertical faces (self-shadowing feel)
+            rockColor *= mix(1.0, 1.0 - uCliffDarkenAmount, steepness * steepness);
+
+            return rockColor;
         }
 
         void main() {
@@ -659,14 +1054,52 @@ class TextureBlendingSystem {
                                 * cos(vWorldPosition.z * 0.2 + uTime * 0.3) * 0.05;
             vec3 biomeColor = vBiomeColor + vec3(variation);
 
-            // Blend between checkerboard (near) and biome (far)
-            vec3 finalColor = mix(chessboardColor, biomeColor, blendFactor);
+            // Environmental simulation color modulation
+            // High pressure + high humidity -> stormy darkening
+            // Low pressure + high humidity -> rain blue shift
+            // High temperature -> warm shift, low -> cool shift
+            float stormFactor = uEnvPressure * uEnvHumidity;
+            float rainFactor = (1.0 - uEnvPressure) * uEnvHumidity;
+            vec3 stormTint = vec3(0.55, 0.55, 0.60);
+            vec3 rainTint = vec3(0.75, 0.80, 0.90);
+            vec3 warmTint = vec3(1.05, 0.95, 0.80);
+            vec3 coolTint = vec3(0.85, 0.90, 1.05);
+
+            biomeColor = mix(biomeColor, stormTint, stormFactor * 0.25);
+            biomeColor = mix(biomeColor, rainTint, rainFactor * 0.20);
+            if (uEnvTemperature > 0.6) {
+                biomeColor = mix(biomeColor, warmTint, (uEnvTemperature - 0.6) * 0.35);
+            } else if (uEnvTemperature < 0.4) {
+                biomeColor = mix(biomeColor, coolTint, (0.4 - uEnvTemperature) * 0.30);
+            }
+            biomeColor = clamp(biomeColor, 0.0, 1.0);
+
+            // Blend between checkerboard (near) and biome (far) with adjustable checker visibility
+            float attenuatedBlend = mix(1.0, blendFactor, clamp(uCheckerFadeStrength, 0.0, 1.0));
+            vec3 finalColor = mix(chessboardColor, biomeColor, attenuatedBlend);
+
+            // ==================== CLIFF SYSTEM ====================
+            if (uCliffEnabled > 0.5) {
+                float cliffMask = getCliffMask(vWorldNormal);
+                if (cliffMask > 0.001) {
+                    vec3 cliffColor = getCliffColor(vWorldPosition, vWorldNormal, cliffMask);
+                    finalColor = mix(finalColor, cliffColor, cliffMask * blendFactor);
+                }
+                if (uCliffDebug > 0.5) {
+                    gl_FragColor = vec4(vec3(cliffMask), 1.0);
+                    #include <fog_fragment>
+                    return;
+                }
+            }
+            // ==================== END CLIFF SYSTEM ====================
 
             // ==================== BEACH SYSTEM ====================
             if (uBeachEnabled > 0.5) {
-                // Beach mask: between shallow water (~-2.5) and lowland (~1.0)
-                float beachMask = smoothstep(-2.8, -2.2, vWorldPosition.y)
+                float biomeBeachMask = pow(clamp(vBeachBiomeWeight, 0.0, 1.0), max(uBeachBiomeBias, 0.0001));
+                float heightMask = smoothstep(-2.8, -2.2, vWorldPosition.y)
                                 * (1.0 - smoothstep(0.8, 1.5, vWorldPosition.y));
+                float blendMix = clamp(uBeachHeightBlend, 0.0, 1.0);
+                float beachMask = biomeBeachMask * mix(1.0, heightMask, blendMix);
 
                 if (beachMask > 0.01) {
                     // Base sand/stone noise
@@ -686,7 +1119,8 @@ class TextureBlendingSystem {
 
                     // High tide line: wet sand just above water level
                     float waterDist = vWorldPosition.y - uWaterLevel;
-                    float wetMask = smoothstep(uBeachWetWidth, 0.0, waterDist) * uBeachWetIntensity;
+                    float wetDist = max(0.0, waterDist);
+                    float wetMask = (1.0 - smoothstep(uWetFadeDelay, uWetFadeDelay + uWetFadeSpeed, wetDist)) * uBeachWetIntensity;
                     // Break up wet line with noise
                     float wetNoise = fbm(vWorldPosition.xz * 3.0 + vec2(7.0));
                     wetMask *= (0.7 + 0.3 * wetNoise);
@@ -727,7 +1161,6 @@ class TextureBlendingSystem {
             // Anisotropic fbm — stretch UVs vertically to create blade-like streaks
             vec2 bladeUv = grassUv * vec2(uGrassBladeStretchX, uGrassBladeStretchY);
             float bladeNoise = fbm(bladeUv);
-            // Sharpen: narrow smoothstep range = harder edges
             float edgeLow = 0.35 + uGrassSharpness * 0.12;
             float edgeHigh = 0.65 - uGrassSharpness * 0.12;
             float grassDetail = smoothstep(edgeLow, edgeHigh, bladeNoise);
@@ -737,17 +1170,45 @@ class TextureBlendingSystem {
             float microNoise = smoothstep(0.30, 0.70, fbm(microUv));
             grassDetail = mix(grassDetail, microNoise, uGrassMicroAmount);
 
-            vec3 grassColor = mix(vec3(0.15, 0.45, 0.12), uGrassColorLight, grassDetail);
-            grassColor = mix(grassColor, uGrassColorTint, 0.3);
+            float beachW = vBeachBiomeWeight;
+            float lowlandW = vLowlandWeight;
+            float grasslandW = vGrasslandWeight;
+            float forestW = vForestBiomeWeight;
+            float mountainW = vMountainWeight;
 
-            // Biome mask: grass only on lowland -> forest
-            float grassMask = smoothstep(1.0, 3.0, vWorldPosition.y)
-                            * (1.0 - smoothstep(15.0, 18.0, vWorldPosition.y));
+            vec3 grassAccum = vec3(0.0);
+            float grassMaskAccum = 0.0;
+            accumulateGrassLayer(uGrassType[2], beachW, 2.0, grassDetail, vWorldPosition, uGrassColorTint, uGrassColorLight, grassAccum, grassMaskAccum);
+            accumulateGrassLayer(uGrassType[3], lowlandW, 3.0, grassDetail, vWorldPosition, uGrassColorTint, uGrassColorLight, grassAccum, grassMaskAccum);
+            accumulateGrassLayer(uGrassType[4], grasslandW, 4.0, grassDetail, vWorldPosition, uGrassColorTint, uGrassColorLight, grassAccum, grassMaskAccum);
+            accumulateGrassLayer(uGrassType[5], forestW, 5.0, grassDetail, vWorldPosition, uGrassColorTint, uGrassColorLight, grassAccum, grassMaskAccum);
+            accumulateGrassLayer(uGrassType[6], mountainW, 6.0, grassDetail, vWorldPosition, uGrassColorTint, uGrassColorLight, grassAccum, grassMaskAccum);
 
-            finalColor = mix(finalColor, grassColor, grassMask * blendFactor * uGrassBlendAmount);
+            if (grassMaskAccum > 0.0001) {
+                vec3 blendedGrass = grassAccum / grassMaskAccum;
+                float mask = clamp(grassMaskAccum * blendFactor * uGrassBlendAmount, 0.0, 1.0);
+                finalColor = mix(finalColor, blendedGrass, mask);
+            }
             finalColor *= uSunIntensity;
 
+            // ==================== FOREST FLOOR SYSTEM ====================
+            if (uForestEnabled > 0.5) {
+                float maskSample = texture2D(uForestMaskTexture, vForestMaskUv).r;
+                float forestMask = pow(clamp(maskSample, 0.0, 1.0), uForestMaskStrength);
+                float biomeWeight = pow(clamp(vForestBiomeWeight, 0.0, 1.0), uForestBiomeBias);
+                float forestFactor = mix(uForestBaseInfluence, 1.0, forestMask) * biomeWeight;
+                if (forestFactor > 0.001) {
+                    float forestNoise = fbm(vWorldPosition.xz * uForestNoiseScale);
+                    forestFactor *= mix(0.7, 1.0, forestNoise);
+                    vec2 forestUv = vWorldPosition.xz * uForestTexScale;
+                    vec3 forestColor = texture2D(uForestFloorTexture, forestUv).rgb;
+                    finalColor = mix(finalColor, forestColor, forestFactor * uForestBlendMax * blendFactor);
+                }
+            }
+            // ==================== END FOREST FLOOR SYSTEM ====================
+
             // ==================== WATER SYSTEM ====================
+            vec3 terrainColor = finalColor;
             if (uWaterEnabled > 0.5) {
             float waterDepth = max(0.0, uWaterLevel - vWorldPosition.y);
             float isWater = step(0.001, waterDepth);
@@ -785,12 +1246,18 @@ class TextureBlendingSystem {
             }
             vec3 bitangent = cross(radialUp, tangent);
 
-            // Gerstner wave normal
+            // Wind-aligned tangent for anisotropic specular
+            vec2 wDir = normalize(uWindDirection);
+            vec3 windTangent = normalize(tangent * wDir.x + bitangent * wDir.y);
+
+            // Gerstner wave normal (directional, wind-aligned)
+            float waveHeight;
             vec3 waveN = gerstnerNormal(virtualSurfacePos.xz, uTime,
-                                        uWaveAmplitudeSwell,
-                                        uWaveAmplitudeWind,
-                                        uWaveAmplitudeRipple,
-                                        uWaveScale);
+                                        uWaveAmplitudeSwell * uWaveHeight,
+                                        uWaveAmplitudeWind * uWaveHeight,
+                                        uWaveAmplitudeRipple * uWaveHeight,
+                                        uWaveScale,
+                                        waveHeight);
             vec3 perturbedNormal = normalize(
                 tangent * waveN.x +
                 bitangent * waveN.z +
@@ -819,8 +1286,35 @@ class TextureBlendingSystem {
             float depthFactor = smoothstep(0.0, uWaterDepthMax, waterDepth);
             vec3 waterBase = mix(uShallowWaterColor, uDeepWaterColor, depthFactor);
 
-            // Shoreline foam
-            float foamNoise = noise(vWorldPosition.xz * uFoamScale / uWaterDetailScale + uTime * uFoamSpeed);
+            // Wave-phase color banding — crests lighter, troughs darker
+            waterBase += vec3(waveHeight * 0.07);
+
+            // Meniscus darkening at shoreline edge
+            float meniscus = smoothstep(0.0, 0.25, waterDepth);
+            waterBase *= mix(0.86, 1.0, meniscus);
+
+            // Shoreline foam aligned to wind direction
+            float foamSens = max(uFoamWindSensitivity, 0.0);
+            float foamSens01 = clamp(foamSens / 3.0, 0.0, 1.0);
+            vec2 windDir = normalize(uWindDirection);
+            vec2 windPerp = vec2(-windDir.y, windDir.x);
+
+            float foamSpeed = uFoamSpeed * mix(0.1, 2.4, foamSens01);
+            float foamOffset = uTime * foamSpeed;
+            vec2 foamUv = vWorldPosition.xz * uFoamScale / uWaterDetailScale;
+            foamUv += windDir * foamOffset;
+            foamUv += windPerp * foamSens * 0.2;
+
+            mat2 foamBasis = mat2(windDir.x, windPerp.x,
+                                  windDir.y, windPerp.y);
+            vec2 orientedUv = foamBasis * foamUv;
+
+            float foamPrimary = noise(orientedUv);
+            float foamSecondary = noise(orientedUv * mix(1.5, 3.5, foamSens01) + windPerp * foamOffset * 0.3);
+            float foamDirectional = clamp(foamPrimary * 0.6 + foamSecondary * 0.4, 0.0, 1.0);
+            float foamBase = noise(vWorldPosition.xz * 0.35 + windDir * foamOffset * 0.15);
+            float foamNoise = mix(foamBase, foamDirectional, foamSens01);
+
             float foam = (1.0 - smoothstep(0.0, uFoamDepth, waterDepth)) * (foamNoise * 0.5 + 0.5);
             vec3 foamColor = vec3(0.9, 0.95, 1.0);
             waterBase = mix(waterBase, foamColor, foam * uFoamIntensity);
@@ -832,23 +1326,51 @@ class TextureBlendingSystem {
                 return;
             }
 
-            // Blend water into terrain
-            finalColor = mix(finalColor, waterBase, isWater * uWaterOpacity);
+            // Caustic light concentration on shallow water
+            float causticPhase1 = dot(virtualSurfacePos.xz, windDir) * 0.5 + uTime * 3.0;
+            float causticPhase2 = dot(virtualSurfacePos.xz, windPerp) * 0.7 - uTime * 2.0;
+            float caustic = pow(sin(causticPhase1) * 0.5 + 0.5, 12.0) * pow(sin(causticPhase2) * 0.5 + 0.5, 12.0);
+            caustic *= smoothstep(0.0, 2.0, waterDepth) * (1.0 - smoothstep(2.0, 6.0, waterDepth));
+            waterBase += vec3(caustic * 0.25);
 
-            // Fresnel sky reflection on water
+            // Procedural ripple grid on flat water surface
+            vec2 rUv = vWorldPosition.xz;
+            float rippleA = sin(rUv.x * 3.0 + uTime * 1.2) * sin(rUv.y * 2.7 + uTime * 0.9);
+            float rippleB = sin(rUv.x * 2.1 - uTime * 0.7) * sin(rUv.y * 3.3 + uTime * 1.1);
+            float rippleGrid = (rippleA + rippleB) * 0.15 + 0.85;
+            waterBase *= rippleGrid;
+
+            // Build water surface color from flattened height data
+            vec3 waterSurfaceColor = mix(vec3(1.0), waterBase, uWaterOpacity * 0.65);
             vec3 skyColor = vec3(0.5, 0.6, 0.7);
-            finalColor = mix(finalColor, skyColor, fresnel * isWater * uSkyReflection);
+            waterSurfaceColor = mix(waterSurfaceColor, skyColor, fresnel * uSkyReflection);
 
-            // Specular highlight — makes wave normals visible from above
+            // Anisotropic specular — stretched highlight along wind direction
             vec3 sunDir = normalize(vec3(0.3, 0.9, 0.2));
             vec3 H = normalize(sunDir + V);
-            float spec = pow(max(0.0, dot(perturbedNormal, H)), 64.0);
-            finalColor += vec3(0.6, 0.7, 0.8) * spec * isWater * uSpecularIntensity;
+            float HdotN = max(0.0, dot(perturbedNormal, H));
+            float spec = pow(HdotN, 64.0);
+            float HdotWind = abs(dot(H, windTangent));
+            float stretchExp = mix(64.0, 26.0, HdotWind * uWindStrength);
+            spec = mix(spec, pow(HdotN, stretchExp), uWindStrength);
+            waterSurfaceColor += vec3(0.6, 0.7, 0.8) * spec * uSpecularIntensity;
 
             // Micro-glitter / sparkle on water surface
             float sparkle = gridSparkle(vWorldPosition.xz, uSparkleScale, uSparkleSpeed, uTime);
             float viewMask = pow(max(0.0, dot(perturbedNormal, H)), 32.0);
-            finalColor += vec3(1.0, 0.98, 0.92) * sparkle * viewMask * isWater * uSparkleIntensity;
+            waterSurfaceColor += vec3(1.0, 0.98, 0.92) * sparkle * viewMask * uSparkleIntensity;
+
+            // Lake bed: use unaffected terrain height to darken actual terrain color
+            float actualDepth = max(0.0, uWaterLevel - vOriginalWorldPosition.y);
+            vec3 lakeBedColor = terrainColor;
+            lakeBedColor *= mix(1.0, 0.3, smoothstep(0.0, uWaterDepthMax, actualDepth));
+            lakeBedColor = mix(lakeBedColor, uDeepWaterColor * 0.2, smoothstep(0.0, uWaterDepthMax * 0.3, actualDepth));
+
+            // Blend lake bed with terrain (lake bed transparency slider)
+            vec3 bedBlend = mix(terrainColor, lakeBedColor, uLakeBedBlend);
+
+            // Blend water surface over lake bed (lake surface transparency slider)
+            finalColor = mix(bedBlend, waterSurfaceColor, uLakeSurfaceOpacity * isWater);
 
             }
             // ==================== END WATER SYSTEM ====================
@@ -880,6 +1402,7 @@ class TextureBlendingSystem {
                 uEndDistance: { value: this.endDistance },
                 uTime: { value: 0.0 },
                 uWaterLevel: { value: -1.5 },
+                uBiomeWaterLevel: { value: -1.5 },
                 uSunIntensity: { value: 1.0 },
                 uWindDirection: { value: new THREE.Vector2(1, 0) },
                 uWindStrength: { value: 0.3 },
@@ -894,6 +1417,7 @@ class TextureBlendingSystem {
                 uGrassBladeStretchX: { value: 4.0 },
                 uGrassBladeStretchY: { value: 16.0 },
                 uGrassMicroAmount: { value: 0.2 },
+                uGrassType: { value: new Float32Array([0, 0, 0, 4, 1, 3, 5, 0]) },
                 // Biome edge blending uniforms
                 uBiomeEdgeA: { value: 3 },
                 uBiomeEdgeB: { value: 4 },
@@ -903,6 +1427,10 @@ class TextureBlendingSystem {
                 uBiomeSplatterScale: { value: 0.5 },
                 uBiomeSplatterAmount: { value: 0.5 },
                 uBiomeEdgeSplatterMix: { value: 0.5 },
+                // Biome patch noise uniforms
+                uBiomePatchScale: { value: 0.025 },
+                uBiomePatchStrength: { value: 0.0 },
+                uBiomePatchSeed: { value: 123.45 },
                 // Biome palette uniforms
                 uBiomeColors: { value: [
                     new THREE.Color(0.40, 0.60, 0.90),
@@ -933,10 +1461,22 @@ class TextureBlendingSystem {
                 uFadeInnerRadius: { value: 24.0 },
                 uFadeOuterRadius: { value: 31.0 },
                 uFadeEnabled: { value: 1.0 },
+                uCheckerFadeStrength: { value: this.checkerFadeStrength },
                 // Dynamic checker scale
                 uCheckerScale: { value: 1.0 },
                 // Planet center for spherical checkerboard wrapping
                 uPlanetCenter: { value: new THREE.Vector3(0, -180, 0) },
+                uForestMaskTexture: { value: this.forestMaskTexture },
+                uForestFloorTexture: { value: this.forestFloorTextures?.default || null },
+                uForestMaskOrigin: { value: new THREE.Vector2(0, 0) },
+                uForestMaskWorldSize: { value: 1.0 },
+                uForestBlendMax: { value: this.forestBlendMax },
+                uForestMaskStrength: { value: this.forestMaskStrength },
+                uForestBiomeBias: { value: this.forestBiomeBias },
+                uForestTexScale: { value: this.forestTexScale },
+                uForestNoiseScale: { value: this.forestNoiseScale },
+                uForestEnabled: { value: this.forestEnabled ? 1.0 : 0.0 },
+                uForestBaseInfluence: { value: this.forestBaseInfluence },
                 // Water system uniforms
                 uShallowThreshold: { value: 1.5 },
                 uDeepWaterColor: { value: new THREE.Color(0.10, 0.25, 0.50) },
@@ -947,10 +1487,12 @@ class TextureBlendingSystem {
                 uDebugFresnel: { value: 0.0 },
                 uDebugFoam: { value: 0.0 },
                 uFoamIntensity: { value: 0.6 },
+                uFoamWindSensitivity: { value: 1.0 },
                 uWaveAmplitudeSwell: { value: 3.0 },
                 uWaveAmplitudeWind: { value: 1.5 },
                 uWaveAmplitudeRipple: { value: 0.6 },
                 uWaveScale: { value: 1.0 },
+                uWaveHeight: { value: 1.0 },
                 uWaterDepthMax: { value: 15.0 },
                 uWaveSwellSpeed: { value: 1.5 },
                 uWaveWindSpeed: { value: 3.5 },
@@ -971,6 +1513,9 @@ class TextureBlendingSystem {
                 uSparkleScale: { value: 8.0 },
                 uSparkleSpeed: { value: 3.0 },
                 uWaterEnabled: { value: 1.0 },
+                uFlatBedDepth: { value: 0.5 },
+                uLakeBedBlend: { value: 0.0 },
+                uLakeSurfaceOpacity: { value: 0.8 },
                 // Beach system uniforms
                 uBeachEnabled: { value: 1.0 },
                 uBeachSandColor: { value: new THREE.Color(0.82, 0.76, 0.52) },
@@ -980,10 +1525,31 @@ class TextureBlendingSystem {
                 uBeachStoneScale: { value: 0.4 },
                 uBeachWetWidth: { value: 1.2 },
                 uBeachWetIntensity: { value: 0.7 },
+                uWetFadeSpeed: { value: 0.5 },
+                uWetFadeDelay: { value: 0.3 },
                 uBeachShrubAmount: { value: 0.5 },
                 uBeachShrubColor: { value: new THREE.Color(0.22, 0.42, 0.15) },
                 uBeachUvScale: { value: 0.15 },
-                uDebugBeachState: { value: 0.0 }
+                uDebugBeachState: { value: 0.0 },
+                uBeachBiomeBias: { value: 1.0 },
+                uBeachHeightBlend: { value: 1.0 },
+                // Cliff system uniforms
+                uCliffEnabled: { value: this.cliffEnabled ? 1.0 : 0.0 },
+                uCliffThreshold: { value: this.cliffThreshold },
+                uCliffBlendWidth: { value: this.cliffBlendWidth },
+                uCliffRubbleAmount: { value: this.cliffRubbleAmount },
+                uCliffStrataScale: { value: this.cliffStrataScale },
+                uCliffStrataAmount: { value: this.cliffStrataAmount },
+                uCliffDarkenAmount: { value: this.cliffDarkenAmount },
+                uCliffBaseColor: { value: this.cliffBaseColor },
+                uCliffLightColor: { value: this.cliffLightColor },
+                uCliffMossColor: { value: this.cliffMossColor },
+                uCliffMossAmount: { value: this.cliffMossAmount },
+                uCliffDebug: { value: this.cliffDebug ? 1.0 : 0.0 },
+                // Environmental simulation uniforms
+                uEnvPressure: { value: 0.5 },
+                uEnvHumidity: { value: 0.5 },
+                uEnvTemperature: { value: 0.5 }
             },
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
@@ -995,7 +1561,61 @@ class TextureBlendingSystem {
         this.shaderMaterial = material;
         return material;
     }
-    
+
+    /**
+     * Alternative shader that flattens all underwater terrain vertices to a flat bed
+     * slightly below the water level. The fragment shader still sees the original
+     * terrain height via vWorldPosition.y (captured before flattening), so water
+     * depth, biome colours, beaches and grass masks all continue to use the true
+     * terrain data while the actual geometry is flat.
+     *
+     * Keep the original createShaderMaterial() on the shelf – this is the alternative.
+     */
+    createFlatWaterShaderMaterial() {
+        // Ensure base material exists so we can borrow its fragment shader & uniforms
+        if (!this.shaderMaterial) {
+            this.createShaderMaterial();
+        }
+
+        const baseVertexShader = this.shaderMaterial.vertexShader;
+
+        // 1. Add flattening right after the original position is captured
+        let flatVertexShader = baseVertexShader.replace(
+            'vOriginalWorldPosition = worldPosition.xyz;',
+            `vOriginalWorldPosition = worldPosition.xyz;
+
+                // Flatten underwater geometry to a flat bed slightly below water level
+                if (worldPosition.y < uWaterLevel) {
+                    worldPosition.y = uWaterLevel - uFlatBedDepth;
+                }`
+        );
+
+        // 2. Re-use the already-computed worldPosition instead of re-calculating wp
+        flatVertexShader = flatVertexShader.replace(
+            '// Compute final world position including optional spherical curvature\n                vec4 wp = modelMatrix * vec4(position, 1.0);\n                vec3 finalWorld = wp.xyz;',
+            '// Compute final world position including optional spherical curvature\n                vec3 finalWorld = worldPosition.xyz;'
+        );
+
+        // 3. Replace remaining wp references with finalWorld
+        flatVertexShader = flatVertexShader.replace(
+            'vec3 flatPos = wp.xyz;',
+            'vec3 flatPos = finalWorld;'
+        );
+        flatVertexShader = flatVertexShader.replace(
+            'vec2 dXZ = wp.xz - sphereCenter.xz;',
+            'vec2 dXZ = finalWorld.xz - sphereCenter.xz;'
+        );
+
+        return new THREE.ShaderMaterial({
+            uniforms: this.shaderMaterial.uniforms,
+            vertexShader: flatVertexShader,
+            fragmentShader: this.shaderMaterial.fragmentShader,
+            vertexColors: true,
+            transparent: true,
+            fog: true
+        });
+    }
+
     updateShaderUniforms(cameraPosition, time, planetMapping) {
         // Update shader uniforms if shader material is being used
         if (!this.shaderMaterial) return;
@@ -1013,6 +1633,9 @@ class TextureBlendingSystem {
         if (mat.uFadeEnabled) {
             mat.uFadeEnabled.value = (this.fadeEnabled !== false) ? 1.0 : 0.0;
         }
+        if (mat.uCheckerFadeStrength) {
+            mat.uCheckerFadeStrength.value = this.checkerFadeStrength ?? 1.0;
+        }
         // Dynamic circular fade: diameter fits inside terrain mesh, fade starts at 98% of radius
         if (mat.uFadeInnerRadius && mat.uFadeOuterRadius) {
             const fadeDiameter = this._getTerrainFadeDiameter();
@@ -1026,8 +1649,22 @@ class TextureBlendingSystem {
         mat.uTime.value = time;
 
         // Update water level from board system
-        if (this.boardSystem.waterLevel !== undefined) {
+        // uWaterLevel = actual tide-adjusted level (for water rendering / flattening)
+        // uBiomeWaterLevel = permanent base level (for biome boundaries, vegetation stays fixed)
+        if (this.boardSystem.tidalWaterLevel !== undefined) {
+            mat.uWaterLevel.value = this.boardSystem.tidalWaterLevel;
+        } else if (this.boardSystem.waterLevel !== undefined) {
             mat.uWaterLevel.value = this.boardSystem.waterLevel;
+        }
+        if (this.boardSystem.waterLevel !== undefined) {
+            mat.uBiomeWaterLevel.value = this.boardSystem.waterLevel;
+        }
+
+        if (mat.uForestMaskOrigin) {
+            mat.uForestMaskOrigin.value.copy(this.forestMaskOrigin);
+        }
+        if (mat.uForestMaskWorldSize) {
+            mat.uForestMaskWorldSize.value = this.forestMaskWorldSize;
         }
 
         // Update sun intensity so terrain darkens at night
@@ -1060,6 +1697,13 @@ class TextureBlendingSystem {
         }
         if (mat.uCameraWorldPos) {
             mat.uCameraWorldPos.value.copy(cameraPosition);
+        }
+
+        if (this.terrainSystem?.getTileData) {
+            const tile = this.terrainSystem.getTileData(cameraPosition.x, cameraPosition.z);
+            if (tile && tile.biome) {
+                this.updateForestTextureForBiome(tile.biome);
+            }
         }
 
         if (mat.uSphereRadius) {
@@ -1282,6 +1926,13 @@ class TextureBlendingSystem {
         this.shaderMaterial.uniforms.uBiomeThresholds.value[index] = value;
     }
 
+    setBiomePatchUniforms(scale, strength, seed) {
+        if (!this.shaderMaterial) return;
+        if (scale !== undefined) this.shaderMaterial.uniforms.uBiomePatchScale.value = scale;
+        if (strength !== undefined) this.shaderMaterial.uniforms.uBiomePatchStrength.value = strength;
+        if (seed !== undefined) this.shaderMaterial.uniforms.uBiomePatchSeed.value = seed;
+    }
+
     updateSeasonalTextures() {
         const seasonalColor = this.getSeasonalGrassColor();
         if (this.shaderMaterial?.uniforms?.uGrassColorTint) {
@@ -1289,5 +1940,101 @@ class TextureBlendingSystem {
             this.shaderMaterial.needsUpdate = true;
         }
         console.log('[TextureBlending] Updated seasonal grass color for season:', this.boardSystem?.currentSeason);
+    }
+
+    // --- Cliff parameter setters ---
+    setCliffEnabled(enabled) {
+        this.cliffEnabled = enabled;
+        if (this.shaderMaterial?.uniforms?.uCliffEnabled) {
+            this.shaderMaterial.uniforms.uCliffEnabled.value = enabled ? 1.0 : 0.0;
+        }
+    }
+
+    setCliffThreshold(value) {
+        this.cliffThreshold = value;
+        if (this.shaderMaterial?.uniforms?.uCliffThreshold) {
+            this.shaderMaterial.uniforms.uCliffThreshold.value = value;
+        }
+    }
+
+    setCliffBlendWidth(value) {
+        this.cliffBlendWidth = value;
+        if (this.shaderMaterial?.uniforms?.uCliffBlendWidth) {
+            this.shaderMaterial.uniforms.uCliffBlendWidth.value = value;
+        }
+    }
+
+    setCliffRubbleAmount(value) {
+        this.cliffRubbleAmount = value;
+        if (this.shaderMaterial?.uniforms?.uCliffRubbleAmount) {
+            this.shaderMaterial.uniforms.uCliffRubbleAmount.value = value;
+        }
+    }
+
+    setCliffStrataScale(value) {
+        this.cliffStrataScale = value;
+        if (this.shaderMaterial?.uniforms?.uCliffStrataScale) {
+            this.shaderMaterial.uniforms.uCliffStrataScale.value = value;
+        }
+    }
+
+    setCliffStrataAmount(value) {
+        this.cliffStrataAmount = value;
+        if (this.shaderMaterial?.uniforms?.uCliffStrataAmount) {
+            this.shaderMaterial.uniforms.uCliffStrataAmount.value = value;
+        }
+    }
+
+    setCliffDarkenAmount(value) {
+        this.cliffDarkenAmount = value;
+        if (this.shaderMaterial?.uniforms?.uCliffDarkenAmount) {
+            this.shaderMaterial.uniforms.uCliffDarkenAmount.value = value;
+        }
+    }
+
+    setCliffBaseColor(color) {
+        const c = (color instanceof THREE.Color) ? color : new THREE.Color(color);
+        this.cliffBaseColor = c;
+        if (this.shaderMaterial?.uniforms?.uCliffBaseColor) {
+            this.shaderMaterial.uniforms.uCliffBaseColor.value.copy(c);
+        }
+    }
+
+    setCliffLightColor(color) {
+        const c = (color instanceof THREE.Color) ? color : new THREE.Color(color);
+        this.cliffLightColor = c;
+        if (this.shaderMaterial?.uniforms?.uCliffLightColor) {
+            this.shaderMaterial.uniforms.uCliffLightColor.value.copy(c);
+        }
+    }
+
+    setCliffMossColor(color) {
+        const c = (color instanceof THREE.Color) ? color : new THREE.Color(color);
+        this.cliffMossColor = c;
+        if (this.shaderMaterial?.uniforms?.uCliffMossColor) {
+            this.shaderMaterial.uniforms.uCliffMossColor.value.copy(c);
+        }
+    }
+
+    setCliffMossAmount(value) {
+        this.cliffMossAmount = value;
+        if (this.shaderMaterial?.uniforms?.uCliffMossAmount) {
+            this.shaderMaterial.uniforms.uCliffMossAmount.value = value;
+        }
+    }
+
+    setCliffDebug(enabled) {
+        this.cliffDebug = enabled;
+        if (this.shaderMaterial?.uniforms?.uCliffDebug) {
+            this.shaderMaterial.uniforms.uCliffDebug.value = enabled ? 1.0 : 0.0;
+        }
+    }
+
+    setEnvironmentalFields(pressure, humidity, temperature) {
+        if (!this.shaderMaterial) return;
+        const u = this.shaderMaterial.uniforms;
+        if (u.uEnvPressure) u.uEnvPressure.value = pressure;
+        if (u.uEnvHumidity) u.uEnvHumidity.value = humidity;
+        if (u.uEnvTemperature) u.uEnvTemperature.value = temperature;
     }
 }

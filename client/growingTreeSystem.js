@@ -389,17 +389,17 @@ class GrowingTreeSystem {
             // Update foliage materials with new texture
             for (const part of this.parts) {
                 if (part.name.startsWith('foliage_')) {
-                    part.mesh.material.uniforms.map.value = texture;
+                    part.mesh.material.map = texture;
                 }
             }
         }
         console.log('[GrowingTreeSystem] Season set to:', this.currentSeason, 'Growth modifier:', this.seasonGrowthModifiers[this.currentSeason]);
     }
 
-    addTree(x, z, y = 0) {
+    addTree(x, z, y = 0, metadata = {}) {
         if (this.treeCount >= this.maxTrees) {
             console.warn('[GrowingTreeSystem] Max trees reached:', this.maxTrees);
-            return;
+            return -1;
         }
 
         const index = this.treeCount;
@@ -413,7 +413,7 @@ class GrowingTreeSystem {
         const waterLevel = this.terrainSystem ? this.terrainSystem.getWaterLevel() : -1.5;
         if (y < waterLevel + 0.05) {
             console.warn('[GrowingTreeSystem] Skipping underwater tree at', x, z, 'height:', y);
-            return;
+            return -1;
         }
 
         // Calculate biome modifiers
@@ -426,9 +426,11 @@ class GrowingTreeSystem {
         // Get wind multiplier from wind field
         const windMultiplier = this.windField.get(`${Math.floor(x)},${Math.floor(z)}`) || 1.0;
 
-        // Per-tree variation
-        const growthSpeed = 0.8 + Math.random() * 0.4;
-        const finalHeight = (0.8 + Math.random() * 0.4) * 1.5; // 0.8 - 1.2
+        // Per-tree variation, biased by biome metadata
+        const maxScale = metadata.maxScale || 1.0;
+        const growthRate = metadata.growthRate || 1.0;
+        const growthSpeed = (0.8 + Math.random() * 0.4) * growthRate;
+        const finalHeight = (0.8 + Math.random() * 0.4) * 1.5 * maxScale;
 
         const board = window.game && window.game.boardSystem;
         const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(x, z) : new THREE.Vector3(0, 1, 0);
@@ -443,7 +445,9 @@ class GrowingTreeSystem {
             finalHeight,
             biomeModifier: biomeModifier * nearWater,
             windMultiplier,
-            normal: normal.clone()
+            normal: normal.clone(),
+            biome: metadata.biome,
+            species: metadata.species
         });
 
         // Initialize height smoothing buffer
@@ -470,6 +474,8 @@ class GrowingTreeSystem {
         for (const part of this.parts) {
             part.mesh.count = this.treeCount;
         }
+
+        return index;
     }
 
     update(timeSec, windStrength, windDirection) {
@@ -512,9 +518,15 @@ class GrowingTreeSystem {
     }
 
     _applyGrowthScaling() {
+        let anyChanged = false;
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            // Skip fully-grown trees that already have correct scale cached
+            if (data._lastGrowthScale === data.growthStage * data.finalHeight && data.growthStage >= 1.0) {
+                continue;
+            }
             const growthScale = data.growthStage * data.finalHeight;
+            data._lastGrowthScale = growthScale;
 
             // Ensure minimum scale to avoid invisible trees
             const scale = Math.max(growthScale, 0.1);
@@ -530,10 +542,13 @@ class GrowingTreeSystem {
             for (const part of this.parts) {
                 part.mesh.setMatrixAt(i, this._scratchMatrix);
             }
+            anyChanged = true;
         }
 
-        for (const part of this.parts) {
-            part.mesh.instanceMatrix.needsUpdate = true;
+        if (anyChanged) {
+            for (const part of this.parts) {
+                part.mesh.instanceMatrix.needsUpdate = true;
+            }
         }
     }
 
@@ -553,13 +568,11 @@ class GrowingTreeSystem {
         const meshExtent = 96; // ±96 units from camera (192x192 vertex grid)
         const waterCutoff = (board.waterLevel != null ? board.waterLevel : -9) + 0.05;
 
-        if (Math.random() < 0.02) {
-            console.log('[GrowingTreeSystem] updateTreeHeights called, treeCount:', this.treeCount, 'camera pos:', camera.position.x, camera.position.z);
-        }
-
         // Throttle distant tree updates to ~4 Hz (every 250 ms)
         const now = performance.now();
         const shouldUpdateDistant = !this._lastDistantTreeUpdate || (now - this._lastDistantTreeUpdate) > 250;
+
+        let anyMatrixChanged = false;
 
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
@@ -573,20 +586,20 @@ class GrowingTreeSystem {
                 // Within mesh range: use terrain system (synchronous)
                 targetHeight = board.getUnifiedTerrainHeight(tree.x, tree.z);
             } else {
-                // Outside mesh range: use square heights (async - skip this frame if not ready)
-                // For now, keep current height to avoid jarring updates
+                // Outside mesh range: keep current height; update async occasionally
                 targetHeight = this._currentHeights[i] || tree.y;
 
-                // Trigger async update in background using square heights
+                // Trigger async update in background using square heights (throttled)
                 if (shouldUpdateDistant && typeof board.getSquareHeights === 'function') {
                     board.getSquareHeights(tree.x, tree.z).then(height => {
-                        // Discard underwater height updates
                         if (height < waterCutoff) return;
-                        // Update height when server response arrives
                         if (this._currentHeights && this._currentHeights[i] !== undefined) {
                             this._currentHeights[i] = height;
                             tree.y = height;
                             this.updateTreeInstanceMatrix(i, tree);
+                            for (const part of this.parts) {
+                                part.mesh.instanceMatrix.needsUpdate = true;
+                            }
                         }
                     });
                 }
@@ -605,16 +618,19 @@ class GrowingTreeSystem {
                 tree.normal = board.getTerrainNormal(tree.x, tree.z).clone();
             }
 
-            // Update the Y position in the tree data
             tree.y = newHeight;
 
-            if (Math.random() < 0.005 && i === 0) {
-                const n = tree.normal || UP;
-                console.log('[GrowingTreeSystem] Tree 0: current y:', tree.y.toFixed(3), 'targetHeight:', targetHeight.toFixed(3), 'normal:', n.x.toFixed(3), n.y.toFixed(3), n.z.toFixed(3), 'dx:', dx.toFixed(1), 'dz:', dz.toFixed(1));
+            // Only rewrite matrices if height or normal changed meaningfully
+            if (Math.abs(newHeight - currentHeight) > 0.001) {
+                this.updateTreeInstanceMatrix(i, tree);
+                anyMatrixChanged = true;
             }
+        }
 
-            // Update the instance matrix for this tree (with terrain tilt)
-            this.updateTreeInstanceMatrix(i, tree);
+        if (anyMatrixChanged) {
+            for (const part of this.parts) {
+                part.mesh.instanceMatrix.needsUpdate = true;
+            }
         }
 
         if (shouldUpdateDistant) {
@@ -639,10 +655,6 @@ class GrowingTreeSystem {
 
         for (const part of this.parts) {
             part.mesh.setMatrixAt(i, this._scratchMatrix);
-        }
-
-        for (const part of this.parts) {
-            part.mesh.instanceMatrix.needsUpdate = true;
         }
     }
 

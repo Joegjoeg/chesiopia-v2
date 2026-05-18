@@ -746,7 +746,17 @@ class CameraController {
     getTarget() {
         return this.target.clone();
     }
-    
+
+    getHeadingRadians() {
+        // orbitAzimuth already tracks the camera's rotation around the Y axis
+        if (typeof this.orbitAzimuth === 'number') {
+            return this.orbitAzimuth;
+        }
+        const forward = new THREE.Vector3();
+        forward.subVectors(this.target, this.camera.position);
+        return Math.atan2(forward.x, forward.z);
+    }
+
     setTarget(x, y, z) {
         this.target.set(x, y, z);
         this.updateCameraPosition();

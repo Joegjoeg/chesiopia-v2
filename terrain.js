@@ -12,7 +12,27 @@ class TerrainGenerator {
         this.riverMaxDepth = 1.5;     // Max depth for river channels
         
         // Tree data for consistent blocking between client and server
-        this.trees = new Map(); // Store tree positions by tile coordinates
+        this.trees = new Map(); // key="x,y" -> {x, y, biome, maxScale, growthRate, species, clumpId}
+
+        // Biome-aware tree generation parameters
+        this.BIOME_TREE_CONFIG = {
+            deep_water:   { density: 0.00, clumpiness: 0.0, minSlope:  0, maxSlope:  0, maxScale: 0.0, growthRate: 0.0, species: 'none' },
+            shallow_water:{ density: 0.00, clumpiness: 0.0, minSlope:  0, maxSlope:  0, maxScale: 0.0, growthRate: 0.0, species: 'none' },
+            beach:        { density: 0.00, clumpiness: 0.0, minSlope:  0, maxSlope:  0, maxScale: 0.0, growthRate: 0.0, species: 'none' },
+            lowland:      { density: 0.06, clumpiness: 0.3, minSlope:  2, maxSlope: 20, maxScale: 0.9, growthRate: 1.1, species: 'poplar' },
+            grassland:    { density: 0.12, clumpiness: 0.3, minSlope:  3, maxSlope: 30, maxScale: 1.0, growthRate: 1.0, species: 'terrain' },
+            forest:       { density: 0.50, clumpiness: 0.8, minSlope:  8, maxSlope: 50, maxScale: 1.3, growthRate: 0.7, species: 'terrain' },
+            mountain:     { density: 0.08, clumpiness: 0.2, minSlope: 20, maxSlope: 70, maxScale: 0.7, growthRate: 0.4, species: 'growing' },
+            snow:         { density: 0.02, clumpiness: 0.1, minSlope: 15, maxSlope: 55, maxScale: 0.5, growthRate: 0.2, species: 'growing' }
+        };
+
+        // Clump noise scale for clustering
+        this.clumpNoiseScale = 0.04;
+
+        // Biome patch noise for breaking up concentric rings
+        this.biomePatchScale = 0.025;
+        this.biomePatchStrength = 0.0;
+        this.biomePatchSeedOffset = 123.45;
         
         // River channels: key="x,y" -> depth (how much terrain was carved down)
         this.rivers = new Map();
@@ -20,6 +40,22 @@ class TerrainGenerator {
 
         // Planet mapping for coordinate wrapping
         this.planetMapping = null;
+
+        // Celestial double-pendulum terrain generation
+        this.celestialPendulum = {
+            enabled: true,
+            r1: 12,
+            r2: 8,
+            sunAngle: 0,
+            moonAngle: 0,
+            freqX: 0.025,
+            freqZ: 0.018,
+            noiseBlend: 0.25
+        };
+
+        // Probe system: pre-committed height constraints for blend zones
+        this.probes = new Map();
+        this.probeInfluenceRadius = 48;
 
         // Simple noise implementation - will be initialized with seed
         this.permutation = [];
@@ -68,8 +104,63 @@ class TerrainGenerator {
         };
     }
     
+    setCelestialAngles(sunAngle, moonAngle) {
+        this.celestialPendulum.sunAngle = sunAngle;
+        this.celestialPendulum.moonAngle = moonAngle;
+    }
+
+    getPendulumHeight(x, z) {
+        const cp = this.celestialPendulum;
+        const sunPhase  = cp.sunAngle  + x * cp.freqX + z * cp.freqZ;
+        const moonPhase = cp.moonAngle + x * cp.freqZ * 1.3 - z * cp.freqX * 0.7;
+        const h1 = cp.r1 * Math.sin(sunPhase);
+        const h2 = h1 + cp.r2 * Math.sin(moonPhase);
+        return -h2;
+    }
+
+    getNaturalHeight(x, z) {
+        const pendulum = this.getPendulumHeight(x, z);
+        if (this.celestialPendulum.noiseBlend > 0) {
+            const noise = this.simplexNoise(
+                x * this.noiseScale * 2,
+                z * this.noiseScale * 2
+            ) * this.celestialPendulum.noiseBlend * this.heightScale * 0.5;
+            return pendulum + noise;
+        }
+        return pendulum;
+    }
+
+    registerProbe(x, z, options = {}) {
+        const key = `${x},${z}`;
+        if (this.probes.has(key)) return this.probes.get(key).height;
+        const height = this.getNaturalHeight(x, z);
+        const probe = {
+            x, z, height,
+            radius: options.radius || this.probeInfluenceRadius,
+            profile: options.profile || 'smooth'
+        };
+        this.probes.set(key, probe);
+        return height;
+    }
+
+    findNearbyProbes(x, z) {
+        const results = [];
+        for (const probe of this.probes.values()) {
+            const dx = x - probe.x;
+            const dz = z - probe.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < probe.radius) {
+                results.push({ x: probe.x, z: probe.z, height: probe.height, radius: probe.radius, profile: probe.profile, distance: dist });
+            }
+        }
+        results.sort((a, b) => a.distance - b.distance);
+        return results;
+    }
+
     getRawHeight(x, y) {
-        // Pure noise-based height without river carving
+        if (this.celestialPendulum.enabled) {
+            return this.getNaturalHeight(x, y);
+        }
         let height = 0;
         let amplitude = 1;
         let frequency = 1;
@@ -102,6 +193,28 @@ class TerrainGenerator {
         }
 
         let finalHeight = this.getRawHeight(x, y);
+        
+        // Blend toward nearby probes for smooth transitions
+        const nearby = this.findNearbyProbes(x, y);
+        if (nearby.length > 0) {
+            let blended = finalHeight;
+            let totalWeight = 0;
+            for (const p of nearby) {
+                const t = p.distance / p.radius;
+                let w;
+                switch (p.profile) {
+                    case 'steep':   w = t < 0.3 ? 1 : 0; break;
+                    case 'textured': w = (1-t)*(1-t) + this.simplexNoise(x*0.1, y*0.1)*0.15; break;
+                    default:        w = (1-t)*(1-t); break;
+                }
+                w = Math.max(0, Math.min(1, w));
+                blended += (p.height - blended) * w * 0.5;
+                totalWeight += w;
+            }
+            if (totalWeight > 0) {
+                finalHeight = blended;
+            }
+        }
         
         // Cache management
         if (this.tileCache.size >= this.maxCacheSize) {
@@ -200,51 +313,116 @@ class TerrainGenerator {
         return { type: 'dry', wadeable: false, blocked: false };
     }
     
-    // Add tree at position (for consistent server/client state)
-    addTree(x, y) {
+    // Add tree at position with optional metadata
+    addTree(x, y, metadata = {}) {
         const treeKey = `${x},${y}`;
-        this.trees.set(treeKey, { x, y });
+        this.trees.set(treeKey, { x, y, ...metadata });
     }
-    
+
     // Remove tree at position
     removeTree(x, y) {
         const treeKey = `${x},${y}`;
         this.trees.delete(treeKey);
     }
-    
+
     // Check if tree exists at position
     hasTreeAt(x, y) {
         const treeKey = `${x},${y}`;
         return this.trees.has(treeKey);
     }
+
+    // Get tree metadata at position
+    getTreeData(x, y) {
+        const treeKey = `${x},${y}`;
+        return this.trees.get(treeKey) || null;
+    }
     
-    // Generate trees for terrain (call this after terrain generation)
+    // Generate trees for terrain with biome-aware procedural placement
     generateTrees(searchRadius = 50) {
-        console.log(`[TerrainGen] Generating trees in radius ${searchRadius}`);
-        
+        console.log(`[TerrainGen] Generating biome-aware trees in radius ${searchRadius}`);
+
         for (let x = -searchRadius; x <= searchRadius; x++) {
             for (let y = -searchRadius; y <= searchRadius; y++) {
-                const height = this.getHeight(x, y);
-                
-                // Skip water tiles - trees don't grow underwater
-                if (height < this.waterLevel) {
-                    continue;
-                }
-                
-                const slope = this.calculateSlope(x, y, height);
-                
-                // Generate trees on moderate slopes above water
-                if (slope > 15 && slope < 75) {
-                    // Add some randomness to tree placement
-                    const rng = this.seed !== null ? this.seededRandom()() : Math.random();
-                    if (rng < 0.25) { // 25% chance of tree on suitable terrain
-                        this.addTree(x, y);
-                    }
+                this._tryPlaceTree(x, y);
+            }
+        }
+
+        console.log(`[TerrainGen] Generated ${this.trees.size} biome-aware trees`);
+    }
+
+    // Deterministic per-tile random value (0-1) based on coordinates + world seed
+    _tileRandom(x, y, offset = 0) {
+        let h = ((this.seed || 12345) + x * 374761 + y * 668265 + offset * 997) & 0x7fffffff;
+        h = (h * 9301 + 49297) % 233280;
+        return h / 233280;
+    }
+
+    // Attempt to place a single tree at world (x,y) using biome rules
+    _tryPlaceTree(x, y) {
+        const height = this.getHeight(x, y);
+        if (height < this.waterLevel) return;
+
+        const slope = this.calculateSlope(x, y, height);
+        const biome = this.getBiomeType(height, x, y);
+        const config = this.BIOME_TREE_CONFIG[biome];
+        if (!config || config.density <= 0) return;
+        if (slope < config.minSlope || slope > config.maxSlope) return;
+
+        const rng = this._tileRandom(x, y, 0);
+        if (rng > config.density) return;
+
+        // Clumpiness: use secondary noise to create clustering
+        if (config.clumpiness > 0) {
+            const clumpNoise = this.simplexNoise(x * this.clumpNoiseScale, y * this.clumpNoiseScale);
+            const clumpThreshold = 1.0 - config.clumpiness;
+            if (clumpNoise < clumpThreshold) return;
+        }
+
+        // Per-tree variation
+        const scaleVar = this._tileRandom(x, y, 1);
+        const maxScale = config.maxScale * (0.8 + scaleVar * 0.4);
+        const growthVar = this._tileRandom(x, y, 2);
+        const growthRate = config.growthRate * (0.85 + growthVar * 0.3);
+
+        this.addTree(x, y, { biome, maxScale, growthRate, species: config.species });
+    }
+
+    // Generate trees for a specific chunk on-demand
+    generateTreesForChunk(chunkX, chunkZ, chunkSize = 16) {
+        const startX = chunkX * chunkSize;
+        const startZ = chunkZ * chunkSize;
+        let added = 0;
+        for (let z = 0; z < chunkSize; z++) {
+            for (let x = 0; x < chunkSize; x++) {
+                const wx = startX + x;
+                const wz = startZ + z;
+                const key = `${wx},${wz}`;
+                if (!this.trees.has(key)) {
+                    this._tryPlaceTree(wx, wz);
+                    if (this.trees.has(key)) added++;
                 }
             }
         }
-        
-        console.log(`[TerrainGen] Generated ${this.trees.size} trees`);
+        if (added > 0) {
+            console.log(`[TerrainGen] Added ${added} trees for chunk (${chunkX}, ${chunkZ})`);
+        }
+        return added;
+    }
+
+    // Get all trees within a chunk
+    getTreesForChunk(chunkX, chunkZ, chunkSize = 16) {
+        const startX = chunkX * chunkSize;
+        const startZ = chunkZ * chunkSize;
+        const result = [];
+        for (let z = 0; z < chunkSize; z++) {
+            for (let x = 0; x < chunkSize; x++) {
+                const wx = startX + x;
+                const wz = startZ + z;
+                const data = this.getTreeData(wx, wz);
+                if (data) result.push(data);
+            }
+        }
+        return result;
     }
     
     calculateSlope(x, y, height) {
@@ -260,21 +438,31 @@ class TerrainGenerator {
         return Math.atan(Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI);
     }
     
-    getBiomeType(height) {
-        // Height-based biome classification - adjusted for better diversity
-        if (height < this.deepWaterLevel) {
+    getPatchNoise(x, z) {
+        const scale = this.biomePatchScale || 0.025;
+        const seed = this.biomePatchSeedOffset || 123.45;
+        return this.simplexNoise(x * scale + seed, z * scale + seed * 2.0);
+    }
+
+    getBiomeType(height, x, z) {
+        // Height-based biome classification with optional patch noise
+        let effectiveHeight = height;
+        if (this.biomePatchStrength > 0 && x !== undefined && z !== undefined) {
+            effectiveHeight += this.getPatchNoise(x, z) * this.biomePatchStrength;
+        }
+        if (effectiveHeight < this.deepWaterLevel) {
             return 'deep_water';
-        } else if (height < this.waterLevel) {
+        } else if (effectiveHeight < this.waterLevel) {
             return 'shallow_water';
-        } else if (height < 0) {
+        } else if (effectiveHeight < 0) {
             return 'beach';
-        } else if (height < 2) {
+        } else if (effectiveHeight < 2) {
             return 'lowland';
-        } else if (height < 8) {
+        } else if (effectiveHeight < 8) {
             return 'grassland';
-        } else if (height < 15) {
+        } else if (effectiveHeight < 15) {
             return 'forest';
-        } else if (height < 22) {
+        } else if (effectiveHeight < 22) {
             return 'mountain';
         } else {
             return 'snow';
@@ -316,21 +504,25 @@ class TerrainGenerator {
         return Math.max(0, Math.min(1, temperature));
     }
     
-    getBiomeColor(height) {
-        // Height-based biome coloring with water table
-        if (height < this.deepWaterLevel) {
+    getBiomeColor(height, x, z) {
+        // Height-based biome coloring with water table and optional patch noise
+        let effectiveHeight = height;
+        if (this.biomePatchStrength > 0 && x !== undefined && z !== undefined) {
+            effectiveHeight += this.getPatchNoise(x, z) * this.biomePatchStrength;
+        }
+        if (effectiveHeight < this.deepWaterLevel) {
             return { r: 0.05, g: 0.15, b: 0.4 }; // Deep water - dark blue
-        } else if (height < this.waterLevel) {
+        } else if (effectiveHeight < this.waterLevel) {
             return { r: 0.15, g: 0.35, b: 0.65 }; // Shallow water - lighter blue
-        } else if (height < 0) {
+        } else if (effectiveHeight < 0) {
             return { r: 0.8, g: 0.75, b: 0.45 }; // Wet sand / shore
-        } else if (height < 3) {
+        } else if (effectiveHeight < 3) {
             return { r: 0.35, g: 0.65, b: 0.25 }; // Low grass
-        } else if (height < 10) {
+        } else if (effectiveHeight < 10) {
             return { r: 0.2, g: 0.55, b: 0.2 }; // Grass
-        } else if (height < 18) {
+        } else if (effectiveHeight < 18) {
             return { r: 0.15, g: 0.45, b: 0.15 }; // Dark grass / forest edge
-        } else if (height < 25) {
+        } else if (effectiveHeight < 25) {
             return { r: 0.45, g: 0.4, b: 0.3 }; // Rock
         } else {
             return { r: 0.85, g: 0.85, b: 0.85 }; // Snow
@@ -350,8 +542,8 @@ class TerrainGenerator {
                 // Get height directly from noise function
                 const height = this.getHeight(worldX, worldZ);
                 const isBlocked = this.isTileBlocked(worldX, worldZ);
-                const color = this.getBiomeColor(height);
-                const biomeType = this.getBiomeType(height);
+                const color = this.getBiomeColor(height, worldX, worldZ);
+                const biomeType = this.getBiomeType(height, worldX, worldZ);
                 
                 const waterState = this.getWaterState(height);
                 chunk.push({
@@ -365,12 +557,89 @@ class TerrainGenerator {
                     type: biomeType,
                     elevation: height,
                     moisture: this.getMoisture(worldX, worldZ, height),
-                    temperature: this.getTemperature(worldX, worldZ, height)
+                    temperature: this.getTemperature(worldX, worldZ, height),
+                    pressure: 0.5
                 });
             }
         }
         
         return chunk;
+    }
+
+    blendChunkEdges(chunkData, chunkX, chunkZ, chunkSize, neighbors) {
+        // neighbors: { north: chunkData, south: chunkData, east: chunkData, west: chunkData }
+        const blendWidth = 6; // tiles to blend inward from edge
+
+        const getTile = (data, lx, lz) => {
+            if (!data) return null;
+            const idx = lz * chunkSize + lx;
+            return (idx >= 0 && idx < data.length) ? data[idx] : null;
+        };
+
+        for (let i = 0; i < chunkData.length; i++) {
+            const tile = chunkData[i];
+            const lx = i % chunkSize;
+            const lz = Math.floor(i / chunkSize);
+            let blendedHeight = tile.height;
+            let totalWeight = 0;
+
+            // North edge (lz == 0) - blend with south edge of north neighbor
+            if (lz < blendWidth && neighbors.north) {
+                const neighborTile = getTile(neighbors.north, lx, chunkSize - 1 - lz);
+                if (neighborTile) {
+                    const t = lz / blendWidth; // 0 at edge, 1 at blendWidth
+                    const w = (1 - t) * (1 - t); // quadratic falloff
+                    blendedHeight = blendedHeight * (1 - w) + neighborTile.height * w;
+                    totalWeight += w;
+                }
+            }
+
+            // South edge (lz >= chunkSize - blendWidth) - blend with north edge of south neighbor
+            if (lz >= chunkSize - blendWidth && neighbors.south) {
+                const distFromEdge = (chunkSize - 1 - lz);
+                const neighborTile = getTile(neighbors.south, lx, distFromEdge);
+                if (neighborTile) {
+                    const t = distFromEdge / blendWidth;
+                    const w = (1 - t) * (1 - t);
+                    blendedHeight = blendedHeight * (1 - w) + neighborTile.height * w;
+                    totalWeight += w;
+                }
+            }
+
+            // West edge (lx < blendWidth) - blend with east edge of west neighbor
+            if (lx < blendWidth && neighbors.west) {
+                const neighborTile = getTile(neighbors.west, chunkSize - 1 - lx, lz);
+                if (neighborTile) {
+                    const t = lx / blendWidth;
+                    const w = (1 - t) * (1 - t);
+                    blendedHeight = blendedHeight * (1 - w) + neighborTile.height * w;
+                    totalWeight += w;
+                }
+            }
+
+            // East edge (lx >= chunkSize - blendWidth) - blend with west edge of east neighbor
+            if (lx >= chunkSize - blendWidth && neighbors.east) {
+                const distFromEdge = (chunkSize - 1 - lx);
+                const neighborTile = getTile(neighbors.east, distFromEdge, lz);
+                if (neighborTile) {
+                    const t = distFromEdge / blendWidth;
+                    const w = (1 - t) * (1 - t);
+                    blendedHeight = blendedHeight * (1 - w) + neighborTile.height * w;
+                    totalWeight += w;
+                }
+            }
+
+            // Corner blending: average the two edge blends
+            if (totalWeight > 0) {
+                tile.height = blendedHeight;
+                tile.elevation = blendedHeight;
+                const color = this.getBiomeColor(blendedHeight);
+                tile.color = color;
+                tile.biome = this.getBiomeType(blendedHeight);
+                tile.type = tile.biome;
+                tile.waterState = this.getWaterState(blendedHeight);
+            }
+        }
     }
     
     clearCache() {

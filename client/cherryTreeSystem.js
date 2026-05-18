@@ -255,19 +255,20 @@ class CherryTreeSystem {
         return mesh;
     }
 
-    addTree(worldX, worldZ, terrainHeight) {
+    addTree(worldX, worldZ, terrainHeight, metadata = {}) {
         if (this.treeCount >= this.maxTrees) {
             console.warn('[CherryTreeSystem] Capacity reached (' + this.maxTrees + ')');
             return -1;
         }
 
         const i = this.treeCount;
-        const scale  = 0.85 + Math.random() * 0.45; // 0.85 - 1.30
+        const maxScale = metadata.maxScale || 1.0;
+        const scale  = (0.85 + Math.random() * 0.45) * maxScale;
         const rotY   = Math.random() * Math.PI * 2;
 
         const board = window.game && window.game.boardSystem;
         const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(worldX, worldZ) : new THREE.Vector3(0, 1, 0);
-        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone() });
+        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone(), biome: metadata.biome, growthRate: metadata.growthRate });
 
         if (!this._currentHeights) {
             this._currentHeights = new Float32Array(this.maxTrees);

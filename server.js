@@ -10,6 +10,7 @@ const MoveValidator = require('./moveValidator');
 const TerrainGenerator = require('./terrain');
 const AuthManager = require('./auth');
 const EmailService = require('./emailService');
+const { EnvironmentalSimulation } = require('./environmentalSimulation');
 
 class ChessopiaServer {
     constructor() {
@@ -70,6 +71,7 @@ class ChessopiaServer {
         this.setupRoutes();
         this.setupSocketHandlers();
         this.initializeWorld();
+        this.envSimulation = null;
     }
     
     // Setup error interceptor to forward server errors to clients
@@ -160,6 +162,7 @@ class ChessopiaServer {
         // Configure static file serving with proper MIME types
         const clientStatic = express.static(path.join(__dirname, 'client'), {
             setHeaders: (res, filePath) => {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 const ext = path.extname(filePath);
                 if (ext === '.css') {
                     res.setHeader('Content-Type', 'text/css');
@@ -206,12 +209,31 @@ class ChessopiaServer {
         this.app.get('/api/trees', (req, res) => {
             const trees = Array.from(this.terrainGenerator.trees.entries()).map(([key, data]) => {
                 const [x, y] = key.split(',').map(Number);
-                return { x, y };
+                return {
+                    x, y,
+                    biome: data.biome || 'unknown',
+                    maxScale: data.maxScale || 1.0,
+                    growthRate: data.growthRate || 1.0,
+                    species: data.species || 'terrain'
+                };
             });
             console.log(`[Server] Sent tree data: ${trees.length} trees`);
             res.json({ trees });
         });
-        
+
+        // Endpoint for getting trees within a specific chunk (for on-demand loading)
+        this.app.get('/api/trees/chunk/:chunkX/:chunkZ', (req, res) => {
+            const cX = parseInt(req.params.chunkX);
+            const cZ = parseInt(req.params.chunkZ);
+            // Ensure trees are generated for this chunk before fetching
+            const added = this.terrainGenerator.generateTreesForChunk(cX, cZ);
+            const trees = this.terrainGenerator.getTreesForChunk(cX, cZ);
+            if (added > 0 || trees.length > 0) {
+                console.log(`[Server] /api/trees/chunk/${cX}/${cZ} generated ${added}, returning ${trees.length}`);
+            }
+            res.json({ trees });
+        });
+
         // Endpoint for getting chunk data with blocked information
         this.app.get('/api/terrain/chunk/:chunkX/:chunkZ', (req, res) => {
             const { chunkX, chunkZ } = req.params;
@@ -224,14 +246,74 @@ class ChessopiaServer {
                 return res.json(this.terrainCache.get(chunkKey));
             }
             
+            // Update celestial angles before generation (snapshot current time)
+            const elapsed = Date.now() - this.epoch;
+            const dayLength = this.dayLength || 60000;
+            const sunAngle = (elapsed / dayLength) * 2 * Math.PI - Math.PI / 2;
+            const moonPeriod = 28 * dayLength;
+            const moonAngle = ((elapsed % moonPeriod) / moonPeriod) * 2 * Math.PI - Math.PI / 2;
+            this.terrainGenerator.setCelestialAngles(sunAngle, moonAngle);
+
             // Generate chunk on-demand
-            const chunkData = this.terrainGenerator.getChunkData(parseInt(chunkX), parseInt(chunkZ));
-            console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${chunkX}, ${chunkZ})`);
+            const cX = parseInt(chunkX);
+            const cZ = parseInt(chunkZ);
+            const chunkData = this.terrainGenerator.getChunkData(cX, cZ);
             
+            // Blend edges with adjacent cached chunks for smooth boundaries
+            const chunkSize = 16;
+            const neighbors = {
+                north: this.terrainCache.get(`${cX},${cZ - 1}`) || null,
+                south: this.terrainCache.get(`${cX},${cZ + 1}`) || null,
+                west:  this.terrainCache.get(`${cX - 1},${cZ}`) || null,
+                east:  this.terrainCache.get(`${cX + 1},${cZ}`) || null,
+            };
+            if (neighbors.north || neighbors.south || neighbors.west || neighbors.east) {
+                this.terrainGenerator.blendChunkEdges(chunkData, cX, cZ, chunkSize, neighbors);
+                console.log(`[Server] Blended chunk edges for (${cX}, ${cZ}) with cached neighbors`);
+            }
+            
+            // Inject environmental simulation fields into chunk tiles
+            if (this.envSimulation) {
+                for (const tile of chunkData) {
+                    const field = this.envSimulation.envFields.get(`${tile.x},${tile.z}`);
+                    if (field) {
+                        tile.pressure = field.pressure;
+                        tile.moisture = field.humidity;
+                        tile.temperature = field.temperature;
+                    }
+                }
+            }
+
+            console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${cX}, ${cZ})`);
+
             // Cache the chunk
             this.terrainCache.set(chunkKey, chunkData);
-            
+
             res.json(chunkData);
+        });
+        
+        // Endpoint for probe requests (client foreknowledge of distant terrain)
+        this.app.get('/api/terrain/probe', (req, res) => {
+            const x = parseFloat(req.query.x);
+            const z = parseFloat(req.query.z);
+            const radius = parseFloat(req.query.radius) || 48;
+            const profile = req.query.profile || 'smooth';
+
+            if (isNaN(x) || isNaN(z)) {
+                return res.status(400).json({ error: 'x and z query params required' });
+            }
+
+            // Update celestial angles before probe generation
+            const elapsed = Date.now() - this.epoch;
+            const dayLength = this.dayLength || 60000;
+            const sunAngle = (elapsed / dayLength) * 2 * Math.PI - Math.PI / 2;
+            const moonPeriod = 28 * dayLength;
+            const moonAngle = ((elapsed % moonPeriod) / moonPeriod) * 2 * Math.PI - Math.PI / 2;
+            this.terrainGenerator.setCelestialAngles(sunAngle, moonAngle);
+
+            const height = this.terrainGenerator.registerProbe(x, z, { radius, profile });
+            console.log(`[Server] Probe registered at (${x}, ${z}) height=${height.toFixed(2)} radius=${radius} profile=${profile}`);
+            res.json({ x, z, height, radius, profile });
         });
         
         // Endpoint for recreating the world (dev tool)
@@ -276,6 +358,34 @@ class ChessopiaServer {
                 seed: this.worldSeed,
                 message: 'Current world seed'
             });
+        });
+        
+        // Endpoint for environmental field data
+        this.app.get('/api/environment/fields', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            const minX = parseFloat(req.query.minX) || -50;
+            const minZ = parseFloat(req.query.minZ) || -50;
+            const maxX = parseFloat(req.query.maxX) || 50;
+            const maxZ = parseFloat(req.query.maxZ) || 50;
+            const avg = req.query.avg === 'true';
+            
+            if (avg) {
+                const fields = this.envSimulation.getAverageFieldInRegion(minX, minZ, maxX, maxZ);
+                res.json(fields);
+            } else {
+                const fields = this.envSimulation.getFieldsInRegion(minX, minZ, maxX, maxZ);
+                res.json({ fields, tickCount: this.envSimulation.tickCount });
+            }
+        });
+        
+        // Endpoint for agent positions (debug)
+        this.app.get('/api/environment/agents', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            res.json({ agents: this.envSimulation.getAgentPositions() });
         });
         
         // Endpoint for testing server error forwarding
@@ -483,35 +593,68 @@ class ChessopiaServer {
             // Handle time/date parameter changes from clients
             socket.on('updateGameTime', (data) => {
                 console.log('[Server] Game time update from client:', data);
+                this._ensureValidTimeState();
                 const now = Date.now();
                 const elapsed = now - this.epoch;
-                const totalDays = elapsed / this.dayLength;
+
+                let currentDayLength = (typeof this.dayLength === 'number' && Number.isFinite(this.dayLength) && this.dayLength > 0)
+                    ? this.dayLength
+                    : 60000;
+                if (currentDayLength !== this.dayLength) {
+                    console.warn('[Server] Invalid stored dayLength detected. Resetting to 60000ms. Previous value:', this.dayLength);
+                    this.dayLength = currentDayLength;
+                }
+
+                const totalDays = elapsed / currentDayLength;
 
                 if (data.dayLength !== undefined) {
-                    // Preserve current game time when changing speed
-                    const newDayLength = data.dayLength;
-                    this.epoch = now - (totalDays * newDayLength);
-                    this.dayLength = newDayLength;
+                    const requestedDayLength = Number(data.dayLength);
+                    if (Number.isFinite(requestedDayLength) && requestedDayLength > 0) {
+                        // Preserve current game time when changing speed
+                        this.epoch = now - (totalDays * requestedDayLength);
+                        this.dayLength = requestedDayLength;
+                        currentDayLength = requestedDayLength;
+                    } else {
+                        console.warn('[Server] Ignoring invalid dayLength from client:', data.dayLength);
+                    }
                 }
                 if (data.timeOfDay !== undefined) {
-                    // Preserve current day/year, change time-of-day only
-                    const currentDay = Math.floor(totalDays);
-                    const newTotalDays = currentDay + (data.timeOfDay / 24);
-                    this.epoch = now - (newTotalDays * this.dayLength);
+                    const requestedTime = Number(data.timeOfDay);
+                    if (Number.isFinite(requestedTime)) {
+                        const clampedTime = Math.max(0, Math.min(24, requestedTime));
+                        // Preserve current day/year, change time-of-day only
+                        const currentDay = Math.floor(totalDays);
+                        const newTotalDays = currentDay + (clampedTime / 24);
+                        this.epoch = now - (newTotalDays * this.dayLength);
+                    } else {
+                        console.warn('[Server] Ignoring invalid timeOfDay from client:', data.timeOfDay);
+                    }
                 }
                 if (data.dayOfYear !== undefined) {
-                    // Preserve current year and time-of-day, change day-of-year
-                    const currentYear = Math.floor(totalDays / 120);
-                    const currentTimeOfDay = totalDays % 1;
-                    const newTotalDays = (currentYear * 120) + data.dayOfYear + currentTimeOfDay;
-                    this.epoch = now - (newTotalDays * this.dayLength);
+                    const requestedDayOfYear = Number(data.dayOfYear);
+                    if (Number.isFinite(requestedDayOfYear)) {
+                        // Preserve current year and time-of-day, change day-of-year
+                        const normalizedDayOfYear = Math.max(0, Math.min(119, Math.floor(requestedDayOfYear)));
+                        const currentYear = Math.floor(totalDays / 120);
+                        const currentTimeOfDay = totalDays % 1;
+                        const newTotalDays = (currentYear * 120) + normalizedDayOfYear + currentTimeOfDay;
+                        this.epoch = now - (newTotalDays * this.dayLength);
+                    } else {
+                        console.warn('[Server] Ignoring invalid dayOfYear from client:', data.dayOfYear);
+                    }
                 }
                 if (data.year !== undefined) {
-                    // Preserve current day-of-year and time-of-day, change year
-                    const currentDayOfYear = Math.floor(totalDays) % 120;
-                    const currentTimeOfDay = totalDays % 1;
-                    const newTotalDays = ((data.year - 1) * 120) + currentDayOfYear + currentTimeOfDay;
-                    this.epoch = now - (newTotalDays * this.dayLength);
+                    const requestedYear = Number(data.year);
+                    if (Number.isFinite(requestedYear)) {
+                        // Preserve current day-of-year and time-of-day, change year
+                        const normalizedYear = Math.max(1, Math.floor(requestedYear));
+                        const currentDayOfYear = Math.floor(totalDays) % 120;
+                        const currentTimeOfDay = totalDays % 1;
+                        const newTotalDays = ((normalizedYear - 1) * 120) + currentDayOfYear + currentTimeOfDay;
+                        this.epoch = now - (newTotalDays * this.dayLength);
+                    } else {
+                        console.warn('[Server] Ignoring invalid year from client:', data.year);
+                    }
                 }
 
                 // Broadcast updated time to all clients
@@ -875,6 +1018,19 @@ class ChessopiaServer {
                 console.log('=== RESET GAME COMPLETE ===');
             });
             
+            // Handle environmental field requests from clients
+            socket.on('getEnvFields', (data) => {
+                if (!this.envSimulation) {
+                    socket.emit('envFields', { error: 'Simulation not ready' });
+                    return;
+                }
+                const { minX, minZ, maxX, maxZ } = data || {};
+                const fields = this.envSimulation.getAverageFieldInRegion(
+                    minX ?? -50, minZ ?? -50, maxX ?? 50, maxZ ?? 50
+                );
+                socket.emit('envFields', fields);
+            });
+
             // Handle requests for console logs from any client or admin tool
             socket.on('requestConsoleLogs', () => {
                 console.log(`[Server] Console log request from ${socket.id}, broadcasting to all clients`);
@@ -1070,18 +1226,23 @@ class ChessopiaServer {
     
     async generateNewWorld() {
         console.log('[Server] Generating new world...');
-        
+
         // Generate new seed
         this.worldSeed = Math.floor(Math.random() * 1000000);
-        
+
         // Set seed for deterministic generation
         this.terrainGenerator.setSeed(this.worldSeed);
-        
+
         // Generate rivers
         this.terrainGenerator.generateRivers(80);
-        
-        // Clear cache
+
+        // Clear cache and old trees
         this.terrainCache.clear();
+        this.terrainGenerator.probes.clear();
+        this.terrainGenerator.trees.clear();
+
+        // Regenerate biome-aware trees for the new seed
+        this.terrainGenerator.generateTrees(50);
         
         // Initialize empty world data structure
         this.worldData = {
@@ -1263,6 +1424,9 @@ class ChessopiaServer {
             
             // Start periodic time sync broadcasts
             this.startTimeSync();
+
+            // Start environmental simulation
+            this.startEnvSimulation();
             
             // Test console forwarding after 5 seconds
             setTimeout(() => {
@@ -1273,20 +1437,54 @@ class ChessopiaServer {
     }
     
     getGameTime() {
+        this._ensureValidTimeState();
         const now = Date.now();
         const elapsed = now - this.epoch;
-        const totalDays = elapsed / this.dayLength;
+        const dayLength = (typeof this.dayLength === 'number' && Number.isFinite(this.dayLength) && this.dayLength > 0)
+            ? this.dayLength
+            : 60000;
+
+        if (dayLength !== this.dayLength) {
+            console.warn('[Server] Invalid dayLength detected when building game time payload. Resetting to 60000ms. Previous value:', this.dayLength);
+            this.dayLength = dayLength;
+        }
+
+        const totalDays = elapsed / dayLength;
         const year = Math.floor(totalDays / 120) + 1;
         const dayOfYear = Math.floor(totalDays) % 120;
         const timeOfDay = (totalDays % 1) * 24;
 
         return {
             elapsedTime: elapsed,
-            dayLength: this.dayLength,
+            dayLength,
             year,
             dayOfYear,
             timeOfDay
         };
+    }
+
+    _ensureValidTimeState() {
+        if (!Number.isFinite(this.dayLength) || this.dayLength <= 0) {
+            console.warn('[Server] Invalid dayLength detected. Resetting to 60000ms. Previous value:', this.dayLength);
+            this.dayLength = 60000;
+        }
+
+        if (!Number.isFinite(this.epoch)) {
+            console.warn('[Server] Invalid epoch detected. Recomputing from real-world time. Previous value:', this.epoch);
+            this._recomputeEpochFromRealWorld();
+        }
+    }
+
+    _recomputeEpochFromRealWorld() {
+        const nowMs = Date.now();
+        const realNow = new Date();
+        const startOfYear = new Date(realNow.getFullYear(), 0, 0);
+        const realDayOfYear = Math.floor((realNow - startOfYear) / (1000 * 60 * 60 * 24));
+        const gameDayOfYear = Math.floor((realDayOfYear / 365) * 120);
+        const gameYear = 1;
+        const timeOfDay = (realNow.getHours() + realNow.getMinutes() / 60) / 24;
+        const totalGameDays = (gameYear - 1) * 120 + gameDayOfYear + timeOfDay;
+        this.epoch = nowMs - (totalGameDays * this.dayLength);
     }
     
     startTimeSync() {
@@ -1295,6 +1493,31 @@ class ChessopiaServer {
             const gameTime = this.getGameTime();
             this.io.emit('timeSync', gameTime);
         }, 5000);
+    }
+
+    startEnvSimulation() {
+        console.log('[Server] Starting environmental simulation...');
+        this.envSimulation = new EnvironmentalSimulation(this.terrainGenerator, {
+            agentCount: 30,
+            tickIntervalMs: 2000,
+            bounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
+            seed: this.worldSeed || 42
+        });
+        this.envSimulation.init();
+        this.envSimulation.start();
+
+        // Tick loop
+        this.envSimInterval = setInterval(() => {
+            this.envSimulation.tick();
+        }, this.envSimulation.tickIntervalMs);
+
+        // Broadcast env fields to all clients every 3 seconds
+        this.envBroadcastInterval = setInterval(() => {
+            const avg = this.envSimulation.getAverageFieldInRegion(-50, -50, 50, 50);
+            this.io.emit('envFields', avg);
+        }, 3000);
+
+        console.log('[Server] Environmental simulation started');
     }
 }
 

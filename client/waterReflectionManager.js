@@ -27,6 +27,14 @@ class WaterReflectionManager {
         this.target = new THREE.Vector3();
         this.tempVector = new THREE.Vector3();
 
+        this.debugInfo = {
+            lastUpdateSuccessful: false,
+            lastSkipReason: 'init',
+            lastUpdatedTime: (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now()
+        };
+
         if (this.enabled) {
             this.renderTarget = new THREE.WebGLRenderTarget(this.renderSize, this.renderSize, {
                 minFilter: THREE.LinearFilter,
@@ -78,11 +86,11 @@ class WaterReflectionManager {
 
     update(waterMesh, camera) {
         if (!this.enabled || !this.renderTarget || !waterMesh || !camera) {
-            if (!this._debugLogged) { console.warn('[WRM] early exit - enabled:', this.enabled, 'rt:', !!this.renderTarget, 'mesh:', !!waterMesh, 'cam:', !!camera); this._debugLogged = true; }
+            this._markSkip('disabled-or-missing');
             return false;
         }
         if (!waterMesh.visible) {
-            if (!this._debugVisible) { console.warn('[WRM] water mesh not visible'); this._debugVisible = true; }
+            this._markSkip('water-hidden');
             return false;
         }
 
@@ -97,14 +105,14 @@ class WaterReflectionManager {
             this.tempVector.y = planePosition.y;
             const hDist = this.tempVector.distanceTo(planePosition);
             if (hDist > this.maxDistance) {
-                if (!this._debugDist) { console.warn('[WRM] too far horizontally:', hDist.toFixed(1), 'max:', this.maxDistance); this._debugDist = true; }
+                this._markSkip('max-distance');
                 return false;
             }
         }
 
         const vDist = Math.abs(camera.position.y - planePosition.y);
         if (this.maxHeight > 0 && vDist > this.maxHeight) {
-            if (!this._debugHeight) { console.warn('[WRM] too high vertically:', vDist.toFixed(1), 'max:', this.maxHeight); this._debugHeight = true; }
+            this._markSkip('max-height');
             return false;
         }
 
@@ -113,7 +121,7 @@ class WaterReflectionManager {
 
         this.viewVector.copy(planePosition).sub(cameraPosition);
         if (this.viewVector.dot(this.normal) > 0) {
-            if (!this._debugBelow) { console.warn('[WRM] camera below water plane'); this._debugBelow = true; }
+            this._markSkip('camera-behind-plane');
             return false;
         }
 
@@ -191,13 +199,36 @@ class WaterReflectionManager {
         if (this.renderer.shadowMap) this.renderer.shadowMap.autoUpdate = currentShadowAutoUpdate;
         this.renderer.setRenderTarget(currentRenderTarget);
 
-        if (!this._debugSuccessCount) this._debugSuccessCount = 0;
-        if (this._debugSuccessCount < 3) {
-            console.log('[WRM] reflection pass rendered successfully - cam:', this.mirrorCamera.position.toArray().map(v => v.toFixed(1)));
-            this._debugSuccessCount++;
-        }
-
+        this._markSuccess();
         return true;
+    }
+
+    getDebugInfo() {
+        return { ...this.debugInfo };
+    }
+
+    _markSkip(reason) {
+        const timestamp = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        this.debugInfo.lastUpdateSuccessful = false;
+        this.debugInfo.lastSkipReason = reason;
+        this.debugInfo.lastUpdatedTime = timestamp;
+        if (typeof window !== 'undefined') {
+            window.__waterReflectionStatus = { ...this.debugInfo };
+        }
+    }
+
+    _markSuccess() {
+        const timestamp = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        this.debugInfo.lastUpdateSuccessful = true;
+        this.debugInfo.lastSkipReason = null;
+        this.debugInfo.lastUpdatedTime = timestamp;
+        if (typeof window !== 'undefined') {
+            window.__waterReflectionStatus = { ...this.debugInfo };
+        }
     }
 }
 

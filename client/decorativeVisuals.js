@@ -60,6 +60,26 @@ class DecorativeVisualsSystem {
     }
     
     // DAISY SYSTEM
+    // ---- Navi light management ----
+    _getNaviLightCap() {
+        const caps = this.game?.deviceCapabilities;
+        if (!caps) return 12;
+        switch (caps.tier) {
+            case 'low': return 0;
+            case 'medium': return 4;
+            case 'high': return 12;
+            default: return 12;
+        }
+    }
+
+    _isInFrustum(position, margin = 0.35) {
+        if (!this.game?.camera) return true;
+        const p = position.clone().project(this.game.camera);
+        return p.z > -1 && p.z < 1 &&
+               p.x > -1 - margin && p.x < 1 + margin &&
+               p.y > -1 - margin && p.y < 1 + margin;
+    }
+
     initializeDaisies() {
         if (window.parameterSystem && !window.parameterSystem.getParameter('daisiesEnabled')) {
             console.log('[DecorativeVisuals] Daisy system disabled via dev tools, skipping initialization.');
@@ -202,35 +222,27 @@ class DecorativeVisualsSystem {
     
     createBirdObject() {
         // Create sprite with Tinkerbell/Navi-style gradient texture
+        // 128x128 canvas leaves room for a motion trail behind the head
         const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
+        canvas.width = 128;
+        canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        
+
         // Create radial gradient for magical glow effect
-        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');    // White center
-        gradient.addColorStop(0.2, 'rgba(255, 255, 200, 0.9)'); // Yellow-white
-        gradient.addColorStop(0.4, 'rgba(255, 200, 100, 0.7)'); // Yellow
-        gradient.addColorStop(0.6, 'rgba(255, 150, 50, 0.5)');  // Orange
-        gradient.addColorStop(0.8, 'rgba(200, 100, 255, 0.3)'); // Purple
-        gradient.addColorStop(1, 'rgba(100, 50, 255, 0)');      // Transparent purple
-        
+        const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 30);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 200, 0.9)');
+        gradient.addColorStop(0.4, 'rgba(255, 200, 100, 0.7)');
+        gradient.addColorStop(0.6, 'rgba(255, 150, 50, 0.5)');
+        gradient.addColorStop(0.8, 'rgba(200, 100, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(100, 50, 255, 0)');
+
         ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 64, 64);
-        
-        // Add sparkles
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        for (let i = 0; i < 8; i++) {
-            const x = Math.random() * 64;
-            const y = Math.random() * 64;
-            const size = Math.random() * 2 + 1;
-            ctx.fillRect(x, y, size, size);
-        }
-        
-        // Create texture from canvas
+        ctx.fillRect(0, 0, 128, 128);
+
+        // Create texture from canvas (will be redrawn each frame with trail)
         const texture = new THREE.CanvasTexture(canvas);
-        
+
         // Create sprite material
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
@@ -284,11 +296,12 @@ class DecorativeVisualsSystem {
             light: light,
             glowSprite: glowSprite,
             position: { x: 0, y: 0, z: 0 },
+            prevPosition: { x: 0, y: 0, z: 0 },
             velocity: { x: 0, y: 0, z: 0 },
             targetPosition: { x: 0, y: 0, z: 0 },
             phase: 0,
             speed: 0.15 + Math.random() * 0.1,
-            behavior: 'drifting', // drifting, circling, swooping, hovering
+            behavior: 'drifting',
             behaviorTimer: 0,
             noiseOffset: { x: Math.random() * 1000, y: Math.random() * 1000, z: Math.random() * 1000 },
             active: false,
@@ -301,7 +314,11 @@ class DecorativeVisualsSystem {
             panicTarget: { x: 0, z: 0 },
             zipPauseTimer: 0,
             isZipPaused: false,
-            fleeDirection: { x: 0, z: 0 }
+            fleeDirection: { x: 0, z: 0 },
+            // Trail rendering state
+            trailCanvas: canvas,
+            trailCtx: ctx,
+            trailTime: 0
         };
     }
     
@@ -349,6 +366,7 @@ class DecorativeVisualsSystem {
         
         // Position book
         book.position = { x, y: height, z };
+        book.prevPosition = { x, y: height, z };
         book.group.position.set(x, height, z);
         book.group.visible = true;
         book.light.visible = true;
@@ -410,19 +428,29 @@ class DecorativeVisualsSystem {
         // Update wind time (controls all wind animations)
         this.windTime += deltaTime * 1.2;
 
+        const ps = window.parameterSystem;
+        const blustery = ps ? (ps.getParameter('blusteryWind') || 0) : 0;
+        const b = blustery / 10.0; // normalized 0..1
+
         // Steer toward windTargetAngle (set by parameter slider) while keeping organic noise
         let angleDiff = this.windTargetAngle - this.windAngle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        const angleNoise = Math.sin(this.windTime * 0.08) * 0.5 + Math.sin(this.windTime * 0.023) * 0.3 + Math.sin(this.windTime * 0.004) * 0.2;
-        this.windAngle += (angleDiff * 0.8 + angleNoise * 0.2) * deltaTime * 0.15;
+        const baseAngleNoise = Math.sin(this.windTime * 0.08) * 0.5 + Math.sin(this.windTime * 0.023) * 0.3 + Math.sin(this.windTime * 0.004) * 0.2;
+        const blusteryAngleNoise = b * (Math.sin(this.windTime * 0.5) * 2.0 + Math.sin(this.windTime * 0.18) * 1.2 + Math.sin(this.windTime * 0.05) * 0.6);
+        const angleNoise = baseAngleNoise * (1 - b) + blusteryAngleNoise;
+        const targetInfluence = 0.8 * (1 - b * 0.7);
+        const noiseInfluence = 0.2 + b * 1.5;
+        const turnRate = 0.15 + b * 0.8;
+        this.windAngle += (angleDiff * targetInfluence + angleNoise * noiseInfluence) * deltaTime * turnRate;
         this.windDirection.set(Math.cos(this.windAngle), Math.sin(this.windAngle));
 
         // Wind speed base comes from parameterSystem; natural noise adds variation on top
-        const ps = window.parameterSystem;
         const baseWind = ps ? ps.getParameter('windSpeed') : 2.0;
-        const speedNoise = (Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4) * (baseWind / 2.0);
-        this.windSpeed = Math.max(0, baseWind + speedNoise);
+        const baseSpeedNoise = (Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4) * (baseWind / 2.0);
+        const blusterySpeedNoise = b * (Math.sin(this.windTime * 0.4) * baseWind * 2.0 + Math.sin(this.windTime * 0.12) * baseWind);
+        const galeBoost = b * baseWind * 1.5;
+        this.windSpeed = Math.max(0, baseWind + baseSpeedNoise * (1 - b) + blusterySpeedNoise + galeBoost);
 
         // Update gust system
         this.updateGusts(deltaTime);
@@ -462,6 +490,10 @@ class DecorativeVisualsSystem {
     }
 
     updateGusts(deltaTime) {
+        const ps = window.parameterSystem;
+        const blustery = ps ? (ps.getParameter('blusteryWind') || 0) : 0;
+        const b = blustery / 10.0;
+
         // Decay current gust intensity toward target
         if (this.gustIntensity > this.gustTargetIntensity) {
             this.gustIntensity -= this.gustDecayRate * deltaTime;
@@ -480,18 +512,22 @@ class DecorativeVisualsSystem {
         if (this.gustSpawnTimer >= this.gustSpawnInterval) {
             this.gustSpawnTimer = 0;
             // Randomize next interval (gusts are irregular)
-            this.gustSpawnInterval = 5.0 + Math.random() * 8.0; // 5-13 seconds between gusts
+            const intervalBase = 5.0 + Math.random() * 8.0; // 5-13 seconds between gusts
+            this.gustSpawnInterval = intervalBase * (1 - b * 0.85); // much more frequent when blustery
 
-            // 40% chance to spawn a gust
-            if (Math.random() < 0.4) {
+            // Higher chance to spawn a gust when blustery
+            if (Math.random() < (0.4 + b * 0.5)) {
                 this.spawnGust();
             }
         }
     }
 
     spawnGust() {
-        // Random gust intensity: 1.5x to 3.5x wind speed
-        const gustMultiplier = 1.5 + Math.random() * 2.0;
+        const ps = window.parameterSystem;
+        const blustery = ps ? (ps.getParameter('blusteryWind') || 0) : 0;
+        const b = blustery / 10.0;
+        // Random gust intensity: 1.5x to 3.5x wind speed, plus blustery boost
+        const gustMultiplier = 1.5 + Math.random() * 2.0 + b * 3.0;
         this.gustTargetIntensity = gustMultiplier;
 
         // Gust lasts 2-5 seconds before starting to decay
@@ -575,106 +611,202 @@ class DecorativeVisualsSystem {
     }
     
     updateBirds(deltaTime) {
+        if (!this._naviTrailLogDone) {
+            console.log(`[NaviTrails] updateBirds running — ${this.activeBirds.size} active, lightCap=${this._getNaviLightCap()}`);
+            this._naviTrailLogDone = true;
+        }
+        const now = Date.now();
+        const time = now * 0.001;
+        const lightCap = this._getNaviLightCap();
+        const naviEntries = [];
+
+        // Periodic debug dump
+        if (!this._naviDebugNext || now > this._naviDebugNext) {
+            this._naviDebugNext = now + 2000;
+            const first = this.activeBirds.values().next().value;
+            if (first) {
+                console.log('[NaviDebug] _smoothTrail=' + (first._smoothTrail || 0).toFixed(3) +
+                    ' phase=' + first.phase.toFixed(2) +
+                    ' opacity=' + (first.sprite?.material?.opacity ?? '?') +
+                    ' canvas=' + (first.trailCanvas ? first.trailCanvas.width + 'x' + first.trailCanvas.height : 'MISSING'));
+            }
+        }
+
         for (const [id, sprite] of this.activeBirds) {
-            // Update behavior timer
+            // ---- Movement & behaviour (unchanged logic) ----
             sprite.behaviorTimer -= deltaTime;
             if (sprite.behaviorTimer <= 0) {
-                // Change behavior
                 const behaviors = ['drifting', 'circling', 'swooping', 'hovering'];
                 sprite.behavior = behaviors[Math.floor(Math.random() * behaviors.length)];
-                sprite.behaviorTimer = 3 + Math.random() * 5; // 3-8 seconds per behavior
+                sprite.behaviorTimer = 3 + Math.random() * 5;
             }
-            
-            // Check mouse cursor avoidance behavior
             this.checkMouseAvoidance(sprite, deltaTime);
-            
-            // Apply simple sprite movement based on behavior (only if not fleeing or panicking)
+
             if (!sprite.isFleeing && !sprite.isPanicking) {
-                const time = Date.now() * 0.001; // Time in seconds
-                
                 switch (sprite.behavior) {
                     case 'drifting':
-                        // Smooth magical drifting using noise
                         sprite.velocity.x = this.simplexNoise(time + sprite.noiseOffset.x) * 0.025;
                         sprite.velocity.z = this.simplexNoise(time + sprite.noiseOffset.z) * 0.025;
                         sprite.velocity.y = this.simplexNoise(time + sprite.noiseOffset.y) * 0.008;
                         break;
-                        
                     case 'circling':
-                        // Circular magical flight pattern
-                        const circleRadius = 12;
-                        const circleSpeed = 0.4;
-                        const angle = time * circleSpeed + sprite.noiseOffset.x;
-                        sprite.velocity.x = Math.cos(angle) * circleRadius * 0.012;
-                        sprite.velocity.z = Math.sin(angle) * circleRadius * 0.012;
-                        sprite.velocity.y = Math.sin(time * 2 + sprite.noiseOffset.y) * 0.005;
+                        {
+                            const angle = time * 0.4 + sprite.noiseOffset.x;
+                            sprite.velocity.x = Math.cos(angle) * 12 * 0.012;
+                            sprite.velocity.z = Math.sin(angle) * 12 * 0.012;
+                            sprite.velocity.y = Math.sin(time * 2 + sprite.noiseOffset.y) * 0.005;
+                        }
                         break;
-                        
                     case 'swooping':
-                        // Magical swooping up and down movement
-                        const swoopPhase = time * 0.6 + sprite.noiseOffset.x;
-                        sprite.velocity.x = Math.cos(swoopPhase) * 0.04;
-                        sprite.velocity.z = Math.sin(swoopPhase * 0.8) * 0.03;
-                        sprite.velocity.y = Math.sin(swoopPhase * 2.5) * 0.02;
+                        {
+                            const swoopPhase = time * 0.6 + sprite.noiseOffset.x;
+                            sprite.velocity.x = Math.cos(swoopPhase) * 0.04;
+                            sprite.velocity.z = Math.sin(swoopPhase * 0.8) * 0.03;
+                            sprite.velocity.y = Math.sin(swoopPhase * 2.5) * 0.02;
+                        }
                         break;
-                        
                     case 'hovering':
-                        // Magical hovering with enchantment
                         sprite.velocity.x = Math.sin(time * 4 + sprite.noiseOffset.x) * 0.008;
                         sprite.velocity.z = Math.cos(time * 4 + sprite.noiseOffset.z) * 0.008;
                         sprite.velocity.y = Math.sin(time * 6 + sprite.noiseOffset.y) * 0.01;
                         break;
                 }
             }
-            
-            // Update position with constraints
+
+            // Store previous position for trail vector
+            sprite.prevPosition.x = sprite.position.x;
+            sprite.prevPosition.y = sprite.position.y;
+            sprite.prevPosition.z = sprite.position.z;
+
             this.updateBookPosition(sprite, deltaTime);
 
-            // Update light position to match sprite
-            sprite.light.position.copy(sprite.sprite.position);
+            // ---- Canvas trail rendering ----
+            const ctx = sprite.trailCtx;
+            const canvas = sprite.trailCanvas;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Update glow sprite to follow fairy position
-            sprite.glowSprite.position.copy(sprite.sprite.position);
+            // Compute screen-space motion vector
+            let trailAngle = 0;
+            let trailStrength = 0;
+            if (this.game?.camera) {
+                const cam = this.game.camera;
+                const prevProj = new THREE.Vector3(sprite.prevPosition.x, sprite.prevPosition.y, sprite.prevPosition.z).project(cam);
+                const currProj = new THREE.Vector3(sprite.position.x, sprite.position.y, sprite.position.z).project(cam);
+                const sdx = currProj.x - prevProj.x;
+                const sdy = currProj.y - prevProj.y;
+                const len = Math.sqrt(sdx * sdx + sdy * sdy);
+                // Smooth trail strength so it doesn't flicker on micro-movement
+                const rawStrength = Math.min(len * 300, 1);
+                sprite._smoothTrail = (sprite._smoothTrail || 0) * 0.85 + rawStrength * 0.15;
+                trailStrength = sprite._smoothTrail;
+                trailAngle = Math.atan2(sdy, sdx) + Math.PI; // opposite = trail direction
+            }
 
-            // Distance-based scaling — sprites are screen-space, so scale them
-            // proportionally to distance to keep a roughly constant world presence
+            const headX = 64;
+            const headY = 64;
+            const maxTrailLen = 90 * trailStrength;
+
+            // Draw trail as fading blobs
+            if (maxTrailLen > 1) {
+                const segments = 8;
+                for (let i = 1; i <= segments; i++) {
+                    const t = i / segments;
+                    const dist = maxTrailLen * t;
+                    const tx = headX + Math.cos(trailAngle) * dist;
+                    const ty = headY + Math.sin(trailAngle) * dist;
+                    const radius = 35 * (1 - t * 0.7);
+                    const alpha = 1.0 * (1 - t) * trailStrength;
+                    const grad = ctx.createRadialGradient(tx, ty, 0, tx, ty, radius);
+                    grad.addColorStop(0, `rgba(255, 255, 230, ${alpha})`);
+                    grad.addColorStop(0.4, `rgba(255, 210, 120, ${alpha * 0.8})`);
+                    grad.addColorStop(1, `rgba(255, 160, 60, 0)`);
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw head (pulsing)
+            const velocityMag = Math.sqrt(
+                sprite.velocity.x * sprite.velocity.x +
+                sprite.velocity.y * sprite.velocity.y +
+                sprite.velocity.z * sprite.velocity.z
+            );
+            const speedMul = 1.0 + velocityMag * 10;
+            sprite.phase += sprite.speed * speedMul;
+            const pulse = Math.sin(sprite.phase) * 0.12 + 0.88;
+
+            const headGrad = ctx.createRadialGradient(headX, headY, 0, headX, headY, 55);
+            headGrad.addColorStop(0, `rgba(255, 255, 255, ${pulse})`);
+            headGrad.addColorStop(0.25, `rgba(255, 255, 200, ${pulse * 0.9})`);
+            headGrad.addColorStop(0.55, `rgba(255, 200, 100, ${pulse * 0.6})`);
+            headGrad.addColorStop(0.85, `rgba(200, 100, 255, ${pulse * 0.25})`);
+            headGrad.addColorStop(1, `rgba(100, 50, 255, 0)`);
+            ctx.fillStyle = headGrad;
+            ctx.beginPath();
+            ctx.arc(headX, headY, 50, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Deterministic sparkles based on phase
+            ctx.fillStyle = `rgba(255, 255, 255, ${pulse})`;
+            for (let i = 0; i < 6; i++) {
+                const sx = headX + Math.sin(sprite.phase * 3 + i * 1.7) * 50;
+                const sy = headY + Math.cos(sprite.phase * 2.3 + i * 2.1) * 50;
+                const size = 5 + Math.sin(sprite.phase * 4 + i) * 3;
+                ctx.fillRect(sx, sy, size, size);
+            }
+
+            // DEBUG: bright red corner dot — if canvas updates this MUST be visible
+            ctx.fillStyle = 'rgba(255, 0, 0, 1.0)';
+            ctx.fillRect(2, 2, 24, 24);
+
+            sprite.sprite.material.map.needsUpdate = true;
+
+            // ---- Distance-based scaling & fading ----
             const dx = sprite.sprite.position.x - this.cameraPosition.x;
             const dy = sprite.sprite.position.y - this.cameraPosition.y;
             const dz = sprite.sprite.position.z - this.cameraPosition.z;
             const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            const scaleFactor = Math.max(0.02, distance * 0.008);
-            sprite.sprite.scale.set(scaleFactor, scaleFactor, 1);
-            sprite.glowSprite.scale.set(scaleFactor * 8, scaleFactor * 8, 1);
 
-            // Distance-based fading (mist effect)
+            // Base scale from distance to keep roughly constant screen size
+            // (old code was fixed ~0.45; we scale proportionally to distance)
+            const baseScale = Math.max(0.08, distance * 0.022);
+            const finalScale = baseScale * pulse;
+            sprite.sprite.scale.set(finalScale, finalScale, 1);
+            sprite.glowSprite.scale.set(baseScale * 4, baseScale * 4, 1);
 
-            const fadeStartDistance = 10.67; // Start fading at ~10.67 units (8 * 1.33)
-            const fadeEndDistance = 45; // Fully faded at 45 units
-
-            let opacity = 0.2; // Base visibility reduced to 20% (even more transparent)
-            if (distance > fadeStartDistance) {
-                const fadeProgress = Math.min((distance - fadeStartDistance) / (fadeEndDistance - fadeStartDistance), 1);
-                opacity = 0.2 * (1.0 - fadeProgress);
+            // Distance fade — start fully opaque nearby, fade to 0.15 far away
+            const fadeStart = 10.67;
+            const fadeEnd = 45;
+            let opacity = 1.0;
+            if (distance > fadeStart) {
+                opacity = Math.max(0.15, 1.0 - (distance - fadeStart) / (fadeEnd - fadeStart));
             }
-
             sprite.sprite.material.opacity = opacity;
 
-            // Link pulsing rate to movement speed
-            const velocityMagnitude = Math.sqrt(
-                sprite.velocity.x * sprite.velocity.x + 
-                sprite.velocity.y * sprite.velocity.y + 
-                sprite.velocity.z * sprite.velocity.z
-            );
-            const speedMultiplier = 1.0 + velocityMagnitude * 10; // Faster movement = faster pulsing
+            // Bobbing
+            sprite.sprite.position.y += Math.sin(Date.now() * 0.002 + sprite.noiseOffset.y) * 0.1;
 
-            // Simple sprite animation - toned down pulsing glow linked to speed
-            sprite.phase += sprite.speed * speedMultiplier;
-            const pulse = Math.sin(sprite.phase) * 0.1 + 0.9; // Pulse between 0.8 and 1.0 (much less variation)
-            sprite.sprite.scale.set(0.5 * pulse, 0.5 * pulse, 1);
-            
-            // Add gentle bobbing
-            const bobbing = Math.sin(Date.now() * 0.002 + sprite.noiseOffset.y) * 0.1;
-            sprite.sprite.position.y += bobbing;
+            // Sync light & glow positions
+            sprite.light.position.copy(sprite.sprite.position);
+            sprite.glowSprite.position.copy(sprite.sprite.position);
+
+            // Collect for light culling
+            naviEntries.push({
+                id, sprite,
+                dist: distance,
+                inView: this._isInFrustum(sprite.sprite.position, 0.35)
+            });
+        }
+
+        // ---- Device-tier light culling ----
+        naviEntries.sort((a, b) => a.dist - b.dist);
+        let enabledLights = 0;
+        for (const entry of naviEntries) {
+            const shouldLight = entry.inView && enabledLights < lightCap;
+            entry.sprite.light.visible = shouldLight;
+            if (shouldLight) enabledLights++;
         }
     }
     

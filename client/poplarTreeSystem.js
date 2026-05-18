@@ -3,7 +3,7 @@ window.UP = UP;
 
 // PoplarTreeSystem
 // Instanced poplar trees using three equally-spaced vertical planes
-// around a central trunk, textured with tree.jpg. Shares wind and
+// around a central trunk, textured with tree.png. Shares wind and
 // terrain-tilt behaviour with TerrainTreeSystem and GrowingTreeSystem.
 
 class PoplarTreeSystem {
@@ -28,7 +28,7 @@ class PoplarTreeSystem {
         };
 
         // Load the tree sprite texture
-        this.treeTexture = new THREE.TextureLoader().load('../Images/tree.jpg');
+        this.treeTexture = new THREE.TextureLoader().load('../Images/tree.png');
         this.treeTexture.colorSpace = THREE.SRGBColorSpace;
 
         // Shared per-tree wind attributes so all planes on one tree sway together
@@ -189,10 +189,8 @@ class PoplarTreeSystem {
 
                 void main() {
                     vec4 texel = texture2D(map, vUv);
-                    // Derive alpha from luminance (bright sky/background -> transparent)
-                    float lum = max(texel.r, max(texel.g, texel.b));
-                    float alpha = 1.0 - smoothstep(0.35, 0.65, lum);
-                    alpha = pow(alpha, 1.4);
+                    // Use PNG's actual alpha channel for transparency
+                    float alpha = texel.a;
                     if (alpha < 0.06) discard;
                     vec3 n = normalize(vWorldNormal);
                     float diff = max(dot(n, lightDir), 0.0);
@@ -322,19 +320,20 @@ class PoplarTreeSystem {
         return mesh;
     }
 
-    addTree(worldX, worldZ, terrainHeight) {
+    addTree(worldX, worldZ, terrainHeight, metadata = {}) {
         if (this.treeCount >= this.maxTrees) {
             console.warn('[PoplarTreeSystem] Capacity reached (' + this.maxTrees + ')');
             return -1;
         }
 
         const i = this.treeCount;
-        const scale  = 0.85 + Math.random() * 0.45; // 0.85 - 1.30
+        const maxScale = metadata.maxScale || 1.0;
+        const scale  = (0.85 + Math.random() * 0.45) * maxScale;
         const rotY   = Math.random() * Math.PI * 2;
 
         const board = window.game && window.game.boardSystem;
         const normal = (board && board.getTerrainNormal) ? board.getTerrainNormal(worldX, worldZ) : new THREE.Vector3(0, 1, 0);
-        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone() });
+        this.treeData.push({ x: worldX, z: worldZ, y: terrainHeight, scale, rotY, normal: normal.clone(), biome: metadata.biome, growthRate: metadata.growthRate });
 
         if (!this._currentHeights) {
             this._currentHeights = new Float32Array(this.maxTrees);

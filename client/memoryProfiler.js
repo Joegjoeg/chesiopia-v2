@@ -27,6 +27,8 @@ class MemoryProfiler {
         };
         this._historyIdx = 0;
         this._focusedMetric = null;
+        this._panelMode = 'floating';
+        this._mountRef = null;
 
         this._buildPanel();
         this._setupHotkey();
@@ -35,6 +37,13 @@ class MemoryProfiler {
     update(currentTimeMs) {
         const devOpen = window.devInterface && window.devInterface.isVisible;
         const shouldShow = this._isVisible || devOpen;
+
+        if (shouldShow && this._panelMode !== 'embedded') {
+            this.attachToDevTools();
+        }
+        if (this._panelMode === 'embedded') {
+            this._resizeCanvasIfNeeded();
+        }
 
         if (!shouldShow) {
             if (this.panel.style.display !== 'none') {
@@ -153,39 +162,36 @@ class MemoryProfiler {
     _updatePanel(counts, systemCounts, rendererInfo, heap) {
         const now = new Date();
         const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-        const stats = [];
-        stats.push(`<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#00ff00;margin-bottom:3px;">
-            <span>Memory</span>
-            <span style="color:#666;font-size:9px;font-weight:400;">${timeStr}</span>
-        </div>`);
-        stats.push(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1px;">
-            <span style="color:#aaffaa;">G:${counts.geometries}</span>
-            <span style="color:#aaffaa;">M:${counts.materials}</span>
-            <span style="color:#aaffaa;">T:${counts.textures}</span>
-        </div>`);
-        stats.push(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1px;">
-            <span style="color:#aaffaa;">mesh:${counts.meshes}</span>
-            <span style="color:#aaffaa;">grp:${counts.groups}</span>
-            <span style="color:#aaffaa;">lit:${counts.lights}</span>
-        </div>`);
-        stats.push(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1px;">
-            <span style="color:#aaffaa;">chnk:${systemCounts.chunks}</span>
-            <span style="color:#aaffaa;">dais:${systemCounts.daisies}</span>
-            <span style="color:#aaffaa;">brd:${systemCounts.birds}</span>
-        </div>`);
-        stats.push(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1px;">
-            <span style="color:#aaffaa;">pcs:${systemCounts.pieces}</span>
-            <span style="color:#aaffaa;">tree:${systemCounts.trees}</span>
-            <span style="color:#aaffaa;">vm:${systemCounts.validMoves}</span>
-        </div>`);
-        stats.push(`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1px;">
-            <span style="color:#aaffaa;">calls:${rendererInfo.render.calls}</span>
-            <span style="color:#aaffaa;">tri:${(rendererInfo.render.triangles/1000).toFixed(1)}K</span>
-        </div>`);
-        if (heap.usedJSHeapSize) {
-            stats.push(`<div style="color:#aaffaa;">heap:${this._fmtBytes(heap.usedJSHeapSize)}</div>`);
-        }
-        this._statsDiv.innerHTML = stats.join('');
+        const statItems = [
+            { label: 'Geo', value: counts.geometries },
+            { label: 'Mat', value: counts.materials },
+            { label: 'Tex', value: counts.textures },
+            { label: 'Mesh', value: counts.meshes },
+            { label: 'Grp', value: counts.groups },
+            { label: 'Light', value: counts.lights },
+            { label: 'Chunk', value: systemCounts.chunks },
+            { label: 'Daisy', value: systemCounts.daisies },
+            { label: 'Bird', value: systemCounts.birds },
+            { label: 'Piece', value: systemCounts.pieces },
+            { label: 'Tree', value: systemCounts.trees },
+            { label: 'Valid', value: systemCounts.validMoves },
+            { label: 'Calls', value: rendererInfo.render.calls },
+            { label: 'TriK', value: (rendererInfo.render.triangles / 1000).toFixed(1) },
+            { label: 'Heap', value: heap.usedJSHeapSize ? this._fmtBytes(heap.usedJSHeapSize) : '—' }
+        ];
+
+        const chipStyle = 'display:flex;justify-content:space-between;gap:2px;padding:0 3px;border-radius:2px;background:rgba(0,255,0,0.06);border:1px solid rgba(0,255,0,0.08);color:#bfffcf;font-size:8px;line-height:1.2;letter-spacing:0.3px;';
+        const chips = statItems.map(item => `<span style="${chipStyle}"><span style=\"opacity:0.7\">${item.label}</span><span>${item.value}</span></span>`).join('');
+
+        this._statsDiv.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;font-weight:600;color:#00ff00;">
+                <span>Memory</span>
+                <span style="color:#666;font-size:9px;font-weight:400;">${timeStr}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:3px;">
+                ${chips}
+            </div>
+        `;
 
         const idx = (this._historyIdx - 1 + this._historyLen) % this._historyLen;
         for (const span of this._legendSpans) {
@@ -308,31 +314,15 @@ class MemoryProfiler {
     _buildPanel() {
         this.panel = document.createElement('div');
         this.panel.id = 'memoryProfilerPanel';
-        this.panel.style.cssText = `
-            position: fixed;
-            top: 5px;
-            left: 5px;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
-            padding: 6px 8px;
-            font-family: 'Segoe UI', 'Roboto', monospace, sans-serif;
-            font-size: 10px;
-            color: #aaffaa;
-            display: none;
-            z-index: 10001;
-            line-height: 1.4;
-            min-width: 220px;
-            pointer-events: auto;
-            user-select: none;
-        `;
 
         this._statsDiv = document.createElement('div');
         this._statsDiv.style.cssText = `
             border-bottom: 1px solid rgba(255,255,255,0.08);
             padding-bottom: 4px;
             margin-bottom: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         `;
         this.panel.appendChild(this._statsDiv);
 
@@ -381,16 +371,93 @@ class MemoryProfiler {
 
         this._canvas = document.createElement('canvas');
         this._canvas.width = 220;
-        this._canvas.height = 80;
+        this._canvas.height = 40;
         this._canvas.style.cssText = `
             display: block;
-            width: 220px;
-            height: 80px;
             border-top: 1px solid rgba(255,255,255,0.1);
+            height: 40px;
         `;
         this.panel.appendChild(this._canvas);
 
-        document.body.appendChild(this.panel);
+        if (!this.attachToDevTools()) {
+            this._applyFloatingPanelStyles();
+            document.body.appendChild(this.panel);
+        }
+    }
+
+    attachToDevTools() {
+        const devInterface = window.devInterface;
+        const mount = devInterface && typeof devInterface.getMemoryPanelMount === 'function'
+            ? devInterface.getMemoryPanelMount()
+            : null;
+
+        if (!mount) return false;
+
+        if (this.panel.parentNode && this.panel.parentNode !== mount) {
+            this.panel.parentNode.removeChild(this.panel);
+        }
+
+        if (mount.firstChild && mount.firstChild !== this.panel) {
+            mount.innerHTML = '';
+        }
+
+        if (this.panel.parentNode !== mount) {
+            mount.appendChild(this.panel);
+        }
+
+        this._panelMode = 'embedded';
+        this._mountRef = mount;
+        this.panel.style.cssText = `
+            display: none;
+            font-family: 'Segoe UI', 'Roboto', monospace, sans-serif;
+            font-size: 10px;
+            color: #aaffaa;
+            line-height: 1.4;
+            width: 100%;
+        `;
+        this._canvas.style.width = '100%';
+        this._resizeCanvasIfNeeded(true);
+        return true;
+    }
+
+    _applyFloatingPanelStyles() {
+        this._panelMode = 'floating';
+        this._mountRef = null;
+        this.panel.style.cssText = `
+            position: fixed;
+            top: 5px;
+            left: 5px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-family: 'Segoe UI', 'Roboto', monospace, sans-serif;
+            font-size: 10px;
+            color: #aaffaa;
+            display: none;
+            z-index: 10001;
+            line-height: 1.4;
+            min-width: 220px;
+            pointer-events: auto;
+            user-select: none;
+        `;
+        this._canvas.style.width = '220px';
+        this._resizeCanvasIfNeeded(true);
+    }
+
+    _resizeCanvasIfNeeded(force = false) {
+        if (!this._canvas) return;
+        let desiredWidth;
+        if (this._panelMode === 'embedded') {
+            const mountWidth = this._mountRef?.clientWidth || this.panel.clientWidth || this._canvas.width || 320;
+            desiredWidth = Math.max(260, Math.floor(mountWidth));
+        } else {
+            desiredWidth = 220;
+        }
+        if (force || this._canvas.width !== desiredWidth) {
+            this._canvas.width = desiredWidth;
+        }
     }
 
     _setupHotkey() {

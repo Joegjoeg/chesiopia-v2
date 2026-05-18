@@ -16,6 +16,9 @@ class ChessopiaGame {
         this.grassSystem = null;
         this.textureBlendingSystem = null;
         this.lodManager = null;
+        this.temporalAA = null;
+        this.minimapOverlay = null;
+        this.settlementSystem = null;
         
         this.selectedPiece = null;
         this.validMoves = [];
@@ -51,6 +54,7 @@ class ChessopiaGame {
             console.log('[Game] Setting up scene...');
             await this.setupScene();
             console.log('[Game] Scene setup completed!');
+            this.setupTemporalAA();
             console.log('[Game] About to call showLoadingProgress(50)');
             this.showLoadingProgress(50);
             console.log('[Game] Called showLoadingProgress(50)');
@@ -112,10 +116,8 @@ class ChessopiaGame {
                 console.log('[Game] Game initialization completed successfully!');
                 this.reportOptimizationStatus();
 
-                // Populate trees from server now that boardSystem + terrain are fully ready.
+                // Expose for console debugging (trees are loaded on-demand via devtools)
                 if (this.hybridTreeManager) {
-                    this.hybridTreeManager.populateFromServer();
-                    // Expose for console debugging
                     window.treeSystem = this.hybridTreeManager;
                     window.repopulateTrees = () => {
                         this.hybridTreeManager.clear();
@@ -186,12 +188,17 @@ class ChessopiaGame {
             terrainLoadRadius: 20,
             antialias: true,
             pixelRatioCap: 2,
-            details: {}
+            details: {},
+            features: {
+                temporalAA: false
+            }
         };
 
         try {
             const gl = this.renderer.getContext();
             const webglCaps = this.renderer.capabilities;
+
+            const supportsWebGL2 = !!webglCaps.isWebGL2;
 
             caps.details.maxTextureSize = webglCaps.maxTextureSize;
             caps.details.maxVertexTextures = webglCaps.maxVertexTextures;
@@ -227,6 +234,8 @@ class ChessopiaGame {
 
             if (isMobileUA) score -= 1;
 
+            caps.features.temporalAA = supportsWebGL2 && score >= 2;
+
             if (score >= 5) {
                 caps.tier = 'high';
                 caps.gridSize = 192;
@@ -234,6 +243,7 @@ class ChessopiaGame {
                 caps.renderDistance = 60;
                 caps.terrainLoadRadius = 30;
                 caps.pixelRatioCap = 2;
+                caps.defaultTaa = true;
             } else if (score >= 2) {
                 caps.tier = 'medium';
                 caps.gridSize = 128;
@@ -241,6 +251,7 @@ class ChessopiaGame {
                 caps.renderDistance = 40;
                 caps.terrainLoadRadius = 20;
                 caps.pixelRatioCap = 1.5;
+                caps.defaultTaa = false;
             } else {
                 caps.tier = 'low';
                 caps.gridSize = 96;
@@ -249,6 +260,8 @@ class ChessopiaGame {
                 caps.terrainLoadRadius = 15;
                 caps.antialias = false;
                 caps.pixelRatioCap = 1;
+                caps.defaultTaa = false;
+                caps.features.temporalAA = false;
             }
         } catch (e) {
             console.warn('[Game] Device detection failed, falling back to medium tier:', e);
@@ -294,6 +307,15 @@ class ChessopiaGame {
         // Add distance fog to obscure background terrain - INCREASED FOR BETTER VISIBILITY
         this.scene.fog = new THREE.Fog(0x808080, 20, 60); // 50% gray, increased near distance from 10 to 20 for clearer view
         console.log('[Game] Fog applied:', !!this.scene.fog, 'Color:', this.scene.fog.color.getHex(), 'Near:', this.scene.fog.near, 'Far:', this.scene.fog.far);
+
+        // Sky shader system: procedural day-night sky + starfield
+        if (typeof SkyShaderSystem !== 'undefined') {
+            this.skyShaderSystem = new SkyShaderSystem(this.scene);
+            // Show stars from ground level (transparent atmospheric fade)
+            this.skyShaderSystem.setFadeStartHeight(0);
+            this.skyShaderSystem.setFadeEndHeight(100);
+            console.log('[Game] SkyShaderSystem initialized');
+        }
         
         // Setup lighting
         this.setupLighting();
@@ -381,10 +403,11 @@ class ChessopiaGame {
 
         // Create hybrid tree manager with patch-based alternation between TerrainTreeSystem and LocalTreeSystem
         this.oldTreeSystem = null; // Disable old tree system
-        this.hybridTreeManager = new HybridTreeManager(this.scene, null, this.lodManager); // Hybrid manager for both systems
-        this.terrainTreeSystem = this.hybridTreeManager.terrainTreeSystem; // Reference for compatibility
-        this.treeSystem = this.hybridTreeManager.localTreeSystem; // Reference for compatibility
-        console.log('[Game] Hybrid tree manager created - terrainTreeSystem:', !!this.terrainTreeSystem, 'localTreeSystem:', !!this.treeSystem);
+        this.hybridTreeManager = new HybridTreeManager(this.scene, null, this.lodManager);
+        this.terrainTreeSystem = this.hybridTreeManager.terrainTreeSystem;
+        this.treeSystem = this.hybridTreeManager.billboardTreeSystem;
+        this.hybridTreeManager.treeTypeOverride = 'none';
+        console.log('[Game] Hybrid tree manager created - no trees loaded initially, terrainTreeSystem:', !!this.terrainTreeSystem);
 
         // Initialize baked shadow system
         this.shadowSystem = new BakedShadowSystem(this.scene);
@@ -430,6 +453,12 @@ class ChessopiaGame {
             // Preserve board_clean.js's refreshRegion callback for rolling terrain
             if (previousCallback) previousCallback(chunkX, chunkZ);
 
+            // Load trees for this newly-generated chunk
+            console.log(`[Game] onChunkLoaded (${chunkX}, ${chunkZ}) – requesting trees`);
+            if (this.hybridTreeManager) {
+                this.hybridTreeManager.loadTreesForChunk(chunkX, chunkZ);
+            }
+
             // Legacy dynamic mesh rebuild (skip for viewport/rolling terrain)
             if (!this.boardSystem || !this.boardSystem.continuousMesh) return;
             if (this.boardSystem.useViewportMesh) return;
@@ -462,16 +491,63 @@ class ChessopiaGame {
         console.log('[Game] Creating SimpleCelShaderSystem...');
         this.celShaderSystem = new SimpleCelShaderSystem();
         console.log('[Game] SimpleCelShaderSystem created:', !!this.celShaderSystem);
-        
+
         // Initialize decorative visuals system
         console.log('[Game] Creating DecorativeVisualsSystem...');
         this.decorativeVisuals = new DecorativeVisualsSystem(this.scene, this.terrainSystem, this);
         console.log('[Game] DecorativeVisualsSystem created:', !!this.decorativeVisuals);
-        
+
+        // Initialize settlement simulation system
+        if (typeof SettlementSystem !== 'undefined') {
+            this.settlementSystem = new SettlementSystem(this.scene, this.terrainSystem, this);
+            this.settlementSystem.init();
+
+            const buildingSystem = new BuildingSystem(this.scene, this.terrainSystem, this.settlementSystem);
+            buildingSystem.init();
+
+            const roadSystem = new RoadSystem(this.scene, this.terrainSystem, this.settlementSystem);
+            roadSystem.init();
+
+            const villagerSystem = new VillagerSystem(this.scene, this.terrainSystem, this.settlementSystem);
+            villagerSystem.init();
+
+            const knightSystem = new KnightSystem(this.scene, this.terrainSystem, this.settlementSystem);
+            knightSystem.init();
+
+            const tournamentSystem = new TournamentSystem(this.scene, this.terrainSystem, this.settlementSystem, knightSystem);
+            tournamentSystem.init();
+
+            this.settlementSystem.setSubsystems(villagerSystem, buildingSystem, roadSystem, knightSystem, tournamentSystem);
+
+            if (typeof TomeUI !== 'undefined') {
+                this.tomeUI = new TomeUI(this.settlementSystem);
+                this.tomeUI.init();
+            }
+
+            console.log('[Game] SettlementSystem initialized');
+            window.settlementSystem = this.settlementSystem;
+        } else {
+            console.warn('[Game] SettlementSystem not available');
+        }
+
+        if (typeof MinimapOverlay !== 'undefined') {
+            try {
+                this.minimapOverlay = new MinimapOverlay({
+                    terrainSystem: this.terrainSystem,
+                    cameraController: this.cameraController
+                });
+                console.log('[Game] MinimapOverlay initialized');
+            } catch (err) {
+                console.warn('[Game] Failed to initialize MinimapOverlay', err);
+                this.minimapOverlay = null;
+            }
+        } else {
+            console.warn('[Game] MinimapOverlay script missing');
+        }
+
         // Initialize texture blending system after board system is created
         console.log('[Game] Creating TextureBlendingSystem for adaptive terrain...');
 
-        // Create texture blending system
         if (typeof TextureBlendingSystem !== 'undefined') {
             try {
                 this.textureBlendingSystem = new TextureBlendingSystem(this.boardSystem, this.terrainSystem);
@@ -509,6 +585,15 @@ class ChessopiaGame {
             });
             window.jesusSummonSystem = this.jesusSummonSystem;
             console.log('[Game] JesusSummonSystem initialized');
+            if (typeof JesusSummonTriggerSystem !== 'undefined') {
+                this.jesusSummonTriggerSystem = new JesusSummonTriggerSystem({
+                    game: this,
+                    jesusSummonSystem: this.jesusSummonSystem
+                });
+                console.log('[Game] JesusSummonTriggerSystem initialized');
+            } else {
+                console.warn('[Game] JesusSummonTriggerSystem class not available');
+            }
         } else {
             window.jesusSummonSystem = null;
             console.warn('[Game] JesusSummonSystem class not available');
@@ -526,6 +611,30 @@ class ChessopiaGame {
         this.memoryProfiler = new MemoryProfiler(this);
         window.memoryProfiler = this.memoryProfiler;
         console.log('[Game] MemoryProfiler initialized (press M to toggle)');
+
+        if (window.parameterSystem) {
+            const taaActive = !!(this.temporalAA && this.temporalAA.isActive());
+            window.parameterSystem.setParameter('taaEnabled', taaActive, 'init');
+        }
+    }
+
+    setupTemporalAA() {
+        if (typeof TemporalAASystem === 'undefined') {
+            console.warn('[Game] TemporalAASystem script missing');
+            return;
+        }
+
+        try {
+            this.temporalAA = new TemporalAASystem({ renderer: this.renderer, camera: this.camera });
+            const allow = this.deviceCapabilities?.features?.temporalAA;
+            const autoEnable = !!(allow && this.deviceCapabilities?.defaultTaa);
+            this.temporalAA.setEnabled(autoEnable);
+            this._autoTaaPreference = autoEnable;
+            console.log(`[Game] Temporal AA ${allow ? 'supported' : 'unsupported'} (auto=${autoEnable})`);
+        } catch (err) {
+            console.warn('[Game] Failed to initialize TemporalAASystem', err);
+            this.temporalAA = null;
+        }
     }
     
     async setupEventListeners() {
@@ -683,6 +792,29 @@ class ChessopiaGame {
                 this.boardSystem.updateServerGameTime(data);
             }
         });
+
+        this.networkManager.on('envFields', (data) => {
+            if (data.error) return;
+            this._lastEnvFields = data;
+            if (this.textureBlendingSystem) {
+                this.textureBlendingSystem.setEnvironmentalFields(
+                    data.pressure ?? 0.5,
+                    data.humidity ?? 0.5,
+                    data.temperature ?? 0.5
+                );
+            }
+        });
+
+        // Periodic request for environmental fields in visible region
+        setInterval(() => {
+            if (!this.networkManager) return;
+            const cx = Math.floor(this.camera?.position?.x || 0);
+            const cz = Math.floor(this.camera?.position?.z || 0);
+            this.networkManager.emit('getEnvFields', {
+                minX: cx - 40, maxX: cx + 40,
+                minZ: cz - 40, maxZ: cz + 40
+            });
+        }, 3000);
     }
     
     reportOptimizationStatus() {
@@ -696,8 +828,23 @@ class ChessopiaGame {
         lines.push(`LOD: ${opt ? 'levels=' + opt.lodLevels.length : 'n/a'}`);
         lines.push(`Stream: ${opt?.streaming?.enabled ? 'YES' : 'NO'}`);
         lines.push(`PixelRatio: ${this.renderer?.getPixelRatio?.() || '-'}`);
+        if (this.temporalAA) {
+            lines.push(`TAA: ${this.temporalAA.isActive() ? 'ON' : 'OFF'}`);
+        }
         lines.push(`Chunks cached: ${this.terrainSystem?.chunks?.size || 0}`);
-        
+
+        // Network status
+        const netStatus = this.networkManager?.connected ? 'CONNECTED' : (this.networkManager ? 'DISCONNECTED' : 'NO NM');
+        lines.push(`Network: ${netStatus}`);
+
+        // Environmental simulation readout
+        const env = this._lastEnvFields;
+        if (env) {
+            lines.push(`EnvSim  P:${env.pressure?.toFixed(2)} H:${env.humidity?.toFixed(2)} T:${env.temperature?.toFixed(2)}`);
+        } else {
+            lines.push(`EnvSim: waiting...`);
+        }
+
         // Add performance manager status
         if (this.performanceManager) {
             const status = this.performanceManager.getStatus();
@@ -708,6 +855,7 @@ class ChessopiaGame {
         
         const el = document.getElementById('optStatus');
         if (el) el.textContent = lines.join('\n');
+        console.log('[Status] ' + lines.join(' | '));
     }
 
     startGameLoop() {
@@ -774,19 +922,6 @@ class ChessopiaGame {
                     this.boardSystem.setWindParameters(windSpeed, windDirection);
                 }
 
-                // Animate water plane cloud texture
-                if (this.boardSystem && this.boardSystem.updateWaterTexture) {
-                    this.boardSystem.updateWaterTexture(deltaTime);
-                }
-
-                // Lock water plane to camera x,z so it always stays in view
-                if (this.boardSystem && this.boardSystem.updateWaterPlanePosition) {
-                    this.boardSystem.updateWaterPlanePosition(this.camera.position);
-                }
-
-                if (this.boardSystem && this.boardSystem.updateWaterSurface) {
-                    this.boardSystem.updateWaterSurface(deltaTime, currentTime * 0.001, this.camera);
-                }
             }
 
 
@@ -805,6 +940,16 @@ class ChessopiaGame {
                 this.jesusSummonSystem.update(deltaTime);
             }
 
+            if (this.settlementSystem) {
+                this.settlementSystem.update(deltaTime, this.camera.position);
+                if (this.settlementSystem.knightSystem) {
+                    this.settlementSystem.knightSystem.update(deltaTime);
+                }
+                if (this.settlementSystem.tournamentSystem) {
+                    this.settlementSystem.tournamentSystem.update(deltaTime);
+                }
+            }
+
             // Update baked geometry shadows
             if (this.shadowSystem && this.boardSystem && this.boardSystem.sun) {
                 const sunAngleDeg = (this.boardSystem.sun.angle * 180 / Math.PI) % 360;
@@ -814,6 +959,21 @@ class ChessopiaGame {
                     strength: this.decorativeVisuals.windSpeed || 0
                 } : null;
                 this.shadowSystem.update(currentTime * 0.001, sunAzimuth, windState);
+            }
+
+            // Update sky shader (day-night cycle + stars)
+            if (this.skyShaderSystem && this.boardSystem && this.boardSystem.sun) {
+                const sunAngle = this.boardSystem.sun.angle;
+                const sunElevation = Math.sin(sunAngle);
+                const sunLight = this.boardSystem.sun.light;
+                const sunDir = sunLight
+                    ? new THREE.Vector3().subVectors(sunLight.position, this.camera.position).normalize()
+                    : new THREE.Vector3(0, 1, 0);
+                const terrainHeight = this.boardSystem.getTerrainHeight
+                    ? this.boardSystem.getTerrainHeight(this.camera.position.x, this.camera.position.z)
+                    : 0;
+                const cameraHeight = Math.max(0, this.camera.position.y - terrainHeight);
+                this.skyShaderSystem.update(currentTime * 0.001, cameraHeight, sunElevation, this.camera.position, sunDir);
             }
 
             // Update pond weed ripple effect on underwater terrain
@@ -831,6 +991,9 @@ class ChessopiaGame {
             // stay loaded while orbiting, rather than following the camera position
             this.terrainSystem.updateStreaming(this.cameraController.getTarget());
 
+            // Request terrain probes ahead of camera movement direction
+            this.terrainSystem.requestProbeAhead(this.cameraController.getTarget());
+
             // Update board streaming around camera target (focal point) so mesh
             // stays centered while orbiting, rather than chasing the camera eye
             this.boardSystem.updateStreaming(this.cameraController.getTarget(), this.camera);
@@ -843,6 +1006,10 @@ class ChessopiaGame {
 
             // Update shadow quality based on performance
             this.updateShadowQuality(deltaTime * 1000); // Convert to ms
+
+            if (this.minimapOverlay) {
+                this.minimapOverlay.update(currentTime);
+            }
 
             // Update dev tools section with vertex/triangle counts every 10 frames
             if (Math.floor(currentTime / 16) % 10 === 0) {
@@ -937,7 +1104,11 @@ class ChessopiaGame {
             }
 
             // Render
-            this.renderer.render(this.scene, this.camera);
+            if (this.temporalAA) {
+                this.temporalAA.render(this.scene, this.camera);
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
         };
 
         animate(0);
@@ -1063,6 +1234,18 @@ class ChessopiaGame {
             // Space key removed - tactical mode is now default
             case 'escape':
                 this.closeAllModals();
+                break;
+            case 't':
+                if (this.settlementSystem && this.tomeUI) {
+                    const settlement = this.settlementSystem.getSettlementAt(
+                        this.camera.position.x,
+                        this.camera.position.z,
+                        30
+                    );
+                    if (settlement) {
+                        this.tomeUI.toggle(settlement);
+                    }
+                }
                 break;
         }
         
@@ -1324,6 +1507,9 @@ class ChessopiaGame {
     closeAllModals() {
         const modals = document.querySelectorAll('.modal');
         modals.forEach(modal => modal.classList.add('hidden'));
+        if (this.tomeUI) {
+            this.tomeUI.close();
+        }
     }
     
     updateUI() {
@@ -1459,6 +1645,9 @@ class ChessopiaGame {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        if (this.temporalAA) {
+            this.temporalAA.handleResize();
+        }
     }
     
     showLoadingProgress(percent) {

@@ -15,6 +15,11 @@ class TerrainSystem {
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
         this.onChunkLoaded = null; // Callback when a chunk is loaded
         
+        // Probe system: foreknowledge of distant terrain
+        this._lastProbeRequest = 0;
+        this._probeThrottleMs = 2000; // Throttle probe requests to every 2s
+        this._lastCameraPos = new THREE.Vector3();
+        
         // Terrain colors for different biomes
         this.biomeColors = {
             deepWater: new THREE.Color(0.1, 0.3, 0.6),
@@ -115,6 +120,37 @@ class TerrainSystem {
         console.log(`[Terrain] Initial terrain generation complete. Loaded ${this.chunks.size} chunks`);
     }
     
+    async requestProbeAhead(cameraPos) {
+        const now = performance.now();
+        if (now - this._lastProbeRequest < this._probeThrottleMs) return;
+
+        // Compute direction from last position delta
+        const dx = cameraPos.x - this._lastCameraPos.x;
+        const dz = cameraPos.z - this._lastCameraPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        
+        this._lastCameraPos.copy(cameraPos);
+        
+        if (dist < 0.5) return; // Not moving enough
+        
+        const dirX = dx / dist;
+        const dirZ = dz / dist;
+        const probeDist = this.chunkSize * 3; // 3 chunks ahead
+        const px = Math.floor(cameraPos.x + dirX * probeDist);
+        const pz = Math.floor(cameraPos.z + dirZ * probeDist);
+
+        try {
+            this._lastProbeRequest = now;
+            const response = await fetch(`/api/terrain/probe?x=${px}&z=${pz}&radius=48&profile=textured`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[Terrain] Probe placed at (${px}, ${pz}) height=${data.height.toFixed(2)}`);
+            }
+        } catch (err) {
+            // Silently ignore probe failures — non-critical
+        }
+    }
+
     updateStreaming(cameraPosition) {
         const cameraChunkX = Math.floor(cameraPosition.x / this.chunkSize);
         const cameraChunkZ = Math.floor(cameraPosition.z / this.chunkSize);
@@ -288,6 +324,31 @@ class TerrainSystem {
         return normal;
     }
     
+    levelTerrainArea(gx, gz, width, depth, targetHeight) {
+        if (!this.chunks) return;
+        for (let dx = 0; dx < width; dx++) {
+            for (let dz = 0; dz < depth; dz++) {
+                const tx = gx + dx;
+                const tz = gz + dz;
+                const chunkX = Math.floor(tx / this.chunkSize);
+                const chunkZ = Math.floor(tz / this.chunkSize);
+                const chunkKey = `${chunkX},${chunkZ}`;
+                const chunk = this.chunks.get(chunkKey);
+                if (!chunk || !chunk.data) continue;
+                const localX = Math.floor(tx - (chunkX * this.chunkSize));
+                const localZ = Math.floor(tz - (chunkZ * this.chunkSize));
+                const tileIndex = localZ * this.chunkSize + localX;
+                if (tileIndex >= 0 && tileIndex < chunk.data.length) {
+                    const tile = chunk.data[tileIndex];
+                    if (tile) {
+                        tile.height = targetHeight;
+                        tile.isBlocked = false;
+                    }
+                }
+            }
+        }
+    }
+
     clearAllChunks() {
         // Simply clear the chunk map - no meshes to dispose
         this.chunks.clear();

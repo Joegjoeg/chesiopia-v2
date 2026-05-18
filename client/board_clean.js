@@ -8,8 +8,6 @@ class CleanBoardSystem {
 
         this.scene = scene;
         this.renderer = renderer || null;
-        this._waterPlaneUserVisible = true;
-        this._waterPlaneUserOpacity = 0.95;
 
 
 
@@ -24,29 +22,19 @@ class CleanBoardSystem {
         this.game = game;
         this._windSpeed = 1.0;
         this._windDirection = new THREE.Vector2(1, 0);
-        this.waterReflectionManager = null;
-
-        this._initWaterReflectionManager();
-
-
-
         this.chunks = new Map();
         this.terrainModifiers = new Map();
 
-
-
-        this.tileCache = new Map();
-
-
-
-        this.maxCacheSize = 10000;
-
-
+        // Toggle to switch between regular terrain shader and flat-water shader
+        this.useFlatWaterShader = false;
 
         // Game time sync (server-side authoritative time)
         this.serverGameTime = 0;
         this.serverDayLength = 60000; // 60 seconds per day
         this.lastTimeSyncTimestamp = 0; // When the last server time sync was received
+        this.serverYear = 1;
+        this.serverDayOfYear = 0;
+        this.serverTimeOfDay = 12;
         this.frameCount = 0; // For throttling DOM updates
 
         // Seasonal system
@@ -200,7 +188,11 @@ class CleanBoardSystem {
 
         // Water level and underwater mesh optimization
         this.waterLevel = -1.5;
+        this.tideAmplitude = 0.3;
+        this.tidalWaterLevel = -1.5;
+        this.snowLevelSeasonal = 8.0;
         this.beachWidth = 4; // Tiles: keep full resolution within this distance of water line
+        this.shorelineSubdivision = 0; // 0=off, 1=medium, 2=high subdivision near shoreline
 
 
 
@@ -246,14 +238,15 @@ class CleanBoardSystem {
             // Cone culling settings
             coneFOV: 140,          // 140° field of view (expanded from 100°)
             coneBuffer: 30,        // 30° buffer to prevent edge popping (expanded from 22°)
-            maxRenderDistance: 80, // Maximum render distance (adjusted for smaller scale)
+            maxRenderDistance: 120, // Maximum render distance (matches horizon LOD tier)
             
             // Distance LOD settings - proper tile sizes for different detail levels
             lodLevels: [
-                { distance: 15, tileSize: 1, name: 'high' },     // Very Near: Full detail (1x1 tiles)
+                { distance: 15, tileSize: 1, name: 'high' },      // Very Near: Full detail (1x1 tiles)
                 { distance: 30, tileSize: 2, name: 'medium' },    // Medium: 50% detail (2x2 tiles)
-                { distance: 45, tileSize: 4, name: 'low' },      // Far: 25% detail (4x4 tiles)
-                { distance: 60, tileSize: 8, name: 'verylow' }   // Very Far: 6.25% detail (8x8 tiles)
+                { distance: 45, tileSize: 4, name: 'low' },       // Far: 25% detail (4x4 tiles)
+                { distance: 60, tileSize: 8, name: 'verylow' },  // Very Far: 6.25% detail (8x8 tiles)
+                { distance: 120, tileSize: 16, name: 'horizon' }  // Horizon: 3.125% detail (16x16 tiles)
             ],
             
             // Hysteresis settings to prevent flickering
@@ -443,10 +436,11 @@ class CleanBoardSystem {
                 if (previousCallback) previousCallback(chunkX, chunkZ);
                 if (board.rollingTerrain) {
                     const cs = board.terrainSystem.chunkSize || 16;
-                    const cMinX = chunkX * cs;
-                    const cMinZ = chunkZ * cs;
-                    const cMaxX = cMinX + cs - 1;
-                    const cMaxZ = cMinZ + cs - 1;
+                    const blendPad = 2; // match TerrainSystem.getHeight blendWidth
+                    const cMinX = chunkX * cs - blendPad;
+                    const cMinZ = chunkZ * cs - blendPad;
+                    const cMaxX = (chunkX + 1) * cs - 1 + blendPad;
+                    const cMaxZ = (chunkZ + 1) * cs - 1 + blendPad;
                     if (!board._pendingRefresh) {
                         board._pendingRefresh = { minX: cMinX, minZ: cMinZ, maxX: cMaxX, maxZ: cMaxZ };
                     } else {
@@ -503,6 +497,45 @@ class CleanBoardSystem {
         // Orbit sphere deferred — created lazily when camera reaches high altitude
 
         // console.log(`[Board] Sun system initialized`);
+    }
+
+    /**
+     * Return the terrain shader material, respecting the useFlatWaterShader toggle.
+     * The flat-water variant flattens all underwater vertices so the water surface
+     * renders over a flat bed; the fragment shader still sees the original terrain
+     * height for water depth, beaches, grass, etc.
+     */
+    _getTerrainShaderMaterial() {
+        if (!this.textureBlendingSystem) return null;
+        if (this.useFlatWaterShader) {
+            return this.textureBlendingSystem.createFlatWaterShaderMaterial();
+        }
+        return this.textureBlendingSystem.createShaderMaterial();
+    }
+
+    /**
+     * Toggle flat-water shader on/off and immediately apply it to all existing
+     * terrain meshes (continuous, clipmap, rolling). Call from console:
+     *   boardSystem.setFlatWaterEnabled(true)
+     */
+    setFlatWaterEnabled(enabled) {
+        this.useFlatWaterShader = enabled;
+        const material = this._getTerrainShaderMaterial();
+        if (!material) return;
+
+        // Rolling / continuous mesh
+        if (this.continuousMesh) {
+            this.continuousMesh.material = material;
+        }
+
+        // Clipmap terrain
+        if (this._clipmapLevels) {
+            this._clipmapLevels.forEach(level => {
+                if (level.mesh) level.mesh.material = material;
+            });
+        }
+
+        console.log(`[Board] Flat water shader ${enabled ? 'ENABLED' : 'DISABLED'}`);
     }
 
     createCircularTerrainMask() {
@@ -767,43 +800,8 @@ class CleanBoardSystem {
         }
     }
 
-    updateWaterPlanePosition(cameraPosition) {
-        if (!this._waterPlane) return;
-        this._waterPlane.position.x = cameraPosition.x;
-        this._waterPlane.position.z = cameraPosition.z;
-    }
-
-    updateWaterPlaneFade(cameraHeight = 0) {
-        if (!this._waterPlane || !this._waterPlane.material) return;
-
-        const userVisible = (this._waterPlaneUserVisible !== undefined)
-            ? this._waterPlaneUserVisible
-            : true;
-        if (!userVisible) {
-            this._waterPlane.visible = false;
-            return;
-        }
-
-        const fadeStart = window.parameterSystem
-            ? (window.parameterSystem.getParameter('waterPlaneFadeStartHeight') ?? 20)
-            : 20;
-        const fadeEnd = window.parameterSystem
-            ? (window.parameterSystem.getParameter('waterPlaneFadeEndHeight') ?? 120)
-            : 120;
-        const fade = THREE.MathUtils.smoothstep(cameraHeight, fadeStart, fadeEnd);
-
-        const shaderOpacity = window.parameterSystem
-            ? (window.parameterSystem.getParameter('waterOpacity') ?? 1)
-            : 1;
-        const userOpacity = this._waterPlaneUserOpacity ?? this._waterPlaneBaseOpacity ?? this._waterPlane.material.opacity ?? 1;
-        const opacity = userOpacity * shaderOpacity * (1 - fade);
-
-        if (this._waterPlane.material.uniforms && this._waterPlane.material.uniforms.uWaterOpacity) {
-            this._waterPlane.material.uniforms.uWaterOpacity.value = opacity;
-        } else {
-            this._waterPlane.material.opacity = opacity;
-        }
-        this._waterPlane.visible = opacity > 0.01;
+    updateFogColor(sunElevation, cameraHeight = 0) {
+        // ...
     }
 
     // Create circular gradient texture for sun/moon sprites
@@ -1017,7 +1015,6 @@ class CleanBoardSystem {
 
         // Update fog color based on time of day and camera altitude
         this.updateFogColor(sunElevation, cameraHeight);
-        this.updateWaterPlaneFade(cameraHeight);
     }
 
     updateFogColor(sunElevation, cameraHeight = 0) {
@@ -1270,6 +1267,14 @@ class CleanBoardSystem {
         const moonElevation = rawMoonElevation - seasonalOffset;
         const moonHeight = Math.max(0, moonElevation * this.moon.height);
 
+        // Tidal water level driven by moon phase and elevation
+        const phaseAngle = ((this.moon.angle - this.sun.angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        const illumination = (1 + Math.cos(phaseAngle)) / 2;
+        const springNeapFactor = Math.abs(illumination - 0.5) * 2;
+        const tideAmplitude = this.tideAmplitude || 0.3;
+        const tidalOffset = tideAmplitude * moonElevation * springNeapFactor;
+        this.tidalWaterLevel = (this.waterLevel || -1.5) + tidalOffset;
+
         // Calculate moon position
         const moonX = cameraPosition.x + Math.cos(this.moon.angle) * this.moon.orbitRadius;
         const moonZ = cameraPosition.z + Math.sin(this.moon.angle) * this.moon.orbitRadius;
@@ -1457,19 +1462,54 @@ class CleanBoardSystem {
             if (dayTimeEl) {
                 // Interpolate time locally between server syncs for smooth clock
                 let currentGameTime = this.serverGameTime;
+                let elapsedSinceSync = 0;
                 if (this.lastTimeSyncTimestamp > 0) {
-                    const elapsedSinceSync = Date.now() - this.lastTimeSyncTimestamp;
+                    elapsedSinceSync = Date.now() - this.lastTimeSyncTimestamp;
                     currentGameTime += elapsedSinceSync;
                 }
-                const displayDayProgress = (currentGameTime % this.serverDayLength) / this.serverDayLength;
-                const displayHours = Math.floor(displayDayProgress * 24);
-                const minutes = Math.floor((displayDayProgress * 24 * 60) % 60);
-                const totalGameDays = Math.floor(currentGameTime / this.serverDayLength);
-                const year = Math.floor(totalGameDays / 120) + 1;
-                const doy = totalGameDays % 120;
+
+                const safeDayLength = (Number.isFinite(this.serverDayLength) && this.serverDayLength > 0) ? this.serverDayLength : 60000;
+                const deltaMs = Math.max(0, elapsedSinceSync);
+                const deltaDays = safeDayLength > 0 ? deltaMs / safeDayLength : 0;
+
+                let baseYear = Number.isFinite(this.serverYear) ? Math.max(1, this.serverYear) : 1;
+                let baseDayOfYear = Number.isFinite(this.serverDayOfYear) ? this.serverDayOfYear : 0;
+                let totalGameDays;
+
+                if (Number.isFinite(baseYear) && Number.isFinite(baseDayOfYear)) {
+                    totalGameDays = (baseYear - 1) * 120 + baseDayOfYear + deltaDays;
+                } else if (Number.isFinite(currentGameTime) && safeDayLength > 0) {
+                    totalGameDays = currentGameTime / safeDayLength;
+                } else {
+                    totalGameDays = 0;
+                }
+
+                let year = Math.floor(totalGameDays / 120) + 1;
+                if (!Number.isFinite(year) || year < 1) year = baseYear;
+                let doy = ((Math.floor(totalGameDays) % 120) + 120) % 120;
+                if (!Number.isFinite(doy)) doy = baseDayOfYear;
                 const month = Math.floor(doy / 30) + 1;
                 const day = (doy % 30) + 1;
-                dayTimeEl.textContent = `${displayHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} - ${day},${month},${year}`;
+
+                let hoursFloat = Number.isFinite(this.serverTimeOfDay) ? this.serverTimeOfDay : 0;
+                const deltaHours = deltaDays * 24;
+                hoursFloat = (hoursFloat + deltaHours) % 24;
+                if (!Number.isFinite(hoursFloat)) {
+                    const displayDayProgress = Number.isFinite(currentGameTime) && safeDayLength > 0
+                        ? ((currentGameTime % safeDayLength) / safeDayLength)
+                        : 0;
+                    hoursFloat = displayDayProgress * 24;
+                }
+
+                if (!Number.isFinite(hoursFloat)) hoursFloat = 0;
+                let hours = Math.floor(hoursFloat) % 24;
+                if (hours < 0) hours += 24;
+                let minutes = Math.floor((hoursFloat % 1) * 60);
+                if (!Number.isFinite(minutes)) minutes = 0;
+
+                const hoursStr = hours.toString().padStart(2, '0');
+                const minutesStr = minutes.toString().padStart(2, '0');
+                dayTimeEl.textContent = `${hoursStr}:${minutesStr} - ${day},${month},${year}`;
             }
         }
 
@@ -1496,7 +1536,8 @@ class CleanBoardSystem {
                 const seasonDividers = ['|', '||', '|||', '||||'];
                 const seasonIndex = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'].indexOf(this.currentSeason);
                 const divider = seasonDividers[seasonIndex] || '';
-                seasonProgressEl.textContent = `${this.currentSeason} ${divider} ${(this.seasonProgress * 100).toFixed(0)}%`;
+                const progressPct = Number.isFinite(this.seasonProgress) ? (this.seasonProgress * 100).toFixed(0) : '0';
+                seasonProgressEl.textContent = `${this.currentSeason || 'SPRING'} ${divider} ${progressPct}%`;
             }
 
             // Update day time slider to reflect current time (animate it)
@@ -1551,14 +1592,23 @@ class CleanBoardSystem {
     }
 
     updateServerGameTime(data) {
-        this.serverGameTime = data.elapsedTime || 0;
-        this.serverDayLength = data.dayLength || 60000;
+        const elapsed = Number.isFinite(data?.elapsedTime) ? data.elapsedTime : 0;
+        const dayLength = (Number.isFinite(data?.dayLength) && data.dayLength > 0) ? data.dayLength : 60000;
+        const year = Number.isFinite(data?.year) ? data.year : this.serverYear;
+        const dayOfYear = Number.isFinite(data?.dayOfYear) ? data.dayOfYear : this.serverDayOfYear;
+        const timeOfDay = Number.isFinite(data?.timeOfDay) ? data.timeOfDay : this.serverTimeOfDay;
+
+        this.serverGameTime = elapsed;
+        this.serverDayLength = dayLength;
+        this.serverYear = year;
+        this.serverDayOfYear = dayOfYear;
+        this.serverTimeOfDay = timeOfDay;
         this.lastTimeSyncTimestamp = Date.now();
 
         // Recalculate yearLength whenever dayLength changes from server
         this.yearLength = 120 * this.serverDayLength;
 
-        console.log(`[Board] Server time sync: ${this.serverGameTime}ms elapsed, day length: ${this.serverDayLength}ms, year: ${data.year}, dayOfYear: ${data.dayOfYear}, timeOfDay: ${data.timeOfDay?.toFixed(2)}`);
+        console.log(`[Board] Server time sync: ${this.serverGameTime}ms elapsed, day length: ${this.serverDayLength}ms, year: ${year}, dayOfYear: ${dayOfYear}, timeOfDay: ${timeOfDay.toFixed?.(2) ?? timeOfDay}`);
     }
 
     updateSeasons() {
@@ -1604,6 +1654,15 @@ class CleanBoardSystem {
         }
 
         this.currentSeason = newSeason;
+
+        // Adjust snow biome threshold seasonally
+        const snowSeasonal = this.snowLevelSeasonal || 8.0;
+        const snowOffset = snowSeasonal * Math.cos((this.dayOfYear - 45) / 120 * 2 * Math.PI);
+        const baseSnowThreshold = 26.5;
+        const adjustedSnowThreshold = baseSnowThreshold + snowOffset;
+        if (this.textureBlendingSystem && typeof this.textureBlendingSystem.setBiomeThreshold === 'function') {
+            this.textureBlendingSystem.setBiomeThreshold(6, adjustedSnowThreshold);
+        }
     }
         
 
@@ -1617,7 +1676,8 @@ class CleanBoardSystem {
         
         // Store multiplier for dynamic mesh regeneration
         this.meshMultiplier = meshMultiplier;
-        
+        this.lastGridSize = gridSize;
+
         // Initialize mesh bounds
         this.meshBounds = {
             centerX: centerX,
@@ -1628,7 +1688,7 @@ class CleanBoardSystem {
         // Create rolling terrain mesh (fixed grid, ring-buffer updates)
         if (this.useViewportMesh) {
             const material = this.textureBlendingSystem
-                ? this.textureBlendingSystem.createShaderMaterial()
+                ? this._getTerrainShaderMaterial()
                 : new THREE.MeshStandardMaterial({
                     color: 0xffffff, vertexColors: true, side: THREE.DoubleSide
                   });
@@ -1645,9 +1705,6 @@ class CleanBoardSystem {
             this.scene.add(this.continuousMesh);
         }
 
-        // Create water plane at water level
-        this.createWaterPlane();
-        
         // Store reference for later access
         
         // console.log(`[DYNAMIC MESH] Board created - size=${this.meshBounds.size}, mult=${meshMultiplier}, verts≈${(this.meshBounds.size * this.meshBounds.size * 4 / 1000).toFixed(0)}K`);
@@ -1655,357 +1712,11 @@ class CleanBoardSystem {
         return Promise.resolve(); // Return promise for compatibility
     }
     
-    createWaterPlane() {
-        // Remove existing water plane if any
-        if (this._waterPlane) {
-            this.scene.remove(this._waterPlane);
-            this._waterPlane.geometry.dispose();
-            const material = this._waterPlane.material;
-            if (material) {
-                const tex = material.userData?.waterTexture;
-                if (tex && tex.dispose) tex.dispose();
-                material.dispose();
-            }
-            this._waterPlane = null;
-        }
-
-        const waterLevel = this.waterLevel;
-        const size = 200; // Large enough to cover view area
-
-        const meshSize = (this.meshBounds && this.meshBounds.size)
-            ? this.meshBounds.size
-            : (this.chunkSize * (this.meshMultiplier || 12));
-        const landResolution = (this.useViewportMesh && this.rollingTerrain && this.rollingTerrain.N)
-            ? this.rollingTerrain.N
-            : meshSize;
-        const waterSegments = Math.max(1, Math.floor(landResolution / 2));
-
-        const geometry = new THREE.PlaneGeometry(size, size, waterSegments, waterSegments);
-        geometry.rotateX(-Math.PI / 2);
-        if (geometry.attributes.position) {
-            geometry.userData.basePositions = geometry.attributes.position.array.slice();
-            geometry.userData.curved = false;
-        }
-
-        // Load sky reflection texture (used as fallback and UV scroll source)
-        const textureLoader = new THREE.TextureLoader();
-        const waterTexture = textureLoader.load('../Images/sky reflection1.jpg');
-        waterTexture.wrapS = THREE.RepeatWrapping;
-        waterTexture.wrapT = THREE.RepeatWrapping;
-        waterTexture.repeat.set(2, 1);
-        waterTexture.colorSpace = THREE.SRGBColorSpace;
-
-        const material = this._createWaterShaderMaterial(waterTexture);
-        material.userData = material.userData || {};
-        material.userData.waterTexture = waterTexture;
-
-        this._waterPlane = new THREE.Mesh(geometry, material);
-        this._waterPlane.position.set(0, waterLevel, 0);
-        this._waterPlane.name = 'waterPlane';
-        // Render water after terrain so it depth-tests correctly against underwater terrain
-        this._waterPlane.renderOrder = 1;
-        this._waterPlane.visible = true;
-        this._waterPlaneBaseOpacity = material.uniforms.uWaterOpacity.value;
-        this._waterPlaneUserOpacity = material.uniforms.uWaterOpacity.value;
-        this._waterPlaneUserVisible = true;
-        this.scene.add(this._waterPlane);
-
-        // Initialize texture animation with wind parameters
-        this._waterTextureData = {
-            windSpeed: 1.0,
-            windDirection: 0,
-            windSpeedMultiplier: 1.0,
-            offset: new THREE.Vector2(0, 0),
-            lastUpdate: 0
-        };
-        this._waterTextureOffset = new THREE.Vector2(0, 0);
-        this._windSpeed = 1.0;
-        this._windDirection = new THREE.Vector2(1, 0);
-
-        console.log('[WATER] Water plane created at y=' + waterLevel + ' with sky reflection texture');
-
-        if (this.waterReflectionManager) {
-            console.log('[WATER] Water reflections enabled');
-        }
-    }
-
-    _createWaterShaderMaterial(waterTexture) {
-        const uniforms = {
-            uTime: { value: 0 },
-            uWaterLevel: { value: this.waterLevel },
-            uWaterOpacity: { value: 0.95 },
-            uDeepColor: { value: new THREE.Color(0.10, 0.25, 0.50) },
-            uShallowColor: { value: new THREE.Color(0.45, 0.71, 0.98) },
-            uFoamColor: { value: new THREE.Color(0.93, 0.97, 1.0) },
-            uFoamIntensity: { value: 0.65 },
-            uFoamCutoff: { value: 0.3 },
-            uFoamRange: { value: 0.4 },
-            uReflectionBlend: { value: 0.9 },
-            uReflectionEnabled: { value: 0.0 },
-            uReflectionMap: { value: waterTexture },
-            uReflectionMatrix: { value: new THREE.Matrix4() },
-            uFresnelPower: { value: 4.8 },
-            uSpecularStrength: { value: 0.9 },
-            uSpecularColor: { value: new THREE.Color(0.7, 0.85, 1.0) },
-            uSkyTexture: { value: waterTexture },
-            uSkyUvScale: { value: new THREE.Vector2(0.01, 0.006) },
-            uSkyUvOffset: { value: new THREE.Vector2(0, 0) },
-            uWindDir: { value: this._windDirection.clone() },
-            uWindStrength: { value: this._windSpeed ?? 1.0 },
-            uWaveAmplitudeLarge: { value: 0.35 },
-            uWaveAmplitudeMedium: { value: 0.18 },
-            uWaveAmplitudeDetail: { value: 0.08 },
-            uWaveFrequencyLarge: { value: 0.08 },
-            uWaveFrequencyMedium: { value: 0.18 },
-            uWaveFrequencyDetail: { value: 0.42 },
-            uWaveSpeedLarge: { value: 1.2 },
-            uWaveSpeedMedium: { value: 2.1 },
-            uWaveSpeedDetail: { value: 3.3 },
-            uNormalStrength: { value: 1.15 },
-            uSunDirection: { value: new THREE.Vector3(0.3, 0.9, 0.2).normalize() },
-            uCameraPosition: { value: new THREE.Vector3() }
-        };
-
-        const vertexShader = `
-            varying vec3 vWorldPos;
-            void main() {
-                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                vWorldPos = worldPosition.xyz;
-                gl_Position = projectionMatrix * viewMatrix * worldPosition;
-            }
-        `;
-
-        const fragmentShader = `
-            precision highp float;
-
-            uniform float uTime;
-            uniform float uWaterLevel;
-            uniform float uWaterOpacity;
-            uniform vec3 uDeepColor;
-            uniform vec3 uShallowColor;
-            uniform vec3 uFoamColor;
-            uniform float uFoamIntensity;
-            uniform float uFoamCutoff;
-            uniform float uFoamRange;
-            uniform float uReflectionBlend;
-            uniform float uReflectionEnabled;
-            uniform sampler2D uReflectionMap;
-            uniform mat4 uReflectionMatrix;
-            uniform float uFresnelPower;
-            uniform float uSpecularStrength;
-            uniform vec3 uSpecularColor;
-            uniform sampler2D uSkyTexture;
-            uniform vec2 uSkyUvScale;
-            uniform vec2 uSkyUvOffset;
-            uniform vec2 uWindDir;
-            uniform float uWindStrength;
-            uniform float uWaveAmplitudeLarge;
-            uniform float uWaveAmplitudeMedium;
-            uniform float uWaveAmplitudeDetail;
-            uniform float uWaveFrequencyLarge;
-            uniform float uWaveFrequencyMedium;
-            uniform float uWaveFrequencyDetail;
-            uniform float uWaveSpeedLarge;
-            uniform float uWaveSpeedMedium;
-            uniform float uWaveSpeedDetail;
-            uniform float uNormalStrength;
-            uniform vec3 uSunDirection;
-
-            varying vec3 vWorldPos;
-
-            void accumulateWave(inout float height, inout vec2 grad, vec2 dir, float freq, float speed, float amp) {
-                float phase = dot(dir, vWorldPos.xz) * freq + uTime * speed;
-                float s = sin(phase);
-                float c = cos(phase);
-                height += s * amp;
-                grad += dir * c * freq * amp;
-            }
-
-            vec3 computeNormal(out float height) {
-                vec2 grad = vec2(0.0);
-                height = 0.0;
-                vec2 d1 = normalize(vec2(uWindDir.x, uWindDir.y));
-                vec2 d2 = normalize(vec2(-uWindDir.y, uWindDir.x));
-                vec2 d3 = normalize(vec2(uWindDir.x * 0.6 + uWindDir.y * 0.4, -uWindDir.x * 0.4 + uWindDir.y * 0.6));
-                accumulateWave(height, grad, d1, uWaveFrequencyLarge, uWaveSpeedLarge, uWaveAmplitudeLarge);
-                accumulateWave(height, grad, d2, uWaveFrequencyMedium, uWaveSpeedMedium, uWaveAmplitudeMedium);
-                accumulateWave(height, grad, d3, uWaveFrequencyDetail, uWaveSpeedDetail, uWaveAmplitudeDetail);
-                grad *= uNormalStrength * (0.5 + uWindStrength * 0.5);
-                return normalize(vec3(-grad.x, 1.0, -grad.y));
-            }
-
-            float hash(vec2 p) {
-                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-            }
-
-            void main() {
-                float waveHeight;
-                vec3 normal = computeNormal(waveHeight);
-                vec3 viewDir = normalize(cameraPosition - vWorldPos);
-
-                vec2 skyUv = vWorldPos.xz * uSkyUvScale + uSkyUvOffset;
-                vec3 skyColor = texture2D(uSkyTexture, skyUv).rgb;
-
-                float shallowMix = clamp(0.5 + waveHeight * 0.25, 0.0, 1.0);
-                vec3 waterColor = mix(uDeepColor, uShallowColor, shallowMix);
-
-                vec4 reflectionProj = uReflectionMatrix * vec4(vWorldPos, 1.0);
-                vec2 reflectionUv = reflectionProj.xy / reflectionProj.w;
-                vec3 reflectionColor = texture2D(uReflectionMap, reflectionUv).rgb;
-                reflectionColor = mix(skyColor, reflectionColor, uReflectionEnabled);
-
-                float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), uFresnelPower);
-                vec3 color = mix(waterColor, reflectionColor, uReflectionBlend * fresnel);
-
-                float foamHeight = smoothstep(uFoamCutoff, uFoamCutoff + uFoamRange, waveHeight);
-                float foamNoise = hash(floor(vWorldPos.xz * 3.0)) * 0.5 + 0.5;
-                float foam = foamHeight * foamNoise;
-                color = mix(color, uFoamColor, foam * uFoamIntensity);
-
-                vec3 sunDir = normalize(uSunDirection);
-                vec3 halfVec = normalize(sunDir + viewDir);
-                float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
-                color += uSpecularColor * spec * uSpecularStrength;
-
-                float sparkle = pow(max(0.0, sin(dot(vWorldPos.xz, vec2(8.0, 13.0)) + uTime * 12.0)), 12.0);
-                color += uSpecularColor * sparkle * 0.08;
-
-                gl_FragColor = vec4(color, uWaterOpacity);
-            }
-        `;
-
-        return new THREE.ShaderMaterial({
-            uniforms,
-            vertexShader,
-            fragmentShader,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            fog: false
-        });
-    }
-
-    updateWaterTexture(deltaTime) {
-        if (!this._waterPlane || !this._waterPlane.visible) return;
-        if (!this._waterTextureData) return;
-
-        const now = performance.now() / 1000;
-        let dt = deltaTime;
-        if (!dt && this._waterTextureData.lastUpdate) {
-            dt = now - this._waterTextureData.lastUpdate;
-        }
-        this._waterTextureData.lastUpdate = now;
-        if (!dt || dt > 1) dt = 0.016;
-
-        const paramWind = window.parameterSystem ? window.parameterSystem.getParameter('windSpeed') : null;
-        const baseSpeed = paramWind !== null ? paramWind : (this._windSpeed || 1.0);
-        const multiplier = this._waterTextureData.windSpeedMultiplier || 1.0;
-        const dir = this._windDirection ? Math.atan2(this._windDirection.y, this._windDirection.x) : 0;
-
-        const moveSpeed = baseSpeed * multiplier * dt * 0.15;
-        // Texture offset moves opposite to visible flow in Three.js
-        this._waterTextureData.offset.x = (this._waterTextureData.offset.x - Math.cos(dir) * moveSpeed) % 1;
-        this._waterTextureData.offset.y = (this._waterTextureData.offset.y + Math.sin(dir) * moveSpeed) % 1;
-
-        const uniforms = this._waterPlane.material?.uniforms;
-        if (uniforms && uniforms.uSkyUvOffset) {
-            uniforms.uSkyUvOffset.value.set(this._waterTextureData.offset.x, this._waterTextureData.offset.y);
-        }
-    }
-
-    updateWaterReflections(camera) {
-        if (!this.waterReflectionManager || !this._waterPlane) {
-            if (!this._reflectionDebugLogged) {
-                console.warn('[WaterReflection] Skipping - manager:', !!this.waterReflectionManager, 'plane:', !!this._waterPlane);
-                this._reflectionDebugLogged = true;
-            }
-            return;
-        }
-        try {
-            const updated = this.waterReflectionManager.update(this._waterPlane, camera);
-            const reflectionTexture = this.waterReflectionManager.texture;
-            const uniforms = this._waterPlane.material?.uniforms;
-
-            if (!this._reflectionDebugCount) this._reflectionDebugCount = 0;
-            if (this._reflectionDebugCount < 5) {
-                console.log('[WaterReflection] update returned:', updated,
-                    'texture:', !!reflectionTexture,
-                    'waterVisible:', this._waterPlane.visible,
-                    'waterY:', this._waterPlane.position.y,
-                    'camY:', camera?.position?.y);
-                this._reflectionDebugCount++;
-            }
-
-            if (uniforms && uniforms.uReflectionMap) {
-                if (reflectionTexture) {
-                    uniforms.uReflectionMap.value = reflectionTexture;
-                    uniforms.uReflectionEnabled.value = 1.0;
-                } else if (!updated) {
-                    uniforms.uReflectionEnabled.value = 0.0;
-                }
-                if (uniforms.uReflectionMatrix) {
-                    uniforms.uReflectionMatrix.value.copy(this.waterReflectionManager.textureMatrix);
-                }
-            }
-        } catch (error) {
-            console.warn('[WaterReflection] Failed to update reflections:', error);
-        }
-    }
-
-    updateWaterSurface(deltaTime = 0, timeSeconds = 0, camera = null) {
-        if (!this._waterPlane || !this._waterPlane.material || !this._waterPlane.material.uniforms) return;
-        const uniforms = this._waterPlane.material.uniforms;
-        uniforms.uTime.value = timeSeconds;
-        uniforms.uWaterLevel.value = this.waterLevel;
-        if (uniforms.uWindDir) {
-            uniforms.uWindDir.value.copy(this._windDirection);
-        }
-        if (uniforms.uWindStrength) {
-            uniforms.uWindStrength.value = this._windSpeed;
-        }
-        if (camera && uniforms.uCameraPosition) {
-            uniforms.uCameraPosition.value.copy(camera.position);
-        }
-        this.updateWaterReflections(camera);
-    }
-
-    _initWaterReflectionManager() {
-        this.waterReflectionManager = null;
-        if (typeof WaterReflectionManager === 'undefined') {
-            return;
-        }
-        const renderer = this.renderer || (this.game && this.game.renderer);
-        if (!renderer || !this.scene) {
-            return;
-        }
-        try {
-            this.waterReflectionManager = new WaterReflectionManager(renderer, this.scene, {
-                enabled: true,
-                size: 512,
-                maxDistance: 64,
-                maxHeight: 48
-            });
-            console.log('[WaterReflection] Manager initialized');
-        } catch (error) {
-            console.error('[WaterReflection] Failed to initialize:', error);
-            this.waterReflectionManager = null;
-        }
-    }
-
     setWindParameters(windSpeed, windDirection) {
         this._windSpeed = windSpeed;
         const wx = Math.cos(windDirection);
         const wz = Math.sin(windDirection);
         this._windDirection.set(wx, wz);
-        if (this._waterTextureData) {
-            this._waterTextureData.windSpeed = windSpeed;
-            this._waterTextureData.windDirection = windDirection;
-        }
-        const uniforms = this._waterPlane?.material?.uniforms;
-        if (uniforms) {
-            if (uniforms.uWindDir) uniforms.uWindDir.value.set(wx, wz);
-            if (uniforms.uWindStrength) uniforms.uWindStrength.value = windSpeed;
-        }
     }
 
     // Clear all existing chunks when switching to continuous mesh
@@ -2134,7 +1845,42 @@ class CleanBoardSystem {
             // console.log(`[DYNAMIC MESH] Mesh regenerated at (${cameraPosition.x.toFixed(1)}, ${cameraPosition.z.toFixed(1)})`);
         }
     }
-    
+
+    setUseViewportMesh(enabled) {
+        if (this.useViewportMesh === enabled) return;
+        this.useViewportMesh = enabled;
+        this._scheduleTerrainRegen();
+    }
+
+    setShorelineSubdivision(level) {
+        const val = Math.max(0, Math.min(2, Math.floor(level)));
+        if (this.shorelineSubdivision === val) return;
+        this.shorelineSubdivision = val;
+        this._scheduleTerrainRegen();
+    }
+
+    _scheduleTerrainRegen() {
+        if (this._terrainRegenTimeout) clearTimeout(this._terrainRegenTimeout);
+        this._terrainRegenTimeout = setTimeout(() => {
+            this._terrainRegenTimeout = null;
+            this._doTerrainRegen();
+        }, 100);
+    }
+
+    async _doTerrainRegen() {
+        const camera = this.scene.children.find(child => child.isPerspectiveCamera);
+        const centerX = camera ? camera.position.x : 0;
+        const centerZ = camera ? camera.position.z : 0;
+        const meshMultiplier = this.meshMultiplier || 12;
+        const gridSize = this.lastGridSize || 128;
+        try {
+            await this.createBoard(centerX, centerZ, 3, meshMultiplier, gridSize);
+            console.log(`[Board] Terrain regenerated: viewportMesh=${this.useViewportMesh}, shorelineSubdiv=${this.shorelineSubdivision}`);
+        } catch (err) {
+            console.error('[Board] Terrain regeneration failed:', err);
+        }
+    }
+
     // Create continuous mesh centered on specific position
     // Each tile has 4 unique vertices for per-tile color control (checkerboard + mouse fade)
     async createContinuousMeshAround(centerX, centerZ) {
@@ -2186,40 +1932,96 @@ class CleanBoardSystem {
                 const grassColor = new THREE.Color(0.4, 0.6, 0.8);
                 const tileColor = new THREE.Color().lerpColors(baseTileColor, grassColor, fadeFactor);
 
-                // Create 4 vertices for the tile with slight overlap to eliminate gaps
+                // Shoreline subdivision: detect steep angles near water
+                const subdivLevel = this.shorelineSubdivision || 0;
+                const waterLevel = this.tidalWaterLevel ?? this.waterLevel ?? -1.5;
+                const minH = Math.min(height00, height10, height01, height11);
+                const maxH = Math.max(height00, height10, height01, height11);
+                const heightRange = maxH - minH;
+                const crossesWater = (minH < waterLevel && maxH > waterLevel);
+                const nearWater = Math.abs(minH - waterLevel) < 2.0 || Math.abs(maxH - waterLevel) < 2.0;
+                const slopeThreshold = subdivLevel === 2 ? 1.5 : 3.0;
+                const isSteep = heightRange > slopeThreshold;
+                const shouldSubdivide = subdivLevel > 0 && (crossesWater || (nearWater && isSteep));
+
                 const baseIndex = vertices.length / 3;
                 const overlap = 0.02;
+                const uvScale = 0.5;
 
-                // World-space UVs for grass texture (tiled across world)
-                const uvScale = 0.5; // 1 texture tile per 2 world units
+                if (shouldSubdivide) {
+                    // Subdivide tile into 4 quads (9 vertices, 8 triangles)
+                    const half = tileSize * 0.5;
+                    const hE  = this.getTerrainHeightWithFallbackSync(worldX + half, worldZ, centerX, centerZ);
+                    const hF  = this.getTerrainHeightWithFallbackSync(worldX, worldZ + half, centerX, centerZ);
+                    const hG  = this.getTerrainHeightWithFallbackSync(worldX + half, worldZ + half, centerX, centerZ);
+                    const hH  = this.getTerrainHeightWithFallbackSync(worldX + tileSize, worldZ + half, centerX, centerZ);
+                    const hI  = this.getTerrainHeightWithFallbackSync(worldX + half, worldZ + tileSize, centerX, centerZ);
 
-                // Bottom-left
-                vertices.push(worldX - overlap, height00, worldZ - overlap);
-                colors.push(tileColor.r, tileColor.g, tileColor.b);
-                normals.push(0, 1, 0);
-                uvs.push(worldX * uvScale, worldZ * uvScale);
+                    const px = [
+                        worldX - overlap, worldX + half, worldX + tileSize + overlap,
+                        worldX - overlap, worldX + half, worldX + tileSize + overlap,
+                        worldX - overlap, worldX + half, worldX + tileSize + overlap
+                    ];
+                    const pz = [
+                        worldZ - overlap, worldZ - overlap, worldZ - overlap,
+                        worldZ + half, worldZ + half, worldZ + half,
+                        worldZ + tileSize + overlap, worldZ + tileSize + overlap, worldZ + tileSize + overlap
+                    ];
+                    const heights = [height00, hE, height10, hF, hG, hH, height01, hI, height11];
 
-                // Bottom-right
-                vertices.push(worldX + tileSize + overlap, height10, worldZ - overlap);
-                colors.push(tileColor.r, tileColor.g, tileColor.b);
-                normals.push(0, 1, 0);
-                uvs.push((worldX + tileSize) * uvScale, worldZ * uvScale);
+                    for (let i = 0; i < 9; i++) {
+                        const isLight = (Math.floor(px[i]) + Math.floor(pz[i])) % 2 === 0;
+                        const base = isLight ? this.lightTileColor : this.darkTileColor;
+                        const vColor = base.clone().lerp(grassColor, fadeFactor);
+                        vertices.push(px[i], heights[i], pz[i]);
+                        colors.push(vColor.r, vColor.g, vColor.b);
+                        normals.push(0, 1, 0);
+                        uvs.push(px[i] * uvScale, pz[i] * uvScale);
+                    }
 
-                // Top-left
-                vertices.push(worldX - overlap, height01, worldZ + tileSize + overlap);
-                colors.push(tileColor.r, tileColor.g, tileColor.b);
-                normals.push(0, 1, 0);
-                uvs.push(worldX * uvScale, (worldZ + tileSize) * uvScale);
+                    // 4 sub-quads -> 8 triangles
+                    // top-left: 0,3,4,1
+                    indices.push(baseIndex + 0, baseIndex + 3, baseIndex + 4);
+                    indices.push(baseIndex + 0, baseIndex + 4, baseIndex + 1);
+                    // top-right: 1,4,5,2
+                    indices.push(baseIndex + 1, baseIndex + 4, baseIndex + 5);
+                    indices.push(baseIndex + 1, baseIndex + 5, baseIndex + 2);
+                    // bottom-left: 3,6,7,4
+                    indices.push(baseIndex + 3, baseIndex + 6, baseIndex + 7);
+                    indices.push(baseIndex + 3, baseIndex + 7, baseIndex + 4);
+                    // bottom-right: 4,7,8,5
+                    indices.push(baseIndex + 4, baseIndex + 7, baseIndex + 8);
+                    indices.push(baseIndex + 4, baseIndex + 8, baseIndex + 5);
+                } else {
+                    // Create 4 vertices for the tile with slight overlap to eliminate gaps
+                    // Bottom-left
+                    vertices.push(worldX - overlap, height00, worldZ - overlap);
+                    colors.push(tileColor.r, tileColor.g, tileColor.b);
+                    normals.push(0, 1, 0);
+                    uvs.push(worldX * uvScale, worldZ * uvScale);
 
-                // Top-right
-                vertices.push(worldX + tileSize + overlap, height11, worldZ + tileSize + overlap);
-                colors.push(tileColor.r, tileColor.g, tileColor.b);
-                normals.push(0, 1, 0);
-                uvs.push((worldX + tileSize) * uvScale, (worldZ + tileSize) * uvScale);
+                    // Bottom-right
+                    vertices.push(worldX + tileSize + overlap, height10, worldZ - overlap);
+                    colors.push(tileColor.r, tileColor.g, tileColor.b);
+                    normals.push(0, 1, 0);
+                    uvs.push((worldX + tileSize) * uvScale, worldZ * uvScale);
 
-                // Create indices for two triangles
-                indices.push(baseIndex, baseIndex + 1, baseIndex + 2);
-                indices.push(baseIndex + 1, baseIndex + 3, baseIndex + 2);
+                    // Top-left
+                    vertices.push(worldX - overlap, height01, worldZ + tileSize + overlap);
+                    colors.push(tileColor.r, tileColor.g, tileColor.b);
+                    normals.push(0, 1, 0);
+                    uvs.push(worldX * uvScale, (worldZ + tileSize) * uvScale);
+
+                    // Top-right
+                    vertices.push(worldX + tileSize + overlap, height11, worldZ + tileSize + overlap);
+                    colors.push(tileColor.r, tileColor.g, tileColor.b);
+                    normals.push(0, 1, 0);
+                    uvs.push((worldX + tileSize) * uvScale, (worldZ + tileSize) * uvScale);
+
+                    // Create indices for two triangles
+                    indices.push(baseIndex, baseIndex + 1, baseIndex + 2);
+                    indices.push(baseIndex + 1, baseIndex + 3, baseIndex + 2);
+                }
             }
         }
 
@@ -2238,7 +2040,7 @@ class CleanBoardSystem {
         
         // Create mesh using dynamic shader material (enables spherical deformation & blending)
         const material = this.textureBlendingSystem
-            ? this.textureBlendingSystem.createShaderMaterial()
+            ? this._getTerrainShaderMaterial()
             : new THREE.MeshStandardMaterial({
                 vertexColors: true,
                 side: THREE.DoubleSide,
@@ -2354,7 +2156,7 @@ class CleanBoardSystem {
         let material;
         if (this.textureBlendingSystem) {
             // Always create/get the shader material from textureBlendingSystem
-            material = this.textureBlendingSystem.createShaderMaterial();
+            material = this._getTerrainShaderMaterial();
             console.log('[CLIPMAP] Using shader material from textureBlendingSystem');
         } else {
             material = new THREE.MeshStandardMaterial({
@@ -2427,7 +2229,7 @@ class CleanBoardSystem {
                 const idx = iz * N + ix;
 
                 // Apply ripple effect to vertices below water level only
-                const waterLevel = this.waterLevel || -1.5;
+                const waterLevel = this.tidalWaterLevel ?? this.waterLevel ?? -1.5;
                 let rippleHeight = height;
                 if (height < waterLevel && this._windSpeed > 0) {
                     const time = Date.now() * 0.001;
@@ -2452,82 +2254,6 @@ class CleanBoardSystem {
         mesh.geometry.computeVertexNormals();
 
         // Water plane update removed - water is now rendered entirely in the terrain shader
-    }
-
-    _applyWaterSphericalDeformation(cameraPosition) {
-        const plane = this._waterPlane;
-        const blendingSystem = this.textureBlendingSystem;
-        if (!plane || !plane.geometry || !plane.geometry.attributes?.position) return;
-
-        const basePositions = plane.geometry.userData?.basePositions;
-        if (!basePositions) return;
-
-        const uniforms = blendingSystem?.shaderMaterial?.uniforms;
-        if (!uniforms) return;
-
-        const enabled = uniforms.uEnableSpherical?.value > 0.5;
-        const sphereRadius = uniforms.uSphereRadius?.value || 0;
-        if (!enabled || sphereRadius <= 0) {
-            this._restoreWaterBasePositions(plane);
-            return;
-        }
-
-        let deformFactor = uniforms.uDebugForceSpherical?.value > 0.5 ? 1.0 : 0.0;
-        if (deformFactor === 0.0 && uniforms.uCameraHeight && uniforms.uDeformStartHeight && uniforms.uDeformEndHeight) {
-            const camHeight = uniforms.uCameraHeight.value || 0;
-            const start = uniforms.uDeformStartHeight.value || 0;
-            const end = uniforms.uDeformEndHeight.value || 1;
-            const denom = end - start;
-            if (denom !== 0) {
-                const t = THREE.MathUtils.clamp((camHeight - start) / denom, 0, 1);
-                deformFactor = t * t * (3 - 2 * t);
-            }
-        }
-
-        if (deformFactor <= 0) {
-            this._restoreWaterBasePositions(plane);
-            return;
-        }
-
-        const posAttr = plane.geometry.attributes.position;
-        const positions = posAttr.array;
-        const planeX = plane.position.x;
-        const planeZ = plane.position.z;
-        const camX = cameraPosition.x;
-        const camZ = cameraPosition.z;
-
-        for (let i = 0; i < positions.length; i += 3) {
-            const baseX = basePositions[i];
-            const baseY = basePositions[i + 1];
-            const baseZ = basePositions[i + 2];
-            const worldX = baseX + planeX;
-            const worldZ = baseZ + planeZ;
-            const dx = worldX - camX;
-            const dz = worldZ - camZ;
-            const distanceXZ = Math.hypot(dx, dz);
-            const curvatureDrop = (distanceXZ * distanceXZ) / (2 * sphereRadius);
-
-            positions[i] = baseX;
-            positions[i + 1] = baseY - curvatureDrop * deformFactor;
-            positions[i + 2] = baseZ;
-        }
-
-        posAttr.needsUpdate = true;
-        plane.geometry.computeVertexNormals();
-        plane.geometry.userData.curved = true;
-    }
-
-    _restoreWaterBasePositions(plane) {
-        if (!plane.geometry?.attributes?.position) return;
-        const base = plane.geometry.userData?.basePositions;
-        if (!base) return;
-        const positions = plane.geometry.attributes.position.array;
-        if (!plane.geometry.userData.curved) return;
-
-        positions.set(base);
-        plane.geometry.attributes.position.needsUpdate = true;
-        plane.geometry.computeVertexNormals();
-        plane.geometry.userData.curved = false;
     }
 
     setPlanetSphereRadius(radius) {
@@ -3753,6 +3479,31 @@ class CleanBoardSystem {
         this.rollingTerrain.refreshRegion(minX, minZ, maxX, maxZ);
     }
 
+    refreshTerrainInArea(cx, cz, radius) {
+        // Rolling terrain: refresh region directly
+        if (this.rollingTerrain) {
+            this.refreshTerrainRegion(cx - radius, cz - radius, cx + radius, cz + radius);
+            return;
+        }
+        // Chunk-based: regenerate overlapping chunks
+        if (this.chunks && this.chunks.size > 0) {
+            const minChunkX = Math.floor((cx - radius) / this.chunkSize);
+            const maxChunkX = Math.floor((cx + radius) / this.chunkSize);
+            const minChunkZ = Math.floor((cz - radius) / this.chunkSize);
+            const maxChunkZ = Math.floor((cz + radius) / this.chunkSize);
+            for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                for (let chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                    const chunkKey = `${chunkX},${chunkZ}`;
+                    const chunkData = this.chunks.get(chunkKey);
+                    if (chunkData && chunkData.mesh) {
+                        const lodLevel = this.getLODLevel(chunkData);
+                        this.updateChunkLOD(chunkData, lodLevel);
+                    }
+                }
+            }
+        }
+    }
+
     _getModifierHeightContribution(modifier, worldX, worldZ) {
         if (!modifier || modifier.strength === 0) {
             return 0;
@@ -3833,7 +3584,7 @@ class CleanBoardSystem {
     // Get height including ripple effect
     getHeightWithRipple(worldX, worldZ) {
         const baseHeight = this.getUnifiedTerrainHeight(worldX, worldZ);
-        const waterLevel = this.waterLevel || -1.5;
+        const waterLevel = this.tidalWaterLevel ?? this.waterLevel ?? -1.5;
         let finalHeight = baseHeight;
 
         // Apply ripple effect below water level only if wind speed > 0
@@ -3850,8 +3601,7 @@ class CleanBoardSystem {
 
     // Shared wind field computation for tree systems
     computeTreeWindField(treeData, windFieldMap) {
-        const waterLevel = this.waterLevel || -1.5;
-        windFieldMap.clear();
+        const waterLevel = this.tidalWaterLevel ?? this.waterLevel ?? -1.5;
 
         // Build a grid of tree counts for density calculation
         const densityGrid = new Map();
@@ -3935,6 +3685,17 @@ class CleanBoardSystem {
         }
 
         console.log('[Board] Wind field computed for', windFieldMap.size, 'tiles');
+
+        if (this.textureBlendingSystem && typeof this.textureBlendingSystem.updateForestMaskFromDensity === 'function' && this.meshBounds) {
+            this.textureBlendingSystem.updateForestMaskFromDensity({
+                densityGrid,
+                origin: {
+                    x: this.meshBounds.centerX - this.meshBounds.size / 2,
+                    z: this.meshBounds.centerZ - this.meshBounds.size / 2
+                },
+                size: this.meshBounds.size
+            });
+        }
     }
 
     // Get terrain height directly from server API (for points outside mesh range)

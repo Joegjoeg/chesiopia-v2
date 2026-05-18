@@ -21,6 +21,7 @@ class ParameterSystem {
         this.params = new Map();
         this.installed = new Set();
         this.listeners = new Set();
+        this._taaWarningShown = false;
 
         this._registerAll();
         console.log(`[ParameterSystem] Registered ${this.params.size} parameters`);
@@ -141,11 +142,31 @@ class ParameterSystem {
         // --- Terrain ---
         reg('waterLevel', {
             category: 'terrain', type: 'number', default: -1.5, min: -10, max: 10, step: 0.1,
-            description: 'Water plane Y position',
-            apply: (v, sys) => {
-                if (sys._waterPlane) sys._waterPlane.position.y = v;
-            },
+            description: 'Water surface Y position',
             gate: { targetOf: sys => sys, prop: 'waterLevel' }
+        });
+        reg('waveHeight', {
+            category: 'terrain', type: 'number', default: 1.0, min: 0.0, max: 5.0, step: 0.05,
+            description: 'Master wave height multiplier',
+            shortLabel: 'Wave Height',
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uWaveHeight) {
+                    tbs.shaderMaterial.uniforms.uWaveHeight.value = v;
+                }
+            }
+        });
+        reg('tideAmplitude', {
+            category: 'terrain', type: 'number', default: 0.3, min: 0.0, max: 3.0, step: 0.05,
+            description: 'Tidal water level range driven by moon phase',
+            shortLabel: 'Tide Amplitude',
+            gate: { targetOf: sys => sys, prop: 'tideAmplitude' }
+        });
+        reg('snowLevelSeasonal', {
+            category: 'terrain', type: 'number', default: 8.0, min: 0.0, max: 30.0, step: 0.5,
+            description: 'How much snow line drops in winter (height units)',
+            shortLabel: 'Snow Seasonal',
+            gate: { targetOf: sys => sys, prop: 'snowLevelSeasonal' }
         });
         reg('beachWidth', {
             category: 'terrain', type: 'number', default: 4, min: 1, max: 20, step: 1,
@@ -173,6 +194,26 @@ class ParameterSystem {
                 const tbs = sys.textureBlendingSystem;
                 if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uTerrainOpacity) {
                     tbs.shaderMaterial.uniforms.uTerrainOpacity.value = v;
+                }
+            }
+        });
+        reg('useViewportMesh', {
+            category: 'terrain', type: 'boolean', default: true,
+            description: 'Use rolling viewport mesh (disable for shoreline subdivision)',
+            shortLabel: 'Viewport Mesh',
+            apply: (v, sys) => {
+                if (sys && sys.setUseViewportMesh) {
+                    sys.setUseViewportMesh(v);
+                }
+            }
+        });
+        reg('shorelineSubdivision', {
+            category: 'terrain', type: 'number', default: 0, min: 0, max: 2, step: 1,
+            description: 'Subdivide shoreline tiles where angles are steep (0=off, 1=medium, 2=high)',
+            shortLabel: 'Shore Subdiv',
+            apply: (v, sys) => {
+                if (sys && sys.setShorelineSubdivision) {
+                    sys.setShorelineSubdivision(v);
                 }
             }
         });
@@ -329,6 +370,7 @@ class ParameterSystem {
         // --- Time ---
         reg('dayTime', {
             category: 'time', type: 'number', default: 12, min: 0, max: 24, step: 0.01,
+            persist: false,
             description: 'Time of day',
             apply: (v, sys) => {
                 const dayLenMs = sys.serverDayLength || 60000;
@@ -478,7 +520,7 @@ class ParameterSystem {
                 // Update instanced tree system shaders
                 const htm = window.game && window.game.hybridTreeManager;
                 if (!htm) return;
-                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem].forEach(sys => {
+                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem].forEach(sys => {
                     if (!sys || !sys.parts) return;
                     sys.parts.forEach(part => {
                         const mat = part.mesh && part.mesh.material;
@@ -487,6 +529,15 @@ class ParameterSystem {
                         }
                     });
                 });
+            }
+        });
+        reg('blusteryWind', {
+            category: 'environment', type: 'number', default: 0, min: 0, max: 10, step: 1,
+            description: 'Random blustery wind (0 = calm steady, 10 = changeable direction fluctuating gale force)',
+            shortLabel: 'Blustery Wind',
+            apply: (v) => {
+                const game = window.game;
+                if (game && game.decorativeVisuals) game.decorativeVisuals.blusteryWind = v;
             }
         });
 
@@ -520,11 +571,6 @@ class ParameterSystem {
             while (this._wind.currentRad < -Math.PI) this._wind.currentRad += Math.PI * 2;
 
             // Apply to systems
-            const sys = this._getSystem();
-            if (sys && sys._waterTextureData) {
-                sys._waterTextureData.windDirection = this._wind.currentRad;
-                if (sys.updateWaterTexture) sys.updateWaterTexture();
-            }
             const game = window.game;
             if (game && game.decorativeVisuals) {
                 game.decorativeVisuals.windAngle = this._wind.currentRad;
@@ -566,43 +612,6 @@ class ParameterSystem {
             }
         });
 
-        reg('waterVisible', {
-            category: 'water', type: 'boolean', default: true,
-            description: 'Show legacy water plane mesh',
-            shortLabel: 'Water Plane',
-            apply: (v, sys) => {
-                if (sys._waterPlane) sys._waterPlane.visible = v;
-                sys._waterPlaneUserVisible = v;
-            }
-        });
-        reg('waterPlaneOpacity', {
-            category: 'water', type: 'number', default: 0.95, min: 0.0, max: 1.0, step: 0.05,
-            description: 'Water plane transparency (0 = invisible, 1 = fully opaque)',
-            shortLabel: 'Water Plane Transparency',
-            apply: (v, sys) => {
-                if (sys._waterPlane && sys._waterPlane.material) sys._waterPlane.material.opacity = v;
-                sys._waterPlaneUserOpacity = v;
-            }
-        });
-        reg('waterCloudSpeed', {
-            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 10.0, step: 0.1,
-            description: 'Cloud texture scroll speed multiplier on water plane',
-            shortLabel: 'Cloud Speed',
-            apply: (v, sys) => {
-                if (sys._waterTextureData) sys._waterTextureData.windSpeedMultiplier = v;
-            }
-        });
-        reg('waterPlaneFadeStartHeight', {
-            category: 'water', type: 'number', default: 20, min: 0, max: 500, step: 5,
-            description: 'Camera height where water plane starts fading out',
-            shortLabel: 'Fade Start Ht'
-        });
-        reg('waterPlaneFadeEndHeight', {
-            category: 'water', type: 'number', default: 120, min: 10, max: 1000, step: 10,
-            description: 'Camera height where water plane is fully transparent',
-            shortLabel: 'Fade End Ht'
-        });
-
         // --- Water Shader System ---
         const waterUniformApply = (uniformName) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
@@ -610,6 +619,43 @@ class ParameterSystem {
                 tbs.shaderMaterial.uniforms[uniformName].value = v;
             }
         };
+        reg('waterType', {
+            category: 'water', type: 'select', default: 'shaderOnly',
+            description: 'Water rendering mode',
+            shortLabel: 'Water Type',
+            rebuildCategory: true,
+            options: [
+                { value: 'shaderOnly', label: 'Shader Only' },
+                { value: 'flatBed', label: 'Flat Lake Bed' },
+                { value: 'lakeBed', label: 'Lake Bed Sim' }
+            ],
+            apply: (v, sys) => {
+                if (typeof sys.setFlatWaterEnabled === 'function') {
+                    sys.setFlatWaterEnabled(v === 'flatBed' || v === 'lakeBed');
+                }
+            }
+        });
+        reg('flatBedDepth', {
+            category: 'water', type: 'number', default: 0.5, min: 0.0, max: 3.0, step: 0.1,
+            description: 'How far below water level the flat bed sits',
+            shortLabel: 'Bed Depth',
+            showIf: { param: 'waterType', value: ['flatBed', 'lakeBed'] },
+            apply: waterUniformApply('uFlatBedDepth')
+        });
+        reg('lakeBedBlend', {
+            category: 'water', type: 'number', default: 0.5, min: 0.0, max: 1.0, step: 0.05,
+            description: 'How much the darkened lake bed shows through (0 = original terrain, 1 = full lake bed)',
+            shortLabel: 'Lake Bed',
+            showIf: { param: 'waterType', value: 'lakeBed' },
+            apply: waterUniformApply('uLakeBedBlend')
+        });
+        reg('lakeSurfaceOpacity', {
+            category: 'water', type: 'number', default: 0.8, min: 0.0, max: 1.0, step: 0.05,
+            description: 'How opaque the water surface is over the lake bed (0 = fully transparent, 1 = opaque water)',
+            shortLabel: 'Surface Opacity',
+            showIf: { param: 'waterType', value: 'lakeBed' },
+            apply: waterUniformApply('uLakeSurfaceOpacity')
+        });
         reg('waterShaderEnabled', {
             category: 'water', type: 'boolean', default: true,
             description: 'Enable water rendering in terrain shader',
@@ -737,6 +783,12 @@ class ParameterSystem {
             shortLabel: 'Foam Depth',
             apply: waterUniformApply('uFoamDepth')
         });
+        reg('foamWindSensitivity', {
+            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
+            description: 'How strongly shoreline foam drifts with the wind',
+            shortLabel: 'Foam Wind',
+            apply: waterUniformApply('uFoamWindSensitivity')
+        });
         reg('fresnelPower', {
             category: 'water', type: 'number', default: 5.0, min: 1.0, max: 10.0, step: 0.5,
             description: 'Water reflectivity sharpness (lower = more mirror-like)',
@@ -810,31 +862,31 @@ class ParameterSystem {
             }
         };
         reg('grassUvScale', {
-            category: 'grass', type: 'number', default: 0.15, min: 0.05, max: 2.0, step: 0.01,
+            category: 'landCover', type: 'number', default: 0.15, min: 0.05, max: 2.0, step: 0.01,
             description: 'Grass texture UV scale (smaller = finer)',
             shortLabel: 'Tex Scale',
             apply: grassUniformApply('uGrassUvScale')
         });
         reg('grassWindMultiplier', {
-            category: 'grass', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.1,
+            category: 'landCover', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.1,
             description: 'Grass wind displacement strength multiplier (scales global wind)',
             shortLabel: 'Wind Mult',
             apply: grassUniformApply('uGrassWindMultiplier')
         });
         reg('grassBlendAmount', {
-            category: 'grass', type: 'number', default: 0.55, min: 0, max: 1.0, step: 0.05,
+            category: 'landCover', type: 'number', default: 0.55, min: 0, max: 1.0, step: 0.05,
             description: 'Grass overlay blend amount',
             shortLabel: 'Blend',
             apply: grassUniformApply('uGrassBlendAmount')
         });
         reg('grassSharpness', {
-            category: 'grass', type: 'number', default: 0.6, min: 0, max: 1.0, step: 0.05,
+            category: 'landCover', type: 'number', default: 0.6, min: 0, max: 1.0, step: 0.05,
             description: 'Grass blade edge sharpness (0 = soft/cloudy, 1 = hard blades)',
             shortLabel: 'Sharp',
             apply: grassUniformApply('uGrassSharpness')
         });
         reg('grassColorTint', {
-            category: 'grass', type: 'color', default: '#3a8c2e',
+            category: 'landCover', type: 'color', default: '#3a8c2e',
             description: 'Grass colour tint',
             shortLabel: 'Colour',
             apply: (v, sys) => {
@@ -845,7 +897,7 @@ class ParameterSystem {
             }
         });
         reg('grassColorLight', {
-            category: 'grass', type: 'color', default: '#59a638',
+            category: 'landCover', type: 'color', default: '#59a638',
             description: 'Grass highlight colour (light base)',
             shortLabel: 'Light',
             apply: (v, sys) => {
@@ -856,34 +908,130 @@ class ParameterSystem {
             }
         });
         reg('grassWindSpeed', {
-            category: 'grass', type: 'number', default: 1.2, min: 0.0, max: 5.0, step: 0.1,
+            category: 'landCover', type: 'number', default: 1.2, min: 0.0, max: 5.0, step: 0.1,
             description: 'Grass wind animation speed (higher = faster waves)',
             shortLabel: 'Wind Speed',
             apply: grassUniformApply('uGrassWindSpeed')
         });
         reg('grassPhaseScale', {
-            category: 'grass', type: 'number', default: 1.0, min: 0.1, max: 5.0, step: 0.1,
+            category: 'landCover', type: 'number', default: 1.0, min: 0.1, max: 5.0, step: 0.1,
             description: 'Wind spatial wavelength scale (lower = broader waves)',
             shortLabel: 'Phase Scale',
             apply: grassUniformApply('uGrassPhaseScale')
         });
         reg('grassBladeStretchX', {
-            category: 'grass', type: 'number', default: 4.0, min: 0.5, max: 16.0, step: 0.5,
+            category: 'landCover', type: 'number', default: 4.0, min: 0.5, max: 16.0, step: 0.5,
             description: 'Horizontal grass blade stretch',
             shortLabel: 'Stretch X',
             apply: grassUniformApply('uGrassBladeStretchX')
         });
         reg('grassBladeStretchY', {
-            category: 'grass', type: 'number', default: 16.0, min: 1.0, max: 64.0, step: 1.0,
+            category: 'landCover', type: 'number', default: 16.0, min: 1.0, max: 64.0, step: 1.0,
             description: 'Vertical grass blade stretch (taller blades)',
             shortLabel: 'Stretch Y',
             apply: grassUniformApply('uGrassBladeStretchY')
         });
         reg('grassMicroAmount', {
-            category: 'grass', type: 'number', default: 0.2, min: 0.0, max: 1.0, step: 0.05,
+            category: 'landCover', type: 'number', default: 0.2, min: 0.0, max: 1.0, step: 0.05,
             description: 'Secondary micro detail layer intensity',
             shortLabel: 'Micro Detail',
             apply: grassUniformApply('uGrassMicroAmount')
+        });
+
+        // --- Grass Types Per Biome ---
+        const grassTypeOptions = [
+            { value: 0, label: 'None' },
+            { value: 1, label: 'Meadow' },
+            { value: 2, label: 'Prairie' },
+            { value: 3, label: 'Alpine' },
+            { value: 4, label: 'Marsh' },
+            { value: 5, label: 'Dry Steppe' }
+        ];
+        const defaultGrassTypes = [0, 0, 0, 4, 1, 3, 5, 0];
+        const grassBiomeNames = ['Deep Water','Shallow Water','Beach','Lowland','Grassland','Forest','Mountain','Snow'];
+        const grassTypeApply = (idx) => (v, sys) => {
+            const num = typeof v === 'number' ? v : parseFloat(v);
+            const tbs = sys.textureBlendingSystem;
+            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uGrassType) {
+                const arr = tbs.shaderMaterial.uniforms.uGrassType.value;
+                if (arr && arr.length > idx) arr[idx] = num;
+                tbs.shaderMaterial.uniforms.uGrassType.needsUpdate = true;
+            }
+        };
+        for (let i = 0; i < 8; i++) {
+            reg(`grassType${i}`, {
+                category: 'landCover', type: 'select', default: defaultGrassTypes[i],
+                description: `${grassBiomeNames[i]} grass profile`,
+                shortLabel: `${grassBiomeNames[i]} Grass`,
+                options: grassTypeOptions,
+                apply: grassTypeApply(i)
+            });
+        }
+
+        // --- Forest Floor ---
+        const forestUniformApply = (uniformName, propName) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (!tbs) return;
+            if (propName) {
+                tbs[propName] = v;
+            }
+            if (tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
+                tbs.shaderMaterial.uniforms[uniformName].value = v;
+            }
+        };
+
+        reg('forestEnabled', {
+            category: 'forest', type: 'boolean', default: true,
+            description: 'Enable biome-dependent forest floor textures under trees',
+            shortLabel: 'Enabled',
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (!tbs || !tbs.shaderMaterial?.uniforms?.uForestEnabled) return;
+                tbs.forestEnabled = !!v;
+                tbs.shaderMaterial.uniforms.uForestEnabled.value = v ? 1.0 : 0.0;
+            }
+        });
+
+        reg('forestBlendMax', {
+            category: 'forest', type: 'number', default: 0.65, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Maximum strength of forest floor takeover where trees are dense',
+            shortLabel: 'Blend',
+            apply: forestUniformApply('uForestBlendMax', 'forestBlendMax')
+        });
+
+        reg('forestMaskStrength', {
+            category: 'forest', type: 'number', default: 1.5, min: 0.2, max: 4.0, step: 0.1,
+            description: 'How strongly the tree-density mask is emphasized (higher = tighter patches)',
+            shortLabel: 'Mask Pow',
+            apply: forestUniformApply('uForestMaskStrength', 'forestMaskStrength')
+        });
+
+        reg('forestBiomeBias', {
+            category: 'forest', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
+            description: 'Bias toward forest biomes (higher = only strong forest zones get the texture)',
+            shortLabel: 'Biome Bias',
+            apply: forestUniformApply('uForestBiomeBias', 'forestBiomeBias')
+        });
+
+        reg('forestTexScale', {
+            category: 'forest', type: 'number', default: 0.18, min: 0.05, max: 1.0, step: 0.01,
+            description: 'Forest floor texture tiling scale (smaller = finer detail)',
+            shortLabel: 'Tex Scale',
+            apply: forestUniformApply('uForestTexScale', 'forestTexScale')
+        });
+
+        reg('forestNoiseScale', {
+            category: 'forest', type: 'number', default: 0.08, min: 0.01, max: 0.5, step: 0.01,
+            description: 'Breakup noise scale for mask edges (higher = noisier blend)',
+            shortLabel: 'Noise',
+            apply: forestUniformApply('uForestNoiseScale', 'forestNoiseScale')
+        });
+
+        reg('forestBaseInfluence', {
+            category: 'forest', type: 'number', default: 0.2, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Baseline forest-floor influence even with sparse trees (helps subtle duff)',
+            shortLabel: 'Base',
+            apply: forestUniformApply('uForestBaseInfluence', 'forestBaseInfluence')
         });
 
         // --- Beach ---
@@ -900,70 +1048,173 @@ class ParameterSystem {
             }
         };
         reg('beachEnabled', {
-            category: 'beach', type: 'boolean', default: true,
+            category: 'shoreline', type: 'boolean', default: true,
             description: 'Enable beach surface detail rendering',
             shortLabel: 'Enabled',
             apply: beachUniformApply('uBeachEnabled')
         });
         reg('beachStoneAmount', {
-            category: 'beach', type: 'number', default: 0.6, min: 0.0, max: 1.0, step: 0.05,
+            category: 'shoreline', type: 'number', default: 0.6, min: 0.0, max: 1.0, step: 0.05,
             description: 'Amount of stone patches vs pure sand',
             shortLabel: 'Stone Amt',
             apply: beachUniformApply('uBeachStoneAmount')
         });
         reg('beachStoneScale', {
-            category: 'beach', type: 'number', default: 0.4, min: 0.05, max: 10.0, step: 0.05,
+            category: 'shoreline', type: 'number', default: 0.4, min: 0.05, max: 10.0, step: 0.05,
             description: 'Noise scale for stone/sand variation (smaller = broader patches)',
             shortLabel: 'Stone Scale',
             apply: beachUniformApply('uBeachStoneScale')
         });
         reg('beachWetWidth', {
-            category: 'beach', type: 'number', default: 1.2, min: 0.0, max: 5.0, step: 0.1,
+            category: 'shoreline', type: 'number', default: 1.2, min: 0.0, max: 5.0, step: 0.1,
             description: 'Width of the high-tide wet sand band above water',
             shortLabel: 'Wet Width',
             apply: beachUniformApply('uBeachWetWidth')
         });
         reg('beachWetIntensity', {
-            category: 'beach', type: 'number', default: 0.7, min: 0.0, max: 1.0, step: 0.05,
+            category: 'shoreline', type: 'number', default: 0.7, min: 0.0, max: 1.0, step: 0.05,
             description: 'Darkness of the wet sand high-tide line',
             shortLabel: 'Wet Intensity',
             apply: beachUniformApply('uBeachWetIntensity')
         });
+        reg('wetFadeDelay', {
+            category: 'shoreline', type: 'number', default: 0.3, min: 0.0, max: 3.0, step: 0.1,
+            description: 'Distance above water where sand stays fully wet before fading',
+            shortLabel: 'Wet Plateau',
+            apply: beachUniformApply('uWetFadeDelay')
+        });
+        reg('wetFadeSpeed', {
+            category: 'shoreline', type: 'number', default: 0.5, min: 0.0, max: 5.0, step: 0.1,
+            description: 'How quickly wet sand dries out above the plateau zone',
+            shortLabel: 'Dry Speed',
+            apply: beachUniformApply('uWetFadeSpeed')
+        });
         reg('beachShrubAmount', {
-            category: 'beach', type: 'number', default: 0.5, min: 0.0, max: 1.0, step: 0.05,
+            category: 'shoreline', type: 'number', default: 0.5, min: 0.0, max: 1.0, step: 0.05,
             description: 'Amount of hardy shrubbery at the top of the beach',
             shortLabel: 'Shrub Amt',
             apply: beachUniformApply('uBeachShrubAmount')
         });
+        reg('beachBiomeBias', {
+            category: 'shoreline', type: 'number', default: 1.0, min: 0.1, max: 4.0, step: 0.1,
+            description: 'Bias toward true biome beach weight (higher = only strong beach zones render)',
+            shortLabel: 'Biome Bias',
+            apply: beachUniformApply('uBeachBiomeBias')
+        });
+        reg('beachHeightBlend', {
+            category: 'shoreline', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Blend additional height-based mask with biome weight (0 = biome only)',
+            shortLabel: 'Height Mix',
+            apply: beachUniformApply('uBeachHeightBlend')
+        });
         reg('beachSandColor', {
-            category: 'beach', type: 'color', default: '#d2c284',
+            category: 'shoreline', type: 'color', default: '#d2c284',
             description: 'Base dry sand colour',
             shortLabel: 'Sand Colour',
             apply: beachColorApply('uBeachSandColor')
         });
         reg('beachStoneColor', {
-            category: 'beach', type: 'color', default: '#736b61',
+            category: 'shoreline', type: 'color', default: '#736b61',
             description: 'Stone patch colour',
             shortLabel: 'Stone Colour',
             apply: beachColorApply('uBeachStoneColor')
         });
         reg('beachWetColor', {
-            category: 'beach', type: 'color', default: '#998d61',
+            category: 'shoreline', type: 'color', default: '#998d61',
             description: 'Wet sand high-tide line colour',
             shortLabel: 'Wet Colour',
             apply: beachColorApply('uBeachWetColor')
         });
         reg('beachShrubColor', {
-            category: 'beach', type: 'color', default: '#386b26',
+            category: 'shoreline', type: 'color', default: '#386b26',
             description: 'Hardy shrub colour',
             shortLabel: 'Shrub Colour',
             apply: beachColorApply('uBeachShrubColor')
         });
         reg('debugBeachState', {
-            category: 'beach', type: 'boolean', default: false,
+            category: 'shoreline', type: 'boolean', default: false,
             description: 'Debug: show beach mask only',
             shortLabel: 'Debug Mask',
             apply: beachUniformApply('uDebugBeachState')
+        });
+
+        // --- Cliff / Slope Material ---
+        const cliffApply = (setterName) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs && typeof tbs[setterName] === 'function') {
+                tbs[setterName](v);
+            }
+        };
+        reg('cliffEnabled', {
+            category: 'cliff', type: 'boolean', default: true,
+            description: 'Enable cliff material on steep slopes',
+            shortLabel: 'Enabled',
+            apply: cliffApply('setCliffEnabled')
+        });
+        reg('cliffThreshold', {
+            category: 'cliff', type: 'number', default: 0.45, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Slope angle where cliff material starts (0=flat, 1=vertical)',
+            shortLabel: 'Threshold',
+            apply: cliffApply('setCliffThreshold')
+        });
+        reg('cliffBlendWidth', {
+            category: 'cliff', type: 'number', default: 0.25, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Transition band width around threshold',
+            shortLabel: 'Blend Width',
+            apply: cliffApply('setCliffBlendWidth')
+        });
+        reg('cliffRubbleAmount', {
+            category: 'cliff', type: 'number', default: 0.65, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Loose scree / rubble visibility on cliff faces',
+            shortLabel: 'Rubble',
+            apply: cliffApply('setCliffRubbleAmount')
+        });
+        reg('cliffStrataScale', {
+            category: 'cliff', type: 'number', default: 0.12, min: 0.01, max: 2.0, step: 0.01,
+            description: 'Horizontal rock strata banding frequency',
+            shortLabel: 'Strata Scale',
+            apply: cliffApply('setCliffStrataScale')
+        });
+        reg('cliffStrataAmount', {
+            category: 'cliff', type: 'number', default: 0.55, min: 0.0, max: 1.0, step: 0.05,
+            shortLabel: 'Strata Amount',
+            apply: cliffApply('setCliffStrataAmount')
+        });
+        reg('cliffDarkenAmount', {
+            category: 'cliff', type: 'number', default: 0.35, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Vertical face self-shadowing darkening',
+            shortLabel: 'Darken',
+            apply: cliffApply('setCliffDarkenAmount')
+        });
+        reg('cliffBaseColor', {
+            category: 'cliff', type: 'color', default: '#615c51',
+            description: 'Base dark rock colour',
+            shortLabel: 'Base Colour',
+            apply: cliffApply('setCliffBaseColor')
+        });
+        reg('cliffLightColor', {
+            category: 'cliff', type: 'color', default: '#948575',
+            description: 'Lighter exposed rock colour',
+            shortLabel: 'Light Colour',
+            apply: cliffApply('setCliffLightColor')
+        });
+        reg('cliffMossColor', {
+            category: 'cliff', type: 'color', default: '#476138',
+            description: 'Moss / lichen tint colour',
+            shortLabel: 'Moss Colour',
+            apply: cliffApply('setCliffMossColor')
+        });
+        reg('cliffMossAmount', {
+            category: 'cliff', type: 'number', default: 0.40, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Moss coverage on less-vertical cliff faces',
+            shortLabel: 'Moss Amount',
+            apply: cliffApply('setCliffMossAmount')
+        });
+        reg('cliffDebug', {
+            category: 'cliff', type: 'boolean', default: false,
+            description: 'Debug: show cliff mask only',
+            shortLabel: 'Debug Mask',
+            apply: cliffApply('setCliffDebug')
         });
 
         // --- Biome Edge Blending ---
@@ -984,21 +1235,21 @@ class ParameterSystem {
             { value: 7, label: 'Snow' }
         ];
         reg('biomeEdgeA', {
-            category: 'biome', type: 'select', default: 3,
+            category: 'blending', type: 'select', default: 3,
             description: 'First biome in the edge pair',
             shortLabel: 'Biome A',
             options: biomeOptions,
             apply: biomeUniformApply('uBiomeEdgeA')
         });
         reg('biomeEdgeB', {
-            category: 'biome', type: 'select', default: 4,
+            category: 'blending', type: 'select', default: 4,
             description: 'Second biome in the edge pair',
             shortLabel: 'Biome B',
             options: biomeOptions,
             apply: biomeUniformApply('uBiomeEdgeB')
         });
         reg('biomeEdgeMode', {
-            category: 'biome', type: 'select', default: 0,
+            category: 'blending', type: 'select', default: 0,
             description: 'Edge blending mode',
             shortLabel: 'Mode',
             options: [
@@ -1009,34 +1260,54 @@ class ParameterSystem {
             apply: biomeUniformApply('uBiomeEdgeMode')
         });
         reg('biomeEdgeScale', {
-            category: 'biome', type: 'number', default: 0.3, min: 0.01, max: 2.0, step: 0.01,
+            category: 'blending', type: 'number', default: 0.3, min: 0.01, max: 2.0, step: 0.01,
             description: 'Wiggle noise scale (smaller = broader waves)',
             shortLabel: 'Wiggle Scale',
             apply: biomeUniformApply('uBiomeEdgeScale')
         });
         reg('biomeEdgeStrength', {
-            category: 'biome', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.05,
+            category: 'blending', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.05,
             description: 'Wiggle noise displacement strength',
             shortLabel: 'Wiggle Str',
             apply: biomeUniformApply('uBiomeEdgeStrength')
         });
         reg('biomeSplatterScale', {
-            category: 'biome', type: 'number', default: 0.5, min: 0.01, max: 3.0, step: 0.01,
+            category: 'blending', type: 'number', default: 0.5, min: 0.01, max: 3.0, step: 0.01,
             description: 'Splatter patch size (smaller = bigger patches)',
             shortLabel: 'Splatter Scale',
             apply: biomeUniformApply('uBiomeSplatterScale')
         });
         reg('biomeSplatterAmount', {
-            category: 'biome', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
+            category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
             description: 'Splatter mask intensity',
             shortLabel: 'Splatter Amt',
             apply: biomeUniformApply('uBiomeSplatterAmount')
         });
         reg('biomeEdgeSplatterMix', {
-            category: 'biome', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
+            category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
             description: 'Blend between wiggly edge (0) and splatter mask (1)',
             shortLabel: 'Edge/Splat',
             apply: biomeUniformApply('uBiomeEdgeSplatterMix')
+        });
+
+        // --- Biome Patch Noise ---
+        reg('biomePatchScale', {
+            category: 'blending', type: 'number', default: 0.025, min: 0.001, max: 0.1, step: 0.001,
+            description: 'Patch noise spatial scale (smaller = bigger patches)',
+            shortLabel: 'Patch Scale',
+            apply: biomeUniformApply('uBiomePatchScale')
+        });
+        reg('biomePatchStrength', {
+            category: 'blending', type: 'number', default: 0.0, min: 0, max: 6.0, step: 0.1,
+            description: 'Patch noise threshold shift strength (0 = off)',
+            shortLabel: 'Patch Str',
+            apply: biomeUniformApply('uBiomePatchStrength')
+        });
+        reg('biomePatchSeed', {
+            category: 'blending', type: 'number', default: 123.45, min: 0, max: 999.99, step: 1.0,
+            description: 'Patch noise seed offset',
+            shortLabel: 'Patch Seed',
+            apply: biomeUniformApply('uBiomePatchSeed')
         });
 
         // --- Biome Palette ---
@@ -1056,7 +1327,7 @@ class ParameterSystem {
         const biomeNames = ['Deep Water','Shallow Water','Beach','Lowland','Grassland','Forest','Mountain','Snow'];
         for (let i = 0; i < 8; i++) {
             reg(`biomeColor${i}`, {
-                category: 'biome', type: 'color', default: defaultBiomeColors[i],
+                category: 'blending', type: 'color', default: defaultBiomeColors[i],
                 description: `${biomeNames[i]} color`,
                 shortLabel: `${biomeNames[i]} Col`,
                 apply: biomeColorApply(i)
@@ -1064,7 +1335,7 @@ class ParameterSystem {
         }
         for (let i = 0; i < 7; i++) {
             reg(`biomeThreshold${i}`, {
-                category: 'biome', type: 'number', default: defaultBiomeThresholds[i],
+                category: 'blending', type: 'number', default: defaultBiomeThresholds[i],
                 min: -50, max: 100, step: 0.1,
                 description: `${biomeNames[i]}-${biomeNames[i+1]} boundary`,
                 shortLabel: `${biomeNames[i]} Th`,
@@ -1074,7 +1345,7 @@ class ParameterSystem {
 
         // --- Biome Modifier Stack ---
         reg('biomeModifierStack', {
-            category: 'modifier', type: 'modifierStack',
+            category: 'blending', type: 'modifierStack',
             default: ModifierStack.defaultStack(),
             description: 'Layered noise modifiers for biome surface edges',
             shortLabel: 'Modifier Stack',
@@ -1089,6 +1360,20 @@ class ParameterSystem {
                     }
                 });
             }
+        });
+
+        // --- Checkerboard ---
+        const checkerboardUniformApply = (uniformName) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
+                tbs.shaderMaterial.uniforms[uniformName].value = v;
+            }
+        };
+        reg('checkerFadeStrength', {
+            category: 'checkerboard', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Checkerboard transparency fade strength (0 = full checkerboard, 1 = full biome)',
+            shortLabel: 'Fade',
+            apply: checkerboardUniformApply('uCheckerFadeStrength')
         });
 
         reg('dontRenderTrees', {
@@ -1137,17 +1422,88 @@ class ParameterSystem {
             }
         });
 
+        const withTemporalAA = (cb) => {
+            const game = window.game;
+            const taa = game && game.temporalAA;
+            if (!taa) {
+                if (!this._taaWarningShown) {
+                    console.warn('[ParameterSystem] Temporal AA controls unavailable (system not initialized)');
+                    this._taaWarningShown = true;
+                }
+                return;
+            }
+            cb(taa);
+        };
+
+        const updateTaaSetting = (prop, reason) => (value) => {
+            withTemporalAA(taa => {
+                const patch = {};
+                patch[prop] = value;
+                taa.updateSettings(patch);
+                taa.resetHistory(reason || `param:${prop}`);
+            });
+        };
+
+        reg('taaEnabled', {
+            category: 'taa', type: 'boolean', default: false,
+            description: 'Enable temporal anti-aliasing (WebGL2 devices only)',
+            shortLabel: 'Enabled',
+            apply: (v) => {
+                const game = window.game;
+                if (!v && (!game || !game.temporalAA)) {
+                    return;
+                }
+                withTemporalAA(taa => {
+                    taa.setEnabled(!!v);
+                    if (v) taa.resetHistory('param:enabled');
+                });
+            }
+        });
+        reg('taaFeedbackLow', {
+            category: 'taa', type: 'number', default: 0.82, min: 0.5, max: 0.95, step: 0.01,
+            description: 'History weight when motion is calm (higher = softer edges)',
+            shortLabel: 'Low Motion',
+            apply: updateTaaSetting('feedbackMin', 'param:feedbackLow')
+        });
+        reg('taaFeedbackHigh', {
+            category: 'taa', type: 'number', default: 0.95, min: 0.6, max: 0.99, step: 0.01,
+            description: 'History weight when motion spikes (higher = smoother but blurrier)',
+            shortLabel: 'High Motion',
+            apply: updateTaaSetting('feedbackMax', 'param:feedbackHigh')
+        });
+        reg('taaClampScalar', {
+            category: 'taa', type: 'number', default: 1.5, min: 0.5, max: 3.0, step: 0.1,
+            description: 'Neighborhood clamp scalar (higher clamps ghosting more aggressively)',
+            shortLabel: 'Clamp',
+            apply: updateTaaSetting('clampScalar', 'param:clamp')
+        });
+        reg('taaJitterSpread', {
+            category: 'taa', type: 'number', default: 0.65, min: 0.1, max: 2.0, step: 0.05,
+            description: 'Subpixel jitter spread (higher = faster convergence, but more shimmer)',
+            shortLabel: 'Jitter',
+            apply: updateTaaSetting('jitterSpread', 'param:jitter')
+        });
+        reg('taaSharpenStrength', {
+            category: 'taa', type: 'number', default: 0.04, min: 0.0, max: 0.2, step: 0.01,
+            description: 'Post-resolve sharpening to recover fine detail',
+            shortLabel: 'Sharpen',
+            apply: updateTaaSetting('sharpenStrength', 'param:sharpen')
+        });
+
         // --- Tree ---
         reg('treeType', {
-            category: 'tree', type: 'select', default: 'default',
+            category: 'tree', type: 'select', default: 'none',
             description: 'Override all trees to one type',
             shortLabel: 'Type',
+            persist: false, // Never persist — always start with no trees, load on-demand via devtools
             options: [
+                { value: 'none', label: 'None' },
                 { value: 'default', label: 'Default' },
                 { value: 'poplar', label: 'Poplar' },
                 { value: 'terrain', label: 'Canopy' },
                 { value: 'growing', label: 'Growing' },
-                { value: 'cherry', label: 'Cherry' }
+                { value: 'cherry', label: 'Cherry' },
+                { value: 'billboard', label: 'Illuminated Trees' }
             ],
             apply: (v) => {
                 const htm = window.game && window.game.hybridTreeManager;
@@ -1165,8 +1521,8 @@ class ParameterSystem {
                 const globalWind = ps ? ps.getParameter('windSpeed') : 1.0;
                 const finalWind = globalWind * v;
                 if (!htm) return;
-                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem].forEach((sys, i) => {
-                    const names = ['terrain','growing','poplar','cherry'];
+                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem].forEach((sys, i) => {
+                    const names = ['terrain','growing','poplar','cherry','billboard'];
                     if (sys && sys.windUniforms && sys.windUniforms.uWindStrength) {
                         sys.windUniforms.uWindStrength.value = finalWind;
                     }
@@ -1180,15 +1536,35 @@ class ParameterSystem {
             apply: (v) => {
                 const htm = window.game && window.game.hybridTreeManager;
                 console.log('[ParameterSystem.treeSwayMult] htm=', !!htm, 'poplar=', !!(htm && htm.poplarTreeSystem), 'value=', v);
-                if (!htm || !htm.poplarTreeSystem) return;
+                if (!htm) return;
                 let setCount = 0;
-                htm.poplarTreeSystem.parts.forEach(part => {
-                    if (part.isPlane && part.mesh.material && part.mesh.material.uniforms.uSwayMult) {
-                        part.mesh.material.uniforms.uSwayMult.value = v;
-                        setCount++;
-                    }
+                const systems = [htm.poplarTreeSystem, htm.billboardTreeSystem];
+                systems.forEach(sys => {
+                    if (!sys || !sys.parts) return;
+                    sys.parts.forEach(part => {
+                        if (part.mesh && part.mesh.material && part.mesh.material.uniforms && part.mesh.material.uniforms.uSwayMult) {
+                            part.mesh.material.uniforms.uSwayMult.value = v;
+                            setCount++;
+                        }
+                    });
                 });
-                console.log(`[ParameterSystem.treeSwayMult] set ${setCount} plane materials`);
+                console.log(`[ParameterSystem.treeSwayMult] set ${setCount} materials`);
+            }
+        });
+        reg('treeSize', {
+            category: 'tree', type: 'number', default: 1.0, min: 0.2, max: 3.0, step: 0.05,
+            description: 'Global tree size multiplier',
+            shortLabel: 'Size',
+            apply: (v) => {
+                const htm = window.game && window.game.hybridTreeManager;
+                if (!htm) return;
+                if (htm.billboardTreeSystem) {
+                    htm.billboardTreeSystem.parts.forEach(part => {
+                        if (part.mesh && part.mesh.material && part.mesh.material.uniforms && part.mesh.material.uniforms.uTreeSizeMult) {
+                            part.mesh.material.uniforms.uTreeSizeMult.value = v;
+                        }
+                    });
+                }
             }
         });
         reg('treeLODEnabled', {
@@ -1212,6 +1588,7 @@ class ParameterSystem {
                     lm.setGroupCullDistance('growingTrees', v);
                     lm.setGroupCullDistance('poplarTrees', v);
                     lm.setGroupCullDistance('cherryTrees', v);
+                    lm.setGroupCullDistance('billboardTrees', v);
                 }
             }
         });
@@ -1226,6 +1603,7 @@ class ParameterSystem {
                     lm.setGroupMaxVisible('growingTrees', v);
                     lm.setGroupMaxVisible('poplarTrees', v);
                     lm.setGroupMaxVisible('cherryTrees', v);
+                    lm.setGroupMaxVisible('billboardTrees', v);
                 }
             }
         });
@@ -1517,29 +1895,51 @@ class ParameterSystem {
 
         const original = sys.updateServerGameTime.bind(sys);
         const ps = this;
-        sys.updateServerGameTime = function (elapsed, dayLen) {
+        sys.updateServerGameTime = function (data) {
             const dt = ps.params.get('dayTime');
             const ds = ps.params.get('daySpeed');
-            if (ds && ds.userOverridden) {
-                // Preserve user day length; still stamp sync.
-                sys.lastTimeSyncTimestamp = Date.now();
-                if (dt && dt.userOverridden) {
-                    // Lock time of day: re-anchor serverGameTime to user value each sync.
-                    sys.serverGameTime = (dt.value / 24) * sys.serverDayLength;
+            const isDayTimeTransient = !!(dt && dt.persist === false);
+            const isDaySpeedTransient = !!(ds && ds.persist === false);
+            const hasDaySpeedOverride = !!(ds && ds.userOverridden && !isDaySpeedTransient);
+            const hasDayTimeOverride = !!(dt && dt.userOverridden && !isDayTimeTransient);
+
+            const releaseTransientDayTime = () => {
+                if (isDayTimeTransient && dt && dt.userOverridden) {
+                    dt.userOverridden = false;
+                }
+            };
+
+            if (!hasDaySpeedOverride && !hasDayTimeOverride) {
+                releaseTransientDayTime();
+                return original(data);
+            }
+
+            const payload = (data && typeof data === 'object') ? data : {};
+            const elapsed = Number.isFinite(payload.elapsedTime) ? payload.elapsedTime : 0;
+            const referenceDay = Number.isFinite(payload.dayLength) && payload.dayLength > 0 ? payload.dayLength : 60000;
+
+            sys.lastTimeSyncTimestamp = Date.now();
+
+            // Sync calendar fields from server so date display updates even when overridden
+            if (Number.isFinite(payload.year)) sys.serverYear = payload.year;
+            if (Number.isFinite(payload.dayOfYear)) sys.serverDayOfYear = payload.dayOfYear;
+            if (Number.isFinite(payload.timeOfDay)) sys.serverTimeOfDay = payload.timeOfDay;
+            if (!hasDaySpeedOverride && Number.isFinite(payload.dayLength)) sys.serverDayLength = payload.dayLength;
+
+            if (hasDaySpeedOverride) {
+                if (hasDayTimeOverride) {
+                    sys.serverGameTime = (dt.value / 24) * (sys.serverDayLength || 60000);
                     return;
                 }
-                // Scale elapsed into user-chosen day length proportionally
-                const referenceDay = dayLen || 60000;
-                sys.serverGameTime = (elapsed % referenceDay) / referenceDay * sys.serverDayLength;
+                const normalized = referenceDay > 0 ? ((elapsed % referenceDay) / referenceDay) : 0;
+                sys.serverGameTime = normalized * (sys.serverDayLength || referenceDay || 60000);
+                releaseTransientDayTime();
                 return;
             }
-            if (dt && dt.userOverridden) {
-                sys.serverDayLength = sys.serverDayLength || 60000;
-                sys.serverGameTime = (dt.value / 24) * sys.serverDayLength;
-                sys.lastTimeSyncTimestamp = Date.now();
-                return;
-            }
-            return original(elapsed, dayLen);
+
+            // Only dayTime override active
+            sys.serverDayLength = sys.serverDayLength || 60000;
+            sys.serverGameTime = (dt.value / 24) * sys.serverDayLength;
         };
     }
 
@@ -1623,6 +2023,11 @@ class ParameterSystem {
             }
             return ModifierStack.defaultStack();
         }
+        if (p.type === 'select' && typeof p.defaultValue === 'number') {
+            const n = typeof value === 'number' ? value : parseFloat(value);
+            if (Number.isNaN(n)) return p.defaultValue;
+            return n;
+        }
         return value;
     }
 
@@ -1645,6 +2050,9 @@ class ParameterSystem {
             max: p.max,
             step: p.step,
             options: p.options,
+            persist: p.persist !== undefined ? p.persist : true,
+            showIf: p.showIf,
+            rebuildCategory: p.rebuildCategory,
             lastModified: p.lastModified,
             modifiedBy: p.modifiedBy
         };
@@ -1770,6 +2178,11 @@ class ParameterSystem {
             const p = this.params.get(name);
             if (!p) {
                 console.warn(`[ParameterSystem._applySavedDefaults] Saved default for unknown parameter: ${name}`);
+                return;
+            }
+
+            if (p.persist === false) {
+                console.log(`[ParameterSystem._applySavedDefaults] Skipping non-persistent parameter: ${name}`);
                 return;
             }
 

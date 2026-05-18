@@ -421,12 +421,21 @@ class VisualFeedbackSystem {
         
         this.validMoves = [];
     }
-    
+
     hasVisibleMoveMarkers() {
-        // Check if there are any visible move markers
-        return this.highlightMeshes.size > 0 || this.validMoves.length > 0;
+        // Remove any stale move markers that lost their meshes or associated moves
+        this.cleanupInvalidMoveMarkers();
+
+        // Check if there are any move markers still present
+        for (const [key, mesh] of this.highlightMeshes) {
+            if (key.startsWith('move_') && mesh && mesh.parent === this.scene) {
+                return true;
+            }
+        }
+
+        return false;
     }
-    
+
     clearValidMovesImmediate() {
         const moveKeys = [];
         console.log('[VisualFeedback] Clearing valid moves immediately, current keys:', Array.from(this.highlightMeshes.keys()));
@@ -446,6 +455,48 @@ class VisualFeedbackSystem {
         
         this.validMoves = [];
         this.readyMarkers.clear(); // Reset ready markers
+    }
+
+    cleanupInvalidMoveMarkers() {
+        const keysToRemove = [];
+
+        for (const [key, mesh] of this.highlightMeshes) {
+            if (!key.startsWith('move_')) {
+                continue;
+            }
+
+            const index = parseInt(key.slice(5), 10);
+            const hasMatchingMove = Number.isInteger(index) && index >= 0 && index < this.validMoves.length;
+            const meshStillInScene = mesh && mesh.parent === this.scene;
+
+            if (!hasMatchingMove || !meshStillInScene) {
+                keysToRemove.push(key);
+            }
+        }
+
+        if (keysToRemove.length === 0) {
+            return;
+        }
+
+        keysToRemove.forEach(key => {
+            const mesh = this.highlightMeshes.get(key);
+            if (mesh) {
+                this.scene.remove(mesh);
+                if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {
+                    mesh.geometry.dispose();
+                }
+                if (mesh.material && typeof mesh.material.dispose === 'function') {
+                    mesh.material.dispose();
+                }
+            }
+            this.highlightMeshes.delete(key);
+        });
+
+        const hasRemainingMoveMarkers = Array.from(this.highlightMeshes.keys()).some(key => key.startsWith('move_'));
+        if (!hasRemainingMoveMarkers) {
+            this.validMoves = [];
+            this.readyMarkers.clear();
+        }
     }
     
     isMarkerReady(x, z) {

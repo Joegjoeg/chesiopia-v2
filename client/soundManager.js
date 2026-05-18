@@ -7,6 +7,9 @@ class SoundManager {
         this.grumbleCooldown = 3000; // 3 seconds between grumbles
         this.footstepCooldown = 100; // 100ms between footsteps
         this.lastFootstepTime = 0;
+        this.activeRumble = null;
+        this.rumbleTimeout = null;
+        this.rotationHum = null;
         
         this.initAudioContext();
     }
@@ -427,6 +430,226 @@ class SoundManager {
         }
     }
     
+    startRumble(options = {}) {
+        if (!this.audioContext) return;
+        const ctx = this.audioContext;
+
+        const volume = Math.max(0, Math.min(1, options.volume ?? 0.65)) * this.masterVolume;
+        const duration = Math.max(1, options.duration ?? 5);
+
+        this.stopRumble();
+
+        const now = ctx.currentTime;
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.0001, now);
+        masterGain.connect(ctx.destination);
+
+        // Low rumble oscillator (sub frequencies)
+        const subOsc = ctx.createOscillator();
+        subOsc.type = 'sawtooth';
+        subOsc.frequency.setValueAtTime(34, now);
+        subOsc.frequency.linearRampToValueAtTime(28, now + duration);
+        const subGain = ctx.createGain();
+        subGain.gain.setValueAtTime(volume * 0.35, now);
+        subOsc.connect(subGain);
+        subGain.connect(masterGain);
+        subOsc.start(now);
+
+        // Broadband noise filtered down for tectonic feel
+        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.6;
+        }
+        const noiseSource = ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        noiseSource.loop = true;
+        const noiseFilter = ctx.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+        noiseFilter.frequency.setValueAtTime(120, now);
+        noiseFilter.Q.setValueAtTime(0.7, now);
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(volume * 0.5, now);
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(masterGain);
+        noiseSource.start(now);
+
+        masterGain.gain.linearRampToValueAtTime(volume, now + 0.45);
+
+        this.activeRumble = {
+            gain: masterGain,
+            noiseSource,
+            subOsc,
+            stopTime: now + duration
+        };
+
+        if (this.rumbleTimeout) {
+            clearTimeout(this.rumbleTimeout);
+        }
+        this.rumbleTimeout = setTimeout(() => this.stopRumble(), duration * 1000);
+    }
+
+    stopRumble(options = {}) {
+        if (!this.audioContext || !this.activeRumble) return;
+        const ctx = this.audioContext;
+        const fade = Math.max(0.1, options.fade ?? 0.8);
+        const now = ctx.currentTime;
+        const { gain, noiseSource, subOsc } = this.activeRumble;
+
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value || 0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + fade);
+
+        setTimeout(() => {
+            try {
+                noiseSource.stop();
+                subOsc.stop();
+            } catch (err) {
+                console.warn('[SoundManager] Rumbling stop error:', err);
+            }
+            gain.disconnect();
+        }, fade * 1000 + 50);
+
+        this.activeRumble = null;
+        if (this.rumbleTimeout) {
+            clearTimeout(this.rumbleTimeout);
+            this.rumbleTimeout = null;
+        }
+    }
+
+    playHeavenlyChorus(options = {}) {
+        if (!this.audioContext) return;
+        const ctx = this.audioContext;
+        const intensity = Math.max(0.3, Math.min(1, options.intensity ?? 0.8));
+        const now = ctx.currentTime;
+
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.0001, now);
+        masterGain.connect(ctx.destination);
+
+        const chordFrequencies = [392, 494, 587]; // G major triad (G4, B4, D5)
+        chordFrequencies.forEach((freq, index) => {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            const oscGain = ctx.createGain();
+            const delay = index * 0.12;
+            oscGain.gain.setValueAtTime(0, now + delay);
+            oscGain.gain.linearRampToValueAtTime(this.masterVolume * intensity * 0.5, now + delay + 0.6);
+            oscGain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 3.2);
+            osc.connect(oscGain);
+            oscGain.connect(masterGain);
+            osc.start(now + delay);
+            osc.stop(now + delay + 3.5);
+        });
+
+        // Add shimmering arpeggio sweep
+        const sweepOsc = ctx.createOscillator();
+        sweepOsc.type = 'triangle';
+        sweepOsc.frequency.setValueAtTime(660, now);
+        sweepOsc.frequency.exponentialRampToValueAtTime(1760, now + 1.1);
+        const sweepGain = ctx.createGain();
+        sweepGain.gain.setValueAtTime(0, now);
+        sweepGain.gain.linearRampToValueAtTime(this.masterVolume * intensity * 0.35, now + 0.3);
+        sweepGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+        sweepOsc.connect(sweepGain);
+        sweepGain.connect(masterGain);
+        sweepOsc.start(now);
+        sweepOsc.stop(now + 1.3);
+
+        // Gentle noise sparkle
+        const sparkleBuffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+        const sparkleData = sparkleBuffer.getChannelData(0);
+        for (let i = 0; i < sparkleData.length; i++) {
+            sparkleData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / sparkleData.length, 3);
+        }
+        const sparkleSource = ctx.createBufferSource();
+        sparkleSource.buffer = sparkleBuffer;
+        const hiPass = ctx.createBiquadFilter();
+        hiPass.type = 'highpass';
+        hiPass.frequency.setValueAtTime(1800, now);
+        const sparkleGain = ctx.createGain();
+        sparkleGain.gain.setValueAtTime(this.masterVolume * intensity * 0.15, now);
+        sparkleSource.connect(hiPass);
+        hiPass.connect(sparkleGain);
+        sparkleGain.connect(masterGain);
+        sparkleSource.start(now + 0.2);
+        sparkleSource.stop(now + 1.4);
+
+        masterGain.gain.linearRampToValueAtTime(this.masterVolume * intensity, now + 0.5);
+        masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.8);
+
+        setTimeout(() => masterGain.disconnect(), 4200);
+    }
+
+    startRotationHum(options = {}) {
+        if (!this.audioContext) return;
+        if (this.rotationHum) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+        const baseVolume = Math.max(0.1, Math.min(1, options.volume ?? 0.45));
+        const wobbleRate = Math.max(0.1, Math.min(2, options.wobbleRate ?? 0.45));
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.connect(ctx.destination);
+
+        const humOsc = ctx.createOscillator();
+        humOsc.type = 'triangle';
+        humOsc.frequency.setValueAtTime(92, now);
+
+        const wobble = ctx.createOscillator();
+        wobble.frequency.setValueAtTime(wobbleRate, now);
+        const wobbleGain = ctx.createGain();
+        wobbleGain.gain.setValueAtTime(18, now);
+        wobble.connect(wobbleGain);
+        wobbleGain.connect(humOsc.frequency);
+
+        humOsc.connect(gain);
+        humOsc.start(now);
+        wobble.start(now);
+
+        gain.gain.linearRampToValueAtTime(baseVolume * this.masterVolume, now + 0.5);
+
+        this.rotationHum = {
+            gain,
+            humOsc,
+            wobble,
+            baseVolume
+        };
+    }
+
+    updateRotationHum(distance = 0, maxDistance = 60) {
+        if (!this.audioContext || !this.rotationHum) return;
+        const ctx = this.audioContext;
+        const attenuation = 1 - Math.min(Math.max(distance, 0) / Math.max(maxDistance, 1), 1);
+        const target = this.rotationHum.baseVolume * attenuation * this.masterVolume;
+        const now = ctx.currentTime;
+        this.rotationHum.gain.gain.setTargetAtTime(Math.max(target, 0.0001), now, 0.08);
+    }
+
+    stopRotationHum(options = {}) {
+        if (!this.audioContext || !this.rotationHum) return;
+        const ctx = this.audioContext;
+        const fade = Math.max(0.1, options.fade ?? 0.6);
+        const now = ctx.currentTime;
+        const { gain, humOsc, wobble } = this.rotationHum;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value || 0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + fade);
+        setTimeout(() => {
+            try {
+                humOsc.stop();
+                wobble.stop();
+            } catch (err) {
+                console.warn('[SoundManager] Rotation hum stop error:', err);
+            }
+            gain.disconnect();
+        }, fade * 1000 + 50);
+        this.rotationHum = null;
+    }
+
     setMasterVolume(volume) {
         this.masterVolume = Math.max(0, Math.min(1, volume));
     }

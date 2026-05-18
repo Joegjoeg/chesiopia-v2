@@ -15,6 +15,16 @@ class TerrainSystem {
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
         this.onChunkLoaded = null; // Callback when a chunk is loaded
         
+        // Probe system: foreknowledge of distant terrain
+        this._lastProbeRequest = 0;
+        this._probeThrottleMs = 2000;
+        this._lastCameraPos = new THREE.Vector3();
+
+        // Terrain generation warning light (red studio light)
+        this._genWarningLight = null;
+        this._genWarningActive = false;
+        this._genWarningTimeout = null;
+        
         // Terrain colors for different biomes
         this.biomeColors = {
             deepWater: new THREE.Color(0.1, 0.3, 0.6),
@@ -201,8 +211,71 @@ class TerrainSystem {
         if (!tile) {
             return 0; // Default height if tile not found
         }
-        
-        return tile.height || 0;
+
+        let height = tile.height || 0;
+
+        // Dynamic edge blending: when a neighbor chunk is loaded, blend the border
+        // tiles so both sides of the boundary have a smooth transition.  This fixes
+        // the C1 discontinuity caused by the server only blending the newly generated
+        // chunk and leaving the previously cached neighbour with raw heights.
+        const blendWidth = 2;
+        let blendedHeight = height;
+        let totalWeight = 0;
+
+        const getNeighborTile = (nk, nx, nz) => {
+            const nc = this.chunks.get(nk);
+            if (!nc || !nc.data) return null;
+            const idx = nz * this.chunkSize + nx;
+            return (idx >= 0 && idx < nc.data.length) ? nc.data[idx] : null;
+        };
+
+        // North edge (localZ near 0)
+        if (localZ < blendWidth) {
+            const nTile = getNeighborTile(`${chunkX},${chunkZ - 1}`, localX, this.chunkSize - 1 - localZ);
+            if (nTile) {
+                const t = localZ / blendWidth;
+                const w = (1 - t) * (1 - t);
+                blendedHeight = blendedHeight * (1 - w) + nTile.height * w;
+                totalWeight += w;
+            }
+        }
+
+        // South edge (localZ near chunkSize-1)
+        if (localZ >= this.chunkSize - blendWidth) {
+            const distFromEdge = (this.chunkSize - 1 - localZ);
+            const nTile = getNeighborTile(`${chunkX},${chunkZ + 1}`, localX, distFromEdge);
+            if (nTile) {
+                const t = distFromEdge / blendWidth;
+                const w = (1 - t) * (1 - t);
+                blendedHeight = blendedHeight * (1 - w) + nTile.height * w;
+                totalWeight += w;
+            }
+        }
+
+        // West edge (localX near 0)
+        if (localX < blendWidth) {
+            const nTile = getNeighborTile(`${chunkX - 1},${chunkZ}`, this.chunkSize - 1 - localX, localZ);
+            if (nTile) {
+                const t = localX / blendWidth;
+                const w = (1 - t) * (1 - t);
+                blendedHeight = blendedHeight * (1 - w) + nTile.height * w;
+                totalWeight += w;
+            }
+        }
+
+        // East edge (localX near chunkSize-1)
+        if (localX >= this.chunkSize - blendWidth) {
+            const distFromEdge = (this.chunkSize - 1 - localX);
+            const nTile = getNeighborTile(`${chunkX + 1},${chunkZ}`, distFromEdge, localZ);
+            if (nTile) {
+                const t = distFromEdge / blendWidth;
+                const w = (1 - t) * (1 - t);
+                blendedHeight = blendedHeight * (1 - w) + nTile.height * w;
+                totalWeight += w;
+            }
+        }
+
+        return totalWeight > 0 ? blendedHeight : height;
     }
     
     isTileBlocked(x, y) {
@@ -324,6 +397,9 @@ class TerrainSystem {
                 data: chunkData,
                 loaded: true
             });
+
+            // Flash red warning light for terrain generation
+            this._flashGenWarning();
             
             // Notify callback that chunk was loaded
             if (this.onChunkLoaded) {
@@ -424,6 +500,49 @@ class TerrainSystem {
         this.chunks.delete(chunkKey);
     }
     
+    async requestProbeAhead(cameraPos) {
+        const now = performance.now();
+        if (now - this._lastProbeRequest < this._probeThrottleMs) return;
+
+        const dx = cameraPos.x - this._lastCameraPos.x;
+        const dz = cameraPos.z - this._lastCameraPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        this._lastCameraPos.copy(cameraPos);
+        if (dist < 0.5) return;
+
+        const dirX = dx / dist;
+        const dirZ = dz / dist;
+        const probeDist = this.chunkSize * 3;
+        const px = Math.floor(cameraPos.x + dirX * probeDist);
+        const pz = Math.floor(cameraPos.z + dirZ * probeDist);
+
+        try {
+            this._lastProbeRequest = now;
+            const response = await fetch(`/api/terrain/probe?x=${px}&z=${pz}&radius=48&profile=textured`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[Terrain] Probe placed at (${px}, ${pz}) height=${data.height.toFixed(2)}`);
+            }
+        } catch (err) {
+            // Silently ignore probe failures
+        }
+    }
+
+    _flashGenWarning() {
+        if (!this._genWarningLight) {
+            this._genWarningLight = new THREE.PointLight(0xff0000, 0, 200);
+            this._genWarningLight.position.set(0, 30, 0);
+            this.scene.add(this._genWarningLight);
+        }
+        this._genWarningLight.intensity = 3;
+        this._genWarningActive = true;
+        if (this._genWarningTimeout) clearTimeout(this._genWarningTimeout);
+        this._genWarningTimeout = setTimeout(() => {
+            this._genWarningLight.intensity = 0;
+            this._genWarningActive = false;
+        }, 800);
+    }
+
     updateStreaming(cameraPosition) {
         const cameraChunkX = Math.floor(cameraPosition.x / this.chunkSize);
         const cameraChunkZ = Math.floor(cameraPosition.z / this.chunkSize);

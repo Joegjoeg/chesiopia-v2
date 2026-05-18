@@ -852,6 +852,47 @@ class Pieces3D {
         const hopDuration = 600 * squaresToCross;
         const totalDuration = hopDuration;
         const startTime = Date.now();
+
+        // Pre-sample terrain heights along the path so we avoid resampling every frame
+        const terrainSampleCount = Math.max(squaresToCross * 2, 1);
+        const terrainHeightSamples = [];
+        for (let i = 0; i <= terrainSampleCount; i++) {
+            const t = i / terrainSampleCount;
+            const sampleX = THREE.MathUtils.lerp(startPos.x, endPos.x, t);
+            const sampleZ = THREE.MathUtils.lerp(startPos.z, endPos.z, t);
+            terrainHeightSamples.push(this.getMedianTerrainHeight(sampleX, sampleZ));
+        }
+
+        const getTerrainHeightAtProgress = (t) => {
+            if (terrainHeightSamples.length === 1) {
+                return terrainHeightSamples[0];
+            }
+
+            const clampedT = Math.min(Math.max(t, 0), 1);
+            const scaled = clampedT * terrainSampleCount;
+            const baseIndex = Math.floor(scaled);
+
+            if (baseIndex >= terrainSampleCount) {
+                return terrainHeightSamples[terrainSampleCount];
+            }
+
+            const lerpFactor = scaled - baseIndex;
+            const startHeight = terrainHeightSamples[baseIndex];
+            const endHeight = terrainHeightSamples[baseIndex + 1];
+            return THREE.MathUtils.lerp(startHeight, endHeight, lerpFactor);
+        };
+
+        // --- FACE DESTINATION SETUP ---
+        const modelGroup = pieceMesh.userData.modelGroup;
+        const dx = endPos.x - startPos.x;
+        const dz = endPos.z - startPos.z;
+        const targetRotationY = Math.atan2(dx, dz);
+        const startRotationY = modelGroup ? modelGroup.rotation.y : 0;
+        let deltaAngle = targetRotationY - startRotationY;
+        // Normalize to shortest path (-PI to PI)
+        while (deltaAngle > Math.PI) deltaAngle -= Math.PI * 2;
+        while (deltaAngle < -Math.PI) deltaAngle += Math.PI * 2;
+        // ------------------------------
         
         const animate = () => {
             const elapsed = Date.now() - startTime;
@@ -859,27 +900,24 @@ class Pieces3D {
             
             // Play footsteps during movement
             if (window.soundManager && progress > 0.1 && progress < 0.9) {
-                const footstepInterval = hopDuration / squaresToCross / 2;
-                const shouldPlayFootstep = Math.floor(elapsed / footstepInterval) !== Math.floor((elapsed - 16) / footstepInterval);
+                const stepDivisions = Math.max(squaresToCross, 1);
+                const footstepInterval = hopDuration / stepDivisions / 2;
+                const previousElapsed = Math.max(elapsed - 16, 0);
+                const shouldPlayFootstep = footstepInterval > 0 &&
+                    Math.floor(elapsed / footstepInterval) !== Math.floor(previousElapsed / footstepInterval);
                 if (shouldPlayFootstep) {
                     window.soundManager.playFootstep();
+                    if (window.soundManager.playGrumble && Math.random() < 0.05) {
+                        window.soundManager.playGrumble(pieceType);
+                    }
                 }
             }
-            
-            const hopEased = this.disneyEaseInOut(progress);
-            
-            // Calculate position along path
-            const currentX = THREE.MathUtils.lerp(startPos.x, endPos.x, hopEased);
-            const currentZ = THREE.MathUtils.lerp(startPos.z, endPos.z, hopEased);
-            
-            // Calculate terrain height at current position
-            const terrainHeightAtCurrent = this.getMedianTerrainHeight(currentX, currentZ);
-            const baseY = terrainHeightAtCurrent + 0.15;
-            
-            // Variable stride patterns
-            let stepHeight, swayAmount, squashAmount;
+
             const hopPhase = progress * squaresToCross;
-            
+            let stepHeight = 0.25;
+            let swayAmount = 0.08;
+            let squashAmount = 0.15;
+
             if (hopPhase < 1) {
                 stepHeight = 0.25;
                 swayAmount = 0.08;
@@ -893,7 +931,7 @@ class Pieces3D {
                 swayAmount = 0.15;
                 squashAmount = 0.25;
             }
-            
+
             // Higher final hop for the last square
             if (progress > 0.85) {
                 stepHeight *= 1.8;
@@ -908,7 +946,13 @@ class Pieces3D {
             if (progress >= 0.98) {
                 hopY = 0;
             }
-            
+
+            const horizontalProgress = this.disneyEaseInOut(progress);
+            const currentX = THREE.MathUtils.lerp(startPos.x, endPos.x, horizontalProgress);
+            const currentZ = THREE.MathUtils.lerp(startPos.z, endPos.z, horizontalProgress);
+            const terrainY = getTerrainHeightAtProgress(progress) + 0.02;
+            const lerpedY = THREE.MathUtils.lerp(startPos.y, endPos.y, horizontalProgress);
+            const baseY = THREE.MathUtils.lerp(lerpedY, terrainY, 0.7);
             const currentY = baseY + hopY;
             
             // Side-to-side swaying
@@ -925,6 +969,14 @@ class Pieces3D {
                 scaleX = 1.0 + (stepPhase * squashAmount * 0.4);
                 scaleY = 1.0 - (Math.abs(stepPhase) * squashAmount * 0.3);
                 scaleZ = 1.0 + (Math.cos(stepCycle) * squashAmount * 0.4);
+            }
+
+            // Face destination during first 25% of movement
+            if (modelGroup && progress < 0.25) {
+                const turnProgress = this.disneyEaseInOut(progress / 0.25);
+                modelGroup.rotation.y = startRotationY + deltaAngle * turnProgress;
+            } else if (modelGroup) {
+                modelGroup.rotation.y = targetRotationY;
             }
 
             // Apply transformations
@@ -973,69 +1025,24 @@ class Pieces3D {
             : -1 + (4 - 2 * t) * t;
     }
     
-    getTerrainNormal(x, z) {
-        // Sample terrain normal at the given position
-        console.log(`[Pieces3D] DEBUG: getTerrainNormal called for position (${x}, ${z}) - terrainSystem exists: ${!!this.terrainSystem}, getNormal exists: ${!!(this.terrainSystem && this.terrainSystem.getNormal)}`);
-        
-        if (this.terrainSystem && this.terrainSystem.getNormal) {
-            const normal = this.terrainSystem.getNormal(x, z);
-            console.log(`[Pieces3D] DEBUG: terrainSystem.getNormal returned:`, normal);
-            console.log(`[Pieces3D] DEBUG: Normal magnitude: ${normal.length().toFixed(4)}, Y component: ${normal.y.toFixed(4)}`);
-            
-            // Check if normal is actually different from vertical
-            if (Math.abs(normal.y - 1.0) < 0.001) {
-                console.log(`[Pieces3D] DEBUG: Normal is effectively vertical - no terrain rotation needed`);
-            } else {
-                console.log(`[Pieces3D] DEBUG: Normal shows terrain slope - rotation should be applied`);
-            }
-            
-            return normal;
-        }
-        
-        console.log(`[Pieces3D] DEBUG: Using fallback normal - terrainSystem.getNormal not available`);
-        // Fallback to upright normal
-        return new THREE.Vector3(0, 1, 0);
-    }
-    
     disneyFlourish(pieceMesh, terrainNormal = null) {
-        // End with a charming little flourish
-        const flourishDuration = 300;
+        // Simple landing: brief scale-in from slightly smaller to normal
+        const duration = 150;
         const startTime = Date.now();
-        
-        const flourish = () => {
+
+        const settle = () => {
             const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / flourishDuration, 1);
-            
-            // Final bounce without spin
-            const bounce = Math.sin(progress * Math.PI) * 0.03; // Much smaller bounce to prevent shelf hopping
-            
-            // Add bounce during flourish, then land back down
-            if (progress < 0.5) {
-                // First half: bounce up
-                pieceMesh.position.y += bounce;
-            } else if (progress < 0.9) {
-                // Second half: land back down (negative bounce)
-                pieceMesh.position.y -= bounce * 0.8; // Slightly less down to settle gently
-            }
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
 
-            // Terrain alignment is on the outer group; base rotation is on the static pivot.
-            // No rotation changes needed during flourish.
+            const scale = 0.92 + (0.08 * eased);
+            pieceMesh.scale.setScalar(scale);
 
-            // Scale back to normal with a little pop
-            const popScale = 1.0 + (Math.sin(progress * Math.PI) * 0.08);
-            pieceMesh.scale.setScalar(popScale);
-            
             if (progress < 1) {
-                requestAnimationFrame(flourish);
+                requestAnimationFrame(settle);
             } else {
-                // Reset to perfect final position aligned with terrain
                 pieceMesh.scale.setScalar(1);
 
-                // Ensure we're exactly at the target height (no floating)
-                // pieceMesh.position.y should already be correct from the animation
-
-                // Update outer group quaternion to match new terrain normal
-                // TEMP: Disabled to prevent cumulative rotation with mesh rotation fix
                 if (terrainNormal !== null) {
                     const up = new THREE.Vector3(0, 1, 0);
                     const terrainQuat = new THREE.Quaternion().setFromUnitVectors(up, terrainNormal);
@@ -1046,8 +1053,8 @@ class Pieces3D {
                 }
             }
         };
-        
-        flourish();
+
+        settle();
     }
     
     movePiece(pieceId, newX, newZ) {
@@ -1265,24 +1272,27 @@ class Pieces3D {
     }
     
     getTerrainNormal(x, z) {
-        // Calculate terrain normal using finite differences
+        // Prefer terrain system normals when available to match terrain shading
+        if (this.terrainSystem && typeof this.terrainSystem.getNormal === 'function') {
+            const terrainNormal = this.terrainSystem.getNormal(x, z);
+            if (terrainNormal && typeof terrainNormal.x === 'number') {
+                return terrainNormal.clone ? terrainNormal.clone().normalize() : terrainNormal;
+            }
+        }
+
+        // Fallback: approximate normal using sampled heights around the target point
         const delta = 0.1;
-        
-        // Sample heights at neighboring points
         const hCenter = this.getTerrainHeight(x, z);
         const hRight = this.getTerrainHeight(x + delta, z);
         const hLeft = this.getTerrainHeight(x - delta, z);
         const hUp = this.getTerrainHeight(x, z + delta);
         const hDown = this.getTerrainHeight(x, z - delta);
-        
-        // Calculate gradients
+
         const dx = (hRight - hLeft) / (2 * delta);
         const dz = (hUp - hDown) / (2 * delta);
-        
-        // Create normal vector (pointing upward from surface)
+
         const normal = new THREE.Vector3(-dx, 1, -dz);
         normal.normalize();
-        
         return normal;
     }
     

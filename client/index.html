@@ -13,7 +13,7 @@
         <!-- UI Overlay -->
         <div id="uiOverlay">
             <!-- Player Info -->
-            <div id="playerInfo" class="ui-panel">
+            <div id="playerInfo" class="ui-panel" style="display: none;">
                 <h3>Player Info</h3>
                 <div id="playerName">Guest</div>
                 <div id="playerPoints">Points: 0</div>
@@ -21,7 +21,7 @@
             </div>
             
             <!-- Server Errors -->
-            <div id="serverErrors" class="ui-panel" style="background: rgba(255, 0, 0, 0.1); border: 1px solid rgba(255, 0, 0, 0.3); max-height: 200px; overflow-y: auto;">
+            <div id="serverErrors" class="ui-panel" style="display: none;">
                 <h3 style="color: #ff0000;">Server Errors</h3>
                 <div id="errorList" style="font-family: monospace; font-size: 12px; color: #ff6666;">
                     <div>No server errors...</div>
@@ -146,35 +146,40 @@
 
     <!-- Three.js and dependencies - using multiple CDN sources with local fallbacks -->
     <script>
+        function loadScriptWithFallback(sources, label) {
+            return new Promise((resolve, reject) => {
+                function tryLoad(index) {
+                    if (index >= sources.length) {
+                        reject(new Error(`${label} failed to load from all sources`));
+                        return;
+                    }
+                    const source = sources[index];
+                    const script = document.createElement('script');
+                    script.src = source;
+                    script.async = false;
+                    script.onload = () => {
+                        console.log(`${label} loaded from ${source}`);
+                        resolve();
+                    };
+                    script.onerror = () => {
+                        console.warn(`${label} failed to load from ${source}, trying next source...`);
+                        script.remove();
+                        tryLoad(index + 1);
+                    };
+                    document.head.appendChild(script);
+                }
+                tryLoad(0);
+            });
+        }
+
         // Load THREE.js with fallback
         function loadThreeJS() {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/three@0.155.0/build/three.min.js';
-            script.onload = () => {
-                console.log('THREE.js loaded from CDN');
-                loadGLTFLoader(); // Load GLTF loader after Three.js
-            };
-            script.onerror = () => {
-                console.log('THREE.js CDN failed, trying backup...');
-                const backup = document.createElement('script');
-                backup.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js';
-                backup.onload = () => {
-                    console.log('THREE.js loaded from backup CDN');
-                    loadGLTFLoader(); // Load GLTF loader after Three.js
-                };
-                backup.onerror = () => {
-                    console.log('THREE.js backup CDN failed, using local fallback...');
-                    const local = document.createElement('script');
-                    local.src = 'three.min.js';
-                    local.onload = () => {
-                        console.log('THREE.js loaded from local fallback');
-                        loadGLTFLoader(); // Load GLTF loader after Three.js
-                    };
-                    document.head.appendChild(local);
-                };
-                document.head.appendChild(backup);
-            };
-            document.head.appendChild(script);
+            const sources = [
+                'https://unpkg.com/three@0.155.0/build/three.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js',
+                'three.min.js'
+            ];
+            return loadScriptWithFallback(sources, 'THREE.js');
         }
         
         // Create simple GLTF loader that works in script context
@@ -658,55 +663,18 @@
         
         // Load Socket.IO with fallback
         function loadSocketIO() {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/socket.io-client@4.7.0/dist/socket.io.min.js';
-            script.onload = () => console.log('Socket.IO loaded from CDN');
-            script.onerror = () => {
-                console.log('Socket.IO CDN failed, trying backup...');
-                const backup = document.createElement('script');
-                backup.src = 'https://cdn.socket.io/4.7.0/socket.io.min.js';
-                backup.onload = () => console.log('Socket.IO loaded from backup CDN');
-                backup.onerror = () => {
-                    console.log('Socket.IO backup CDN failed, using local fallback...');
-                    const local = document.createElement('script');
-                    local.src = 'socket.io.min.js';
-                    local.onload = () => console.log('Socket.IO loaded from local fallback');
-                    document.head.appendChild(local);
-                };
-                document.head.appendChild(backup);
-            };
-            document.head.appendChild(script);
+            const sources = [
+                'https://unpkg.com/socket.io-client@4.7.0/dist/socket.io.min.js',
+                'https://cdn.socket.io/4.7.0/socket.io.min.js',
+                'socket.io.min.js'
+            ];
+            return loadScriptWithFallback(sources, 'Socket.IO');
         }
-        
-        // Start loading both libraries
-        loadThreeJS();
-        loadSocketIO();
     </script>
     
     <!-- Game modules -->
     <script>
-        let loadAttempts = 0;
-        const maxAttempts = 50; // 5 seconds max wait
-        
-        // Wait for THREE.js to load before initializing game
-        function waitForThreeJS() {
-            loadAttempts++;
-            
-            if (typeof THREE !== 'undefined' && typeof io !== 'undefined') {
-                console.log('THREE.js and Socket.IO loaded successfully!');
-                
-                // Load GLTFLoader after THREE.js is available
-                loadGLTFLoader();
-                
-                loadGameModules();
-            } else if (loadAttempts > maxAttempts) {
-                console.error('Failed to load THREE.js or Socket.IO after maximum attempts');
-                showError('Failed to load required libraries. Please check your internet connection and refresh the page.');
-            } else {
-                console.log(`Waiting for THREE.js and Socket.IO to load... (attempt ${loadAttempts}/${maxAttempts})`);
-                setTimeout(waitForThreeJS, 100);
-            }
-        }
+        const dependencyTimeoutMs = 20000; // Fail fast after 20s instead of looping forever
         
         function loadGameModules() {
             // Load auth modules first
@@ -774,6 +742,7 @@
                     'terrainTreeSystem.js?v=' + Date.now(),
                     'poplarTreeSystem.js?v=' + Date.now(),
                     'cherryTreeSystem.js?v=' + Date.now(),
+                    'billboardTreeSystem.js?v=' + Date.now(),
                     'hybridTreeManager.js?v=' + Date.now(),
                     'terrainTreeIntegration.js?v=' + Date.now(),
                     'debugTreeSystem.js?v=' + Date.now(),
@@ -782,6 +751,15 @@
                     'grassSystem.js?v=' + Date.now(),
                     'textureBlendingSystem.js?v=' + Date.now(),
                     'decorativeVisuals.js?v=' + Date.now(),
+                    'settlementData.js?v=' + Date.now(),
+                    'settlementSystem.js?v=' + Date.now(),
+                    'buildingSystem.js?v=' + Date.now(),
+                    'roadSystem.js?v=' + Date.now(),
+                    'villagerSystem.js?v=' + Date.now(),
+                    'knightSystem.js?v=' + Date.now(),
+                    'tournamentSystem.js?v=' + Date.now(),
+                    'tomeUI.js?v=' + Date.now(),
+                    'minimapOverlay.js?v=' + Date.now(),
                     'performanceManager.js?v=' + Date.now(),
                     'validationTests.js?v=' + Date.now(),
                     'modifierStack.js?v=' + Date.now(),
@@ -789,7 +767,9 @@
                     'devInterface.js?v=' + Date.now(),
                     'memoryProfiler.js?v=' + Date.now(),
                     'lodManager.js?v=' + Date.now(),
+                    'jesusSummonTriggerSystem.js?v=' + Date.now(),
                     'jesusSummonSystem.js?v=' + Date.now(),
+                    'temporalAASystem.js?v=' + Date.now(),
                     'game.js?v=' + Date.now()
                 ];
                 
@@ -856,8 +836,34 @@
         console.log('[HTML] JavaScript is running!');
         window.testJS = true;
         
-        // Start loading process
-        waitForThreeJS();
+        const dependenciesReady = Promise.all([
+            loadThreeJS().then(() => {
+                if (typeof window.THREE === 'undefined') {
+                    throw new Error('THREE.js global missing after script load');
+                }
+                loadGLTFLoader();
+            }),
+            loadSocketIO().then(() => {
+                if (typeof window.io === 'undefined') {
+                    throw new Error('Socket.IO global missing after script load');
+                }
+            })
+        ]);
+
+        Promise.race([
+            dependenciesReady,
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Dependency loading timed out')), dependencyTimeoutMs);
+            })
+        ])
+            .then(() => {
+                console.log('Dependencies loaded, starting game module pipeline...');
+                loadGameModules();
+            })
+            .catch((error) => {
+                console.error(error);
+                showError('Failed to load required libraries. Please check your internet connection and refresh the page.');
+            });
     </script>
 </body>
 </html>
