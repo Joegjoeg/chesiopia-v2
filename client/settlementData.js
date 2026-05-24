@@ -37,7 +37,8 @@ const VILLAGER_ROLES = {
     townCrier:   { label: 'Town Crier',  morningTasks: ['proclaim', 'wander'],         eveningTasks: ['rest', 'celebrate'],                  icon: '📯' },
     child:       { label: 'Child',       morningTasks: ['play', 'wander'],             eveningTasks: ['rest', 'play'],                       icon: '🧒' },
     villager:    { label: 'Villager',    morningTasks: ['help build', 'wander'],       eveningTasks: ['rest', 'wander', 'celebrate'],        icon: '🧑' },
-    knight:      { label: 'Knight',      morningTasks: ['patrol', 'train'],            eveningTasks: ['rest', 'socialize'],                  icon: '⚔️' }
+    knight:      { label: 'Knight',      morningTasks: ['patrol', 'train'],            eveningTasks: ['rest', 'socialize'],                  icon: '⚔️' },
+    monk:        { label: 'Monk',        morningTasks: ['pray', 'tend church'],        eveningTasks: ['pray', 'rest'],                       icon: '🙏' }
 };
 
 const TASKS = {
@@ -81,6 +82,7 @@ const BUILDING_THRESHOLDS = {
     housePerVillagers: 2.5,
     fieldPerVillagers: 4,
     barnAfterFields: 3,
+    barnCapacity: 5,        // each barn covers up to 5 fields
     fishingHutRequiresWater: true,
     manorMinPopulation: 15
 };

@@ -54,6 +54,7 @@ class RollingTerrainMesh {
         this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         this.geometry.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
         this.geometry.setAttribute('uv',       new THREE.BufferAttribute(uvs, 2));
+        this.geometry.setAttribute('terrainCliff', new THREE.BufferAttribute(new Float32Array(vertCount), 1));
         this.geometry.setIndex(indices);
 
         const material = options.material || new THREE.MeshStandardMaterial({
@@ -66,6 +67,331 @@ class RollingTerrainMesh {
         this.mesh.name = 'rollingTerrain';
         this.mesh.receiveShadow = true;
         this.mesh.castShadow    = false;
+
+        // Water plane — square grid with circular shader mask (~1k verts vs 36k)
+        this.waterRadius = options.waterRadius || 25.0;
+        this.waterGeoFadeWidth = options.waterGeoFadeWidth || 5.0;
+        this.waterResolution = options.waterResolution || 32;
+        const waterGeometry = this._createSquareWaterMesh(this.waterRadius, this.waterResolution);
+        this._waterDepths = waterGeometry.attributes.terrainDepth.array;
+        // Placeholder 1x1 white texture so the shader compiles with a valid sampler2D
+        const placeholderTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, THREE.RGBAFormat);
+        placeholderTex.needsUpdate = true;
+        this.waterUniforms = {
+            uReflectionMap:     { value: placeholderTex },
+            uReflectionEnabled: { value: 0.0 },
+            uTextureMatrix:     { value: new THREE.Matrix4() },
+            uWaterColor:        { value: new THREE.Color(0x3388cc) },
+            uOpacity:           { value: 0.45 },
+            uRoughness:         { value: 0.05 },
+            uMetalness:         { value: 0.7 },
+            uTime:              { value: 0.0 },
+            uWindDir:           { value: new THREE.Vector2(1.0, 0.0) },
+            uWindSpeed:         { value: 1.0 },
+            uWaveTexScale:      { value: 1.0 },
+            uWaveTexSpeed:      { value: 1.0 },
+            uWaterBaseY:        { value: 0.0 },
+            uFalloffEnabled:    { value: 0.0 },
+            uFalloffDistance:   { value: 50.0 },
+            uWaveNormalStr:     { value: 0.35 },
+            uWaveCrestTint:     { value: 1.15 },
+            uWaveTroughTint:    { value: 0.85 },
+            uWaveSparkle:       { value: 0.3 },
+            uWaveSpecularPower: { value: 32.0 },
+            uWaveFresnelPower:  { value: 2.0 },
+            uWaveNormalEps:     { value: 0.05 },
+            fogColor:           { value: new THREE.Color(0x808080) },
+            fogNear:            { value: 20 },
+            fogFar:             { value: 60 },
+            fogEnabled:         { value: 1.0 },
+            // Unified Gerstner wave parameters (single source of truth)
+            uWaveK:             { value: new Float32Array(10) },     // 5 harmonics × 2
+            uWaveAmp:           { value: new Float32Array(5) },
+            uWaveOmega:         { value: new Float32Array(5) },
+            uWavePhase:         { value: new Float32Array(5) },
+            uWaveSteepness:     { value: 0.3 },
+            uWaveMaxAmp:        { value: 0.46 },
+            // Distance-based fade for geometric displacement
+            uGeoRadius:         { value: 20.0 },
+            uGeoFadeWidth:      { value: 5.0 },
+            uCameraWorldPos:    { value: new THREE.Vector3() },
+            // Spherical deformation (copied from terrain shader)
+            uSphereRadius:      { value: 180.0 },
+            uDeformStartHeight: { value: 10.0 },
+            uDeformEndHeight:   { value: 100.0 },
+            uCameraHeight:      { value: 0.0 },
+            uEnableSpherical:   { value: 1.0 },
+            uCurvatureScale:    { value: 2.0 },
+            uPlanetCenter:      { value: new THREE.Vector3(0, 0, 0) }
+        };
+        const waterVertexShader = `
+            attribute float terrainDepth;
+
+            uniform mat4 uTextureMatrix;
+            uniform float uWaterBaseY;
+            uniform float uTime;
+            uniform float uWaveK[10];
+            uniform float uWaveAmp[5];
+            uniform float uWaveOmega[5];
+            uniform float uWavePhase[5];
+            uniform float uWaveSteepness;
+            uniform float uWaveMaxAmp;
+            uniform float uGeoRadius;
+            uniform float uGeoFadeWidth;
+            uniform vec3 uCameraWorldPos;
+            uniform float uSphereRadius;
+            uniform float uDeformStartHeight;
+            uniform float uDeformEndHeight;
+            uniform float uCameraHeight;
+            uniform float uEnableSpherical;
+            uniform float uCurvatureScale;
+            uniform vec3 uPlanetCenter;
+
+            varying vec4 vReflectionUv;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewDirection;
+            varying float vTerrainDepth;
+            varying float vGeoFactor;
+
+            float gerstnerHeight(vec2 worldXZ, float timeVal) {
+                float h = 0.0;
+                for (int i = 0; i < 5; i++) {
+                    vec2 k = vec2(uWaveK[i*2], uWaveK[i*2+1]);
+                    float phase = dot(k, worldXZ) - uWaveOmega[i] * timeVal + uWavePhase[i];
+                    h += uWaveAmp[i] * sin(phase);
+                }
+                if (uWaveSteepness > 0.0 && uWaveMaxAmp > 0.001) {
+                    float norm = h / uWaveMaxAmp;
+                    h = (norm > 0.0 ? pow(norm, 1.0 - uWaveSteepness)
+                                    : -pow(-norm, 1.0 - uWaveSteepness)) * uWaveMaxAmp;
+                }
+                return h;
+            }
+
+            float computeWaveMask(float depth) {
+                if (depth < -1.0) return 0.0;
+                if (depth < 0.0) return clamp(depth + 1.0, 0.0, 1.0);
+                if (depth < 3.0) return 0.2 + 0.8 * clamp(depth / 3.0, 0.0, 1.0);
+                return 1.0;
+            }
+
+            void applySphericalDeformation(inout vec4 worldPos) {
+                if (uEnableSpherical > 0.5 && uSphereRadius > 0.0) {
+                    float heightRange = max(0.0001, uDeformEndHeight - uDeformStartHeight);
+                    float t = clamp((uCameraHeight - uDeformStartHeight) / heightRange, 0.0, 1.0);
+                    vec3 fromCenter = worldPos.xyz - uPlanetCenter;
+                    float dist = length(fromCenter.xz);
+                    float curvature = (dist * dist) / (2.0 * uSphereRadius);
+                    worldPos.y -= curvature * t * uCurvatureScale;
+                }
+            }
+
+            void main() {
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vTerrainDepth = terrainDepth;
+
+                float mask = computeWaveMask(terrainDepth);
+                float displacement = gerstnerHeight(worldPos.xz, uTime) * mask;
+
+                // Distance-based geometric fade: full displacement near camera, zero at radius+fade
+                float distToCamera = length(worldPos.xz - uCameraWorldPos.xz);
+                float geoFactor = 1.0 - smoothstep(uGeoRadius, uGeoRadius + uGeoFadeWidth, distToCamera);
+                displacement *= geoFactor;
+                vGeoFactor = geoFactor;
+
+                worldPos.y = uWaterBaseY + displacement;
+                applySphericalDeformation(worldPos);
+
+                vWorldPosition = worldPos.xyz;
+                vViewDirection = cameraPosition - worldPos.xyz;
+                vReflectionUv = uTextureMatrix * worldPos;
+                vec4 mvPosition = viewMatrix * worldPos;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+        const waterFragmentShader = `
+            uniform sampler2D uReflectionMap;
+            uniform float uReflectionEnabled;
+            uniform vec3 uWaterColor;
+            uniform float uOpacity;
+            uniform float uRoughness;
+            uniform float uMetalness;
+            uniform float uTime;
+            uniform vec2 uWindDir;
+            uniform float uWindSpeed;
+            uniform float uWaveTexScale;
+            uniform float uWaveTexSpeed;
+            uniform float uWaveK[10];
+            uniform float uWaveAmp[5];
+            uniform float uWaveOmega[5];
+            uniform float uWavePhase[5];
+            uniform float uWaveSteepness;
+            uniform float uWaveMaxAmp;
+            uniform float uWaveNormalEps;
+            uniform float uWaveNormalStr;
+            uniform float uGeoRadius;
+            uniform float uGeoFadeWidth;
+            uniform vec3 uCameraWorldPos;
+            uniform float uWaveCrestTint;
+            uniform float uWaveTroughTint;
+            uniform float uWaveSparkle;
+            uniform float uWaveSpecularPower;
+            uniform float uWaveFresnelPower;
+            uniform float uFalloffEnabled;
+            uniform float uFalloffDistance;
+            uniform vec3 fogColor;
+            uniform float fogNear;
+            uniform float fogFar;
+            uniform float fogEnabled;
+
+            varying vec4 vReflectionUv;
+            varying vec3 vWorldPosition;
+            varying vec3 vViewDirection;
+            varying float vTerrainDepth;
+            varying float vGeoFactor;
+
+            // Procedural wave texture (visual detail in fragment shader)
+            vec2 rotateToWind(vec2 p) {
+                vec2 wd = normalize(uWindDir);
+                return vec2(dot(p, wd), dot(p, vec2(-wd.y, wd.x)));
+            }
+
+            float waveTextureHeight(vec2 p, float t) {
+                vec2 q = rotateToWind(p);
+                float freq = uWaveTexScale;
+                float spd  = uWaveTexSpeed * (0.5 + uWindSpeed * 0.5);
+                float h = 0.0;
+                h += sin(q.x * 1.5 * freq + t * 1.0 * spd) * cos(q.y * 1.2 * freq + t * 0.8 * spd) * 0.50;
+                h += sin(q.x * 3.0 * freq - t * 1.3 * spd) * sin(q.y * 2.5 * freq + t * 1.1 * spd) * 0.25;
+                h += sin(q.x * 6.0 * freq + t * 2.0 * spd) * cos(q.y * 5.0 * freq - t * 1.5 * spd) * 0.125;
+                h += sin(q.x * 12.0 * freq + t * 3.0 * spd) * 0.0625;
+                return h;
+            }
+
+            float gerstnerHeight(vec2 worldXZ, float timeVal) {
+                float h = 0.0;
+                for (int i = 0; i < 5; i++) {
+                    vec2 k = vec2(uWaveK[i*2], uWaveK[i*2+1]);
+                    float phase = dot(k, worldXZ) - uWaveOmega[i] * timeVal + uWavePhase[i];
+                    h += uWaveAmp[i] * sin(phase);
+                }
+                if (uWaveSteepness > 0.0 && uWaveMaxAmp > 0.001) {
+                    float norm = h / uWaveMaxAmp;
+                    h = (norm > 0.0 ? pow(norm, 1.0 - uWaveSteepness)
+                                    : -pow(-norm, 1.0 - uWaveSteepness)) * uWaveMaxAmp;
+                }
+                return h;
+            }
+
+            void main() {
+                vec3 viewDir = normalize(vViewDirection);
+                vec2 worldXZ = vWorldPosition.xz;
+
+                float h0  = gerstnerHeight(worldXZ, uTime) + waveTextureHeight(worldXZ, uTime);
+                float eps = uWaveNormalEps;
+                float hx  = gerstnerHeight(worldXZ + vec2(eps, 0.0), uTime) + waveTextureHeight(worldXZ + vec2(eps, 0.0), uTime);
+                float hz  = gerstnerHeight(worldXZ + vec2(0.0, eps), uTime) + waveTextureHeight(worldXZ + vec2(0.0, eps), uTime);
+                vec3 waveNormal = normalize(vec3(-(hx - h0) / eps, 1.0, -(hz - h0) / eps));
+
+                // Full wave texture everywhere (no distance fade on normals)
+                float normalStr = uWaveNormalStr;
+                vec3 normal = normalize(mix(vec3(0.0, 1.0, 0.0), waveNormal, normalStr));
+
+                vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+                float diff = max(dot(normal, lightDir), 0.0);
+                vec3 color = uWaterColor * (0.25 + 0.75 * diff);
+
+                float heightFactor = h0 * 0.15 + 0.5;
+                color = mix(color * uWaveTroughTint, color * uWaveCrestTint, heightFactor);
+
+                vec3 halfDir = normalize(lightDir + viewDir);
+                float spec = pow(max(dot(normal, halfDir), 0.0), uWaveSpecularPower);
+                color += vec3(1.0) * spec * uMetalness * (1.0 - uRoughness);
+
+                float sparkle = pow(max(dot(normal, normalize(lightDir + vec3(0.0, 0.3, 0.0))), 0.0), 64.0);
+                color += vec3(0.8, 0.9, 1.0) * sparkle * uWaveSparkle * (1.0 - uRoughness);
+
+                if (uReflectionEnabled > 0.5) {
+                    vec2 reflectionUv = vReflectionUv.xy / vReflectionUv.w;
+                    reflectionUv.y = 1.0 - reflectionUv.y;
+                    vec3 reflectionColor = texture2D(uReflectionMap, reflectionUv).rgb;
+
+                    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), uWaveFresnelPower);
+                    fresnel = clamp(fresnel, 0.0, 1.0);
+
+                    color = mix(color, reflectionColor, fresnel * uReflectionEnabled);
+                }
+
+                // Alpha fade at mesh edge based on distance from camera
+                float distFromCamera = length(vWorldPosition.xz - uCameraWorldPos.xz);
+                float edgeFade = 1.0 - smoothstep(uGeoRadius, uGeoRadius + uGeoFadeWidth, distFromCamera);
+                float finalOpacity = uOpacity * edgeFade;
+                if (uFalloffEnabled > 0.5) {
+                    float dist = length(vViewDirection);
+                    float falloff = smoothstep(0.0, uFalloffDistance, dist);
+                    finalOpacity = mix(0.0, finalOpacity, falloff);
+                }
+
+                if (fogEnabled > 0.5) {
+                    float fogDist = length(vViewDirection);
+                    float fogFactor = smoothstep(fogNear, fogFar, fogDist);
+                    color = mix(color, fogColor, fogFactor);
+                }
+
+                gl_FragColor = vec4(color, finalOpacity);
+            }
+        `;
+        const waterMaterial = new THREE.ShaderMaterial({
+            uniforms: this.waterUniforms,
+            vertexShader: waterVertexShader,
+            fragmentShader: waterFragmentShader,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        this.waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+        this.waterMesh.name = 'waterPlane';
+        this.waterMesh.renderOrder = 1; // after terrain, before transparent trees
+        this.waterMesh.receiveShadow = true;
+        this.waterMesh.castShadow    = false;
+        this.waterOffset = options.waterOffset ?? 0.03;
+        console.log(`[RollingTerrainMesh] Water plane created: ${this.N}x${this.N} verts, offset=${this.waterOffset}`);
+
+        this.waveUpdateIntervalMs = options.waveUpdateIntervalMs ?? 500; // CPU fallback: update less often
+        this._lastWaveUpdateTime = 0;
+        this.shaderWaveEnabled = true; // Use GPU shader waves by default (eliminates CPU simulation cost)
+        this.updateThrottle = {
+            enabled: options.enableThrottle !== undefined ? !!options.enableThrottle : true,
+            intervalMs: 66,       // ~15 Hz max instead of 30 Hz
+            minDistance: 1.5,     // Only roll after 1.5 world units
+            lastCameraPos: new THREE.Vector3(Number.POSITIVE_INFINITY, 0, Number.POSITIVE_INFINITY),
+            lastUpdateTime: 0
+        };
+
+        // Toroidal Gerstner wave config — harmonics are integer multiples of domain size
+        this.waveConfig = {
+            enabled: true,
+            amplitudeScale: 1.0,
+            speed: 1.5,
+            steepness: 0.3,
+            harmonics: [
+                { nx: 1, nz: 0, amplitude: 0.15, phase: 0 },
+                { nx: 0, nz: 1, amplitude: 0.12, phase: 1.5 },
+                { nx: 1, nz: 1, amplitude: 0.08, phase: 0.7 },
+                { nx: -1, nz: 2, amplitude: 0.06, phase: 2.1 },
+                { nx: 2, nz: -1, amplitude: 0.05, phase: 3.2 }
+            ]
+        };
+        this.windDir = new THREE.Vector2(1, 0);
+        this.windSpeed = 1.0;
+        this.terrainHeights = new Float32Array(this.N * this.N);
+
+        // Pre-allocated temp buffers for ring-buffer _roll() (avoids GC from temp arrays)
+        this._rollTemp = {
+            y:       new Float32Array(this.N * this.N),
+            heights: new Float32Array(this.N * this.N),
+            depths:  new Float32Array(this.N * this.N),
+        };
 
         // Throttled logging
         this._lastLogTime = 0;
@@ -84,6 +410,54 @@ class RollingTerrainMesh {
                 console.log(`[TerrainTrack] ${this._debugTrackEnabled ? 'ENABLED' : 'DISABLED'}`);
             };
         }
+
+        // Flatten water to base so shader waves displace from correct level
+        this._flattenWaterToBase();
+    }
+
+    // ---- square water mesh --------------------------------------------------
+
+    /**
+     * Create a camera-centered square grid water mesh with a circular mask in the shader.
+     * Uniform vertex distribution is better for wave simulation than radial fans.
+     * Vertices cover [-radius, +radius] on X/Z with 'resolution' verts per axis.
+     * The shader discards/fades fragments beyond the circular boundary.
+     */
+    _createSquareWaterMesh(radius, resolution) {
+        const positions = [];
+        const indices = [];
+        const terrainDepths = [];
+        const step = (radius * 2) / (resolution - 1);
+
+        for (let z = 0; z < resolution; z++) {
+            for (let x = 0; x < resolution; x++) {
+                positions.push(
+                    -radius + x * step,
+                    0,
+                    -radius + z * step
+                );
+                terrainDepths.push(1.0);
+            }
+        }
+
+        for (let z = 0; z < resolution - 1; z++) {
+            for (let x = 0; x < resolution - 1; x++) {
+                const a = z * resolution + x;
+                const b = a + 1;
+                const c = a + resolution;
+                const d = c + 1;
+                indices.push(a, c, b, b, c, d);
+            }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('terrainDepth', new THREE.Float32BufferAttribute(terrainDepths, 1));
+        geometry.setIndex(indices);
+
+        const vertCount = positions.length / 3;
+        console.log(`[SquareWaterMesh] Created: ${resolution}x${resolution} grid, ${vertCount} verts, ${indices.length / 3} tris`);
+        return geometry;
     }
 
     // ---- helpers ------------------------------------------------------------
@@ -98,23 +472,92 @@ class RollingTerrainMesh {
         return this.board.getUnifiedTerrainHeight(worldX, worldZ);
     }
 
+    _currentWaterLevel() {
+        const boardLevel = (this.board && (this.board.tidalWaterLevel ?? this.board.waterLevel));
+        return boardLevel ?? -1.5;
+    }
+
+    _updateWaterBaseUniform() {
+        const base = this._currentWaterLevel() + this.waterOffset;
+        this.waterUniforms.uWaterBaseY.value = base;
+        return base;
+    }
+
+    _writeDepthAtIndex(idx, terrainHeight, waterLevel) {
+        if (!this._waterDepths) return;
+        if (idx < 0 || idx >= this._waterDepths.length) return;
+        this._waterDepths[idx] = waterLevel - terrainHeight;
+    }
+
+    _markWaterDepthsDirty() {
+        const attr = this.waterMesh?.geometry?.attributes?.terrainDepth;
+        if (attr) {
+            attr.needsUpdate = true;
+        }
+    }
+
+    _flattenWaterToBase() {
+        if (!this.waterMesh || !this.waterMesh.geometry?.attributes?.position) return;
+        const waterPos = this.waterMesh.geometry.attributes.position.array;
+        const base = this._updateWaterBaseUniform();
+        for (let i = 1; i < waterPos.length; i += 3) {
+            waterPos[i] = base;
+        }
+        this.waterMesh.geometry.attributes.position.needsUpdate = true;
+    }
+
+    setShaderWaveEnabled(enabled) {
+        const next = !!enabled;
+        if (this.shaderWaveEnabled === next) return;
+        this.shaderWaveEnabled = next;
+        // uShaderWavesEnabled removed — shader waves are always enabled now
+        if (next) {
+            this._flattenWaterToBase();
+        } else {
+            this._lastWaveUpdateTime = 0;
+            this.updateWaves(true);
+        }
+    }
+
+    setUpdateThrottleEnabled(enabled) {
+        this.updateThrottle.enabled = !!enabled;
+        if (!this.updateThrottle.enabled) {
+            this.updateThrottle.lastCameraPos.set(Number.POSITIVE_INFINITY, 0, Number.POSITIVE_INFINITY);
+            this.updateThrottle.lastUpdateTime = 0;
+        }
+    }
+
     // ---- public API ---------------------------------------------------------
 
     async initAt(centerX, centerZ) {
         this.originX = Math.floor(centerX) - Math.floor(this.N / 2);
         this.originZ = Math.floor(centerZ) - Math.floor(this.N / 2);
         this.mesh.position.set(this.originX, 0, this.originZ);
+        this.waterMesh.position.copy(this.mesh.position);
 
         const pos = this.geometry.attributes.position.array;
+        const waterLevel = this._currentWaterLevel();
         for (let zW = 0; zW < this.N; zW++) {
             for (let xW = 0; xW < this.N; xW++) {
                 const idx = this._bIndex(xW, zW);
                 const wX  = this.originX + xW;
                 const wZ  = this.originZ + zW;
-                pos[idx * 3 + 1] = this._height(wX, wZ);
+                const h = this._height(wX, wZ);
+                pos[idx * 3 + 1] = h;
+                this.terrainHeights[idx] = h;
             }
         }
         this.geometry.attributes.position.needsUpdate = true;
+
+        // Sync water plane — flat at water level
+        const waterPos = this.waterMesh.geometry.attributes.position.array;
+        const waterY = this._updateWaterBaseUniform();
+        for (let i = 1; i < waterPos.length; i += 3) {
+            waterPos[i] = waterY;
+        }
+        this.waterMesh.geometry.attributes.position.needsUpdate = true;
+        this._markWaterDepthsDirty();
+
         this.geometry.computeVertexNormals();
         const c = this._getCornerCoords();
         this._log('init', `origin=(${this.originX},${this.originZ}) size=${this.N}x${this.N} camera(${centerX.toFixed(1)},${centerZ.toFixed(1)}) corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
@@ -124,6 +567,52 @@ class RollingTerrainMesh {
     // Keeps the mesh centered on the camera target so the target never
     // drifts toward the edge.
     update(cameraPos) {
+        this.waterUniforms.uTime.value = performance.now() / 1000;
+
+        // Sync camera to water shader for distance fade and spherical deformation
+        this.waterUniforms.uCameraWorldPos.value.set(cameraPos.x, 0, cameraPos.z);
+        this.waterUniforms.uCameraHeight.value = cameraPos.y;
+
+        // Sync spherical deformation params from texture blending system (if available)
+        const tbs = this.board && this.board.textureBlendingSystem;
+        if (tbs) {
+            const mat = tbs.shaderMaterial;
+            if (mat && mat.uniforms) {
+                const src = mat.uniforms;
+                if (src.uSphereRadius) this.waterUniforms.uSphereRadius.value = src.uSphereRadius.value;
+                if (src.uDeformStartHeight) this.waterUniforms.uDeformStartHeight.value = src.uDeformStartHeight.value;
+                if (src.uDeformEndHeight) this.waterUniforms.uDeformEndHeight.value = src.uDeformEndHeight.value;
+                if (src.uEnableSpherical) this.waterUniforms.uEnableSpherical.value = src.uEnableSpherical.value;
+                if (src.uCurvatureScale) this.waterUniforms.uCurvatureScale.value = src.uCurvatureScale.value;
+                if (src.uPlanetCenter) this.waterUniforms.uPlanetCenter.value.copy(src.uPlanetCenter.value);
+            }
+        }
+
+        // Position radial water mesh at camera (always camera-centered)
+        if (this.waterMesh) {
+            this.waterMesh.position.set(cameraPos.x, 0, cameraPos.z);
+            this._updateRadialWaterDepths(cameraPos.x, cameraPos.z);
+        }
+
+        // Update Gerstner uniforms every frame so shader waves stay current
+        this._syncGerstnerUniforms(this.waterUniforms.uTime.value);
+
+        if (this.updateThrottle.enabled) {
+            const now = performance.now();
+            const lastPos = this.updateThrottle.lastCameraPos;
+            const minDistSq = this.updateThrottle.minDistance * this.updateThrottle.minDistance;
+            let distSq = Infinity;
+            if (lastPos.x !== Number.POSITIVE_INFINITY) {
+                const dxPos = cameraPos.x - lastPos.x;
+                const dzPos = cameraPos.z - lastPos.z;
+                distSq = dxPos * dxPos + dzPos * dzPos;
+            }
+            if (distSq < minDistSq && (now - this.updateThrottle.lastUpdateTime) < this.updateThrottle.intervalMs) {
+                return;
+            }
+            this.updateThrottle.lastUpdateTime = now;
+            this.updateThrottle.lastCameraPos.copy(cameraPos);
+        }
         const targetOriginX = Math.floor(cameraPos.x) - Math.floor(this.N / 2);
         const targetOriginZ = Math.floor(cameraPos.z) - Math.floor(this.N / 2);
 
@@ -170,52 +659,151 @@ class RollingTerrainMesh {
         if (localMinX > localMaxX || localMinZ > localMaxZ) return 0;
 
         const pos = this.geometry.attributes.position.array;
+        const waterLevel = this._currentWaterLevel();
         let touched = 0;
         for (let zW = localMinZ; zW <= localMaxZ; zW++) {
             for (let xW = localMinX; xW <= localMaxX; xW++) {
                 const idx = this._bIndex(xW, zW);
                 const wX  = this.originX + xW;
                 const wZ  = this.originZ + zW;
-                pos[idx * 3 + 1] = this._height(wX, wZ);
+                const h = this._height(wX, wZ);
+                pos[idx * 3 + 1] = h;
+                this.terrainHeights[idx] = h;
                 touched++;
             }
         }
         if (touched > 0) {
             this.geometry.attributes.position.needsUpdate = true;
-            this.geometry.computeVertexNormals();
-            this._log('refresh', `region [${localMinX}..${localMaxX}, ${localMinZ}..${localMaxZ}] touched=${touched}`);
+            // NOTE: skipping computeVertexNormals for small region refreshes —
+            // saves ~14ms per call. Normals from init/_roll are close enough
+            // for 16×16 chunk patches in a 576×576 mesh.
+
+            // Sync water plane — flatten to base Y (radial mesh: update all verts, not grid region)
+            const waterY = this._updateWaterBaseUniform();
+            const waterPos = this.waterMesh.geometry.attributes.position.array;
+            // Only do grid-region indexing if water mesh matches terrain grid size
+            if (waterPos.length === this.N * this.N * 3) {
+                for (let zW = localMinZ; zW <= localMaxZ; zW++) {
+                    for (let xW = localMinX; xW <= localMaxX; xW++) {
+                        const idx = this._bIndex(xW, zW);
+                        waterPos[idx * 3 + 1] = waterY;
+                    }
+                }
+            } else {
+                // Radial mesh: flatten all vertices to base Y
+                for (let i = 1; i < waterPos.length; i += 3) {
+                    waterPos[i] = waterY;
+                }
+            }
+            this.waterMesh.geometry.attributes.position.needsUpdate = true;
+            this._markWaterDepthsDirty();
+
+            // this._log('refresh', `region [${localMinX}..${localMaxX}, ${localMinZ}..${localMaxZ}] touched=${touched}`);
         }
         return touched;
     }
 
     // ---- internals ----------------------------------------------------------
 
+    _computeCliffMasks() {
+        const N = this.N;
+        const heights = this.terrainHeights;
+        const cliffAttr = this.geometry.attributes.terrainCliff.array;
+
+        for (let z = 0; z < N; z++) {
+            for (let x = 0; x < N; x++) {
+                const idx = z * N + x;
+
+                let dx = 0, dz = 0;
+                if (x > 0 && x < N - 1) {
+                    dx = (heights[idx + 1] - heights[idx - 1]) * 0.5;
+                } else if (x < N - 1) {
+                    dx = heights[idx + 1] - heights[idx];
+                } else {
+                    dx = heights[idx] - heights[idx - 1];
+                }
+
+                if (z > 0 && z < N - 1) {
+                    dz = (heights[idx + N] - heights[idx - N]) * 0.5;
+                } else if (z < N - 1) {
+                    dz = heights[idx + N] - heights[idx];
+                } else {
+                    dz = heights[idx] - heights[idx - N];
+                }
+
+                const len = Math.sqrt(dx * dx + 1 + dz * dz);
+                cliffAttr[idx] = 1.0 / len;
+            }
+        }
+        this.geometry.attributes.terrainCliff.needsUpdate = true;
+    }
+
     _roll(dx, dz, cameraPos) {
+        const N = this.N;
+        const pos = this.geometry.attributes.position.array;
+        const temp = this._rollTemp;
+
+        // Snapshot current data into pre-allocated temp buffers
+        for (let i = 0; i < N * N; i++) {
+            temp.y[i]       = pos[i * 3 + 1];
+            temp.heights[i] = this.terrainHeights[i];
+        }
+
         // Move origin (mesh stays at origin in world space)
         this.originX += dx;
         this.originZ += dz;
         this.mesh.position.x = this.originX;
         this.mesh.position.z = this.originZ;
+        // Water mesh position is managed by update() — camera-centered radial mesh
 
-        const pos = this.geometry.attributes.position.array;
+        const waterLevel = this._currentWaterLevel();
 
-        // When the mesh origin moves, every vertex's world position changes,
-        // so we must refresh the entire grid.
-        for (let zW = 0; zW < this.N; zW++) {
-            for (let xW = 0; xW < this.N; xW++) {
-                const idx = this._bIndex(xW, zW);
-                const wX  = this.originX + xW;
-                const wZ  = this.originZ + zW;
-                pos[idx * 3 + 1] = this._height(wX, wZ);
+        // Ring-buffer copy: existing data is shifted by (-dx, -dz) in local space.
+        // Only the newly exposed strips need fresh _height() samples.
+        for (let zW = 0; zW < N; zW++) {
+            for (let xW = 0; xW < N; xW++) {
+                const newIdx = this._bIndex(xW, zW);
+                const oldLocalX = xW + dx;
+                const oldLocalZ = zW + dz;
+
+                if (oldLocalX >= 0 && oldLocalX < N && oldLocalZ >= 0 && oldLocalZ < N) {
+                    // Overlapping region: copy from temp snapshot
+                    const oldIdx = this._bIndex(oldLocalX, oldLocalZ);
+                    pos[newIdx * 3 + 1] = temp.y[oldIdx];
+                    this.terrainHeights[newIdx] = temp.heights[oldIdx];
+                } else {
+                    // Newly exposed edge: sample terrain height
+                    const wX = this.originX + xW;
+                    const wZ = this.originZ + zW;
+                    const h = this._height(wX, wZ);
+                    pos[newIdx * 3 + 1] = h;
+                    this.terrainHeights[newIdx] = h;
+                }
             }
         }
 
         this.geometry.attributes.position.needsUpdate = true;
-        this.geometry.computeVertexNormals();
+        this._computeCliffMasks();
 
-        const c = this._getCornerCoords();
-        const camStr = cameraPos ? `camera(${cameraPos.x.toFixed(1)},${cameraPos.z.toFixed(1)}) ` : '';
-        this._log('roll', `dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ}) ${camStr}corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
+        // Sync water plane — flat at water level (X/Z are static, only Y changes)
+        // Skip CPU Y-update when shader waves are active (shader handles displacement)
+        const waterY = this._updateWaterBaseUniform();
+        if (!this.shaderWaveEnabled) {
+            const waterPos = this.waterMesh.geometry.attributes.position.array;
+            for (let i = 1; i < waterPos.length; i += 3) {
+                waterPos[i] = waterY;
+            }
+            this.waterMesh.geometry.attributes.position.needsUpdate = true;
+        }
+        this._markWaterDepthsDirty();
+
+        // Skip computeVertexNormals on roll — saves ~14ms per call.
+        // Normals from init are close enough for edge-strip updates.
+        // this.geometry.computeVertexNormals();
+
+        // const c = this._getCornerCoords();
+        // const camStr = cameraPos ? `camera(${cameraPos.x.toFixed(1)},${cameraPos.z.toFixed(1)}) ` : '';
+        // this._log('roll', `dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ}) ${camStr}corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
 
         if (typeof this.board.onTerrainMeshUpdated === 'function') {
             this.board.onTerrainMeshUpdated();
@@ -253,6 +841,20 @@ class RollingTerrainMesh {
         };
     }
 
+    destroy(scene) {
+        if (this.mesh) {
+            scene.remove(this.mesh);
+            this.mesh.geometry.dispose();
+            this.mesh = null;
+        }
+        if (this.waterMesh) {
+            scene.remove(this.waterMesh);
+            this.waterMesh.geometry.dispose();
+            this.waterMesh.material.dispose();
+            this.waterMesh = null;
+        }
+    }
+
     _debugTrack(cameraPos, minX, maxX, minZ, maxZ, dx, dz) {
         if (!this._debugTrackEnabled) return;
         const now = Date.now();
@@ -285,10 +887,79 @@ class RollingTerrainMesh {
         );
     }
 
+    // Unified Gerstner wave sync — pushes computed wave params to shader uniforms
+    // so vertex and fragment shaders evaluate the SAME world-space wave function.
+    _syncGerstnerUniforms(time) {
+        const L = this.N * this.S;
+        const g = 9.81;
+        const windPhaseBoost = this.windSpeed * 0.3;
+        const windDx = this.windDir.x;
+        const windDz = this.windDir.y;
+        const ampScale = this.waveConfig.amplitudeScale;
+        const freqScale = this.waveConfig.freqScale || 1.0;
+        const speedScale = this.waveConfig.speedScale || 1.0;
+        let maxAmp = 0;
+
+        for (let i = 0; i < this.waveConfig.harmonics.length; i++) {
+            const h = this.waveConfig.harmonics[i];
+            const kx = ((2 * Math.PI * h.nx) / L) * freqScale;
+            const kz = ((2 * Math.PI * h.nz) / L) * freqScale;
+            const kMag = Math.sqrt(kx * kx + kz * kz) || 0.001;
+            const omega = Math.sqrt(g * kMag) * this.waveConfig.speed * speedScale * (1.0 + this.windSpeed * 0.2);
+            const windDot = (kx * windDx + kz * windDz) / kMag;
+            const phase = h.phase + windPhaseBoost * windDot;
+            const amp = h.amplitude * ampScale;
+
+            this.waterUniforms.uWaveK.value[i * 2] = kx;
+            this.waterUniforms.uWaveK.value[i * 2 + 1] = kz;
+            this.waterUniforms.uWaveAmp.value[i] = amp;
+            this.waterUniforms.uWaveOmega.value[i] = omega;
+            this.waterUniforms.uWavePhase.value[i] = phase;
+            maxAmp += amp;
+        }
+        this.waterUniforms.uWaveMaxAmp.value = maxAmp;
+        this.waterUniforms.uWaveSteepness.value = this.waveConfig.steepness;
+    }
+
+    // Update terrainDepth attribute for the radial water mesh based on current camera position
+    _updateRadialWaterDepths(cameraX, cameraZ) {
+        if (!this.waterMesh || !this.waterMesh.geometry) return;
+        const waterLevel = this._currentWaterLevel();
+        const pos = this.waterMesh.geometry.attributes.position.array;
+        const depths = this.waterMesh.geometry.attributes.terrainDepth.array;
+        const worldX = cameraX;
+        const worldZ = cameraZ;
+
+        // The radial mesh vertices are centered at (0,0,0) in local space,
+        // positioned at camera in world space. Compute depth from terrain height.
+        for (let i = 0; i < depths.length; i++) {
+            const vx = pos[i * 3];
+            const vz = pos[i * 3 + 2];
+            const h = this._height(worldX + vx, worldZ + vz);
+            depths[i] = waterLevel - h;
+        }
+        this.waterMesh.geometry.attributes.terrainDepth.needsUpdate = true;
+    }
+
+    // Deprecated: CPU Gerstner displacement replaced by shader-based unified waves.
+    // This method now only syncs uniforms and updates radial mesh depths.
+    updateWaves(force = false) {
+        if (!this.waveConfig.enabled || !this.waterMesh) return;
+        const now = performance.now();
+        if (!force && this.waveUpdateIntervalMs > 0 && (now - this._lastWaveUpdateTime) < this.waveUpdateIntervalMs) {
+            return;
+        }
+        this._lastWaveUpdateTime = now;
+        const time = now / 1000;
+        this._syncGerstnerUniforms(time);
+        this._updateWaterBaseUniform();
+    }
+
     _log(tag, msg) {
-        const now = Date.now();
-        if (now - this._lastLogTime < this._logInterval) return;
-        this._lastLogTime = now;
-        console.log(`[RollingTerrain ${tag}] ${msg}`);
+        // Throttled logging disabled for performance
+        // const now = Date.now();
+        // if (now - this._lastLogTime < this._logInterval) return;
+        // this._lastLogTime = now;
+        // console.log(`[RollingTerrain ${tag}] ${msg}`);
     }
 }

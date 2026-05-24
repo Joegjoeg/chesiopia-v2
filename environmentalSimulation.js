@@ -42,27 +42,56 @@ class PressureAgent {
         this.absorbRate = 0.06;
         this.moveRadius = 6.0;
         this.sampleCount = 6;
+        this.strength = 1.0;
+        this.maxStrength = 2.0;
+        this.mergeTarget = null;
+        this.windInfluence = 0.25;
+
+        this.life = 1.0;
+        this._dying = false;
+        this.lastDx = 0;
+        this.lastDz = 0;
+        // console.log(`[Agent] Created ${type === AGENT_TYPE.PRESSURE ? 'pressure' : 'moisture'} at (${x.toFixed(1)},${z.toFixed(1)}) life=${this.life}`);
     }
 
-    tick(envFields, chunkSignatures, terrainGenerator) {
-        this._move(envFields);
+    tick(envFields, terrainGenerator, windVector, moveScale = 1.0, globalSampleCount = null) {
+        if (this._dying) {
+            this.life = Math.max(0, this.life - 0.05);
+        } else {
+            this.life = Math.min(1, this.life + 0.05);
+        }
+        this._move(envFields, windVector, moveScale, globalSampleCount);
         this._deposit(envFields);
-        this._absorb(envFields, chunkSignatures, terrainGenerator);
+        this._absorb(envFields, terrainGenerator);
+        this._updateStrength(envFields);
         this._decayInstability();
     }
 
-    _move(envFields) {
+    _move(envFields, windVector, moveScale = 1.0, globalSampleCount = null) {
+        // If being merged into a stronger agent, let them drag us
+        if (this.mergeTarget) {
+            const dx = this.mergeTarget.x - this.x;
+            const dz = this.mergeTarget.z - this.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.5) {
+                this.x += dx * 0.35;
+                this.z += dz * 0.35;
+            }
+            return;
+        }
+
+        const effectiveRadius = this.moveRadius * moveScale;
+        const sampleCount = globalSampleCount !== null ? globalSampleCount : this.sampleCount;
         const samples = [];
-        for (let i = 0; i < this.sampleCount; i++) {
+        for (let i = 0; i < sampleCount; i++) {
             const angle = this.rng.next() * Math.PI * 2;
-            const dist = this.rng.next() * this.moveRadius;
+            const dist = this.rng.next() * effectiveRadius;
             const nx = Math.round(this.x + Math.cos(angle) * dist);
             const nz = Math.round(this.z + Math.sin(angle) * dist);
             const key = `${nx},${nz}`;
             const field = envFields.get(key);
-            if (field) {
-                samples.push({ x: nx, z: nz, field: field[this.primaryField], key });
-            }
+            // Use neutral (0.5) if no field exists — agents explore empty space
+            samples.push({ x: nx, z: nz, field: field ? field[this.primaryField] : 0.5, key });
         }
 
         if (samples.length === 0) return;
@@ -82,9 +111,29 @@ class PressureAgent {
         const choice = this.rng.next() < 0.75 ? samples[0] : samples[Math.floor(this.rng.next() * samples.length)];
         if (!choice) return;
 
-        // Soft move: interpolate toward target
-        const newX = this.x + (choice.x - this.x) * 0.6;
-        const newZ = this.z + (choice.z - this.z) * 0.6;
+        // Blend gradient direction with global wind field and momentum
+        const gradientX = choice.x - this.x;
+        const gradientZ = choice.z - this.z;
+
+        const windX = (windVector?.dx ?? 0) * effectiveRadius;
+        const windZ = (windVector?.dz ?? 0) * effectiveRadius;
+
+        // Momentum: bias toward continuing last direction
+        const momentumWeight = 0.3;
+        const gradientWeight = 0.7;
+        const blendX = gradientX * gradientWeight + this.lastDx * momentumWeight;
+        const blendZ = gradientZ * gradientWeight + this.lastDz * momentumWeight;
+
+        const moveX = blendX * (1 - this.windInfluence) + windX * this.windInfluence;
+        const moveZ = blendZ * (1 - this.windInfluence) + windZ * this.windInfluence;
+
+        // Soft move: interpolate toward blended direction (scale with moveScale for larger weather)
+        const newX = this.x + moveX * 0.6 * moveScale;
+        const newZ = this.z + moveZ * 0.6 * moveScale;
+
+        // Store momentum direction
+        this.lastDx = newX - this.x;
+        this.lastDz = newZ - this.z;
 
         // Track instability when gradient is weak
         const gradient = Math.abs(currentValue - choice.field);
@@ -102,18 +151,25 @@ class PressureAgent {
         const tx = Math.round(this.x);
         const tz = Math.round(this.z);
         const key = `${tx},${tz}`;
-        const field = envFields.get(key);
-        if (!field) return;
+        let field = envFields.get(key);
+        if (!field) {
+            // Create field on demand — agents seed the climate field
+            field = { pressure: 0.5, humidity: 0.5, temperature: 0.5 };
+            envFields.set(key, field);
+        }
+
+        // Scale deposit by life (fade in)
+        const lifeScale = Math.max(0.1, this.life);
 
         // Deposit primary field based on difference from tile
         const diff = this.state[this.primaryField] - field[this.primaryField];
-        const deposit = diff * this.depositRate;
+        const deposit = diff * this.depositRate * lifeScale;
         field[this.primaryField] += deposit;
         this.state[this.primaryField] -= deposit * 0.5; // lose some, keep some
 
         // Cross-coupling: high humidity increases pressure (latent heat)
         if (this.type === AGENT_TYPE.MOISTURE && field.humidity > 0.7) {
-            field.pressure += 0.005;
+            field.pressure += 0.005 * lifeScale;
         }
 
         // Clamp
@@ -124,40 +180,26 @@ class PressureAgent {
         this.state.humidity = Math.max(0, Math.min(1, this.state.humidity));
     }
 
-    _absorb(envFields, chunkSignatures, terrainGenerator) {
+    _absorb(envFields, terrainGenerator) {
         const tx = Math.round(this.x);
         const tz = Math.round(this.z);
         const key = `${tx},${tz}`;
         const field = envFields.get(key);
         if (!field) return;
 
+        // Scale absorb by life (fade in)
+        const lifeScale = Math.max(0.1, this.life);
+
         // Absorb from tile
-        this.state.pressure += (field.pressure - this.state.pressure) * this.absorbRate;
-        this.state.humidity += (field.humidity - this.state.humidity) * this.absorbRate;
-        this.state.temperature += (field.temperature - this.state.temperature) * this.absorbRate;
+        this.state.pressure += (field.pressure - this.state.pressure) * this.absorbRate * lifeScale;
+        this.state.humidity += (field.humidity - this.state.humidity) * this.absorbRate * lifeScale;
+        this.state.temperature += (field.temperature - this.state.temperature) * this.absorbRate * lifeScale;
 
-        // Chunk signature influences
-        const chunkSize = 16;
-        const cx = Math.floor(tx / chunkSize);
-        const cz = Math.floor(tz / chunkSize);
-        const sig = chunkSignatures.get(`${cx},${cz}`);
-        if (sig) {
-            // Moisture agents gain humidity in high-moisture-generation chunks (water)
-            if (this.type === AGENT_TYPE.MOISTURE) {
-                this.state.humidity += sig.moistureGeneration * 0.02;
-            }
-            // All agents warm up in high heat-absorption areas
-            this.state.temperature += (sig.heatAbsorption - this.state.temperature) * 0.01;
-            // Pressure agents affected by uplift (orographic)
-            if (this.type === AGENT_TYPE.PRESSURE) {
-                this.state.pressure -= sig.uplift * 0.015;
-            }
-        }
-
-        // Direct terrain influence: water tiles generate humidity
+        // Dual water detection: climate humidity OR terrain height
         const height = terrainGenerator.getHeight(tx, tz);
-        if (height < terrainGenerator.waterLevel + 1) {
-            this.state.humidity = Math.min(1, this.state.humidity + 0.03);
+        const isWater = field.humidity > 0.7 || height < terrainGenerator.waterLevel + 1;
+        if (isWater) {
+            this.state.humidity = Math.min(1, this.state.humidity + 0.03 * lifeScale);
         }
 
         // Clamp
@@ -169,128 +211,109 @@ class PressureAgent {
     _decayInstability() {
         // High instability makes agents more erratic and can trigger "storm" behavior
         if (this.state.instability > 0.8) {
-            // Storm: dump most state, reset
-            this.state.pressure = 0.5;
-            this.state.humidity = 0.5;
-            this.state.instability = 0;
+            // Storm: mark as dying rather than resetting — will be respawned
+            this._dying = true;
             this.moveRadius = Math.min(12, this.moveRadius + 2);
         } else {
             this.moveRadius = Math.max(4, Math.min(10, this.moveRadius * 0.98 + 6 * 0.02));
         }
+    }
+
+    _updateStrength(envFields) {
+        const currentField = envFields.get(`${Math.round(this.x)},${Math.round(this.z)}`);
+        if (!currentField) return;
+
+        let diff;
+        if (this.type === AGENT_TYPE.PRESSURE) {
+            diff = Math.abs(this.state.pressure - currentField.pressure);
+        } else {
+            diff = Math.abs(this.state.humidity - currentField.humidity);
+        }
+
+        // Well-matched agents gain strength, mismatched agents lose it
+        const gain = 0.03 * (1 - diff);
+        const loss = 0.04 * diff;
+        this.strength += gain - loss;
+        this.strength = Math.max(0.1, Math.min(this.maxStrength, this.strength));
     }
 }
 
 class EnvironmentalSimulation {
     constructor(terrainGenerator, options = {}) {
         this.terrainGenerator = terrainGenerator;
-        this.agentCount = options.agentCount || 30;
+        this.agentCount = options.agentCount || 200;
         this.tickIntervalMs = options.tickIntervalMs || 2000;
-        this.bounds = options.bounds || { minX: -100, maxX: 100, minZ: -100, maxZ: 100 };
+        this.windChangeInterval = options.windChangeInterval || 10;
         this.agents = [];
         this.envFields = new Map(); // "x,z" -> {pressure, humidity, temperature}
-        this.chunkSignatures = new Map(); // "cx,cz" -> {uplift, heatAbsorption, moistureGeneration}
         this.tickCount = 0;
         this.rng = new SeededRandom(options.seed || 42);
         this.running = false;
+        this.windVector = { dx: 0, dz: 0 };
+        this.windTimer = 0;
+
+        // Focal point pooling
+        this.focalX = 0;
+        this.focalZ = 0;
+        this.activeRadius = options.activeRadius || 128;
+        this.spawnRadius = Math.floor(this.activeRadius * 0.75);
+        this.despawnRadius = Math.floor(this.activeRadius * 1.25);
+        this._clientFocals = new Map(); // clientId -> {x, z, time}
+
+        // Rolling average climate history
+        this.climateHistory = new Map(); // "x,z" -> [{time, field}]
+        this.rollingWindowMs = 30000;
+        this.maxHistoryPerField = 30;
+
+        // Agent movement tuning
+        this.moveScale = 1.0;
+        this.globalSampleCount = null; // null = use agent default
     }
 
     init() {
         console.log('[EnvSim] Initializing environmental simulation...');
-        this._initEnvFields();
-        this._computeChunkSignatures();
+        // envFields starts empty — agents create it
         this._spawnAgents();
         console.log(`[EnvSim] Initialized with ${this.agents.length} agents, ${this.envFields.size} field tiles`);
     }
 
-    _initEnvFields() {
-        const { minX, maxX, minZ, maxZ } = this.bounds;
-        for (let x = minX; x <= maxX; x++) {
-            for (let z = minZ; z <= maxZ; z++) {
-                const height = this.terrainGenerator.getHeight(x, z);
-                const moisture = this.terrainGenerator.getMoisture(x, z, height);
-                const temperature = this.terrainGenerator.getTemperature(x, z, height);
-                this.envFields.set(`${x},${z}`, {
-                    pressure: 0.5,
-                    humidity: moisture,
-                    temperature: temperature
-                });
-            }
-        }
-    }
-
-    _computeChunkSignatures() {
-        const chunkSize = 16;
-        const { minX, maxX, minZ, maxZ } = this.bounds;
-        const minCX = Math.floor(minX / chunkSize);
-        const maxCX = Math.floor(maxX / chunkSize);
-        const minCZ = Math.floor(minZ / chunkSize);
-        const maxCZ = Math.floor(maxZ / chunkSize);
-
-        for (let cx = minCX; cx <= maxCX; cx++) {
-            for (let cz = minCZ; cz <= maxCZ; cz++) {
-                let totalSlope = 0;
-                let tileCount = 0;
-                let waterTiles = 0;
-                let heatSum = 0;
-
-                for (let lx = 0; lx < chunkSize; lx++) {
-                    for (let lz = 0; lz < chunkSize; lz++) {
-                        const wx = cx * chunkSize + lx;
-                        const wz = cz * chunkSize + lz;
-                        if (wx < this.bounds.minX || wx > this.bounds.maxX ||
-                            wz < this.bounds.minZ || wz > this.bounds.maxZ) {
-                            continue;
-                        }
-                        const height = this.terrainGenerator.getHeight(wx, wz);
-                        const slope = this.terrainGenerator.calculateSlope(wx, wz, height);
-                        totalSlope += slope;
-                        tileCount++;
-                        if (height < this.terrainGenerator.waterLevel) waterTiles++;
-
-                        const biome = this.terrainGenerator.getBiomeType(height);
-                        switch (biome) {
-                            case 'snow': heatSum += 0.1; break;
-                            case 'forest': heatSum += 0.5; break;
-                            case 'grassland': heatSum += 0.6; break;
-                            case 'lowland': heatSum += 0.7; break;
-                            case 'beach': heatSum += 0.8; break;
-                            case 'mountain': heatSum += 0.3; break;
-                            default: heatSum += 0.5;
-                        }
-                    }
-                }
-
-                if (tileCount > 0) {
-                    this.chunkSignatures.set(`${cx},${cz}`, {
-                        uplift: Math.min(1, (totalSlope / tileCount) / 45),
-                        heatAbsorption: heatSum / tileCount,
-                        moistureGeneration: Math.min(1, waterTiles / tileCount * 3)
-                    });
-                }
-            }
-        }
-    }
-
     _spawnAgents() {
-        const { minX, maxX, minZ, maxZ } = this.bounds;
         const halfPressure = Math.floor(this.agentCount / 2);
+        const minDist = 20;
+        // console.log(`[EnvSim] _spawnAgents count=${this.agentCount} focal=(${this.focalX},${this.focalZ}) spawnRadius=${this.spawnRadius}`);
 
         for (let i = 0; i < this.agentCount; i++) {
-            const x = this.rng.rangeInt(minX, maxX);
-            const z = this.rng.rangeInt(minZ, maxZ);
+            // Spawn within spawnRadius of focal point with minimum separation
+            let x, z, ok;
+            let attempts = 0;
+            do {
+                const angle = this.rng.next() * Math.PI * 2;
+                const dist = this.rng.next() * this.spawnRadius;
+                x = Math.round(this.focalX + Math.cos(angle) * dist);
+                z = Math.round(this.focalZ + Math.sin(angle) * dist);
+                ok = true;
+                for (const a of this.agents) {
+                    const dx = a.x - x;
+                    const dz = a.z - z;
+                    if (Math.sqrt(dx * dx + dz * dz) < minDist) {
+                        ok = false;
+                        break;
+                    }
+                }
+                attempts++;
+            } while (!ok && attempts < 50);
+
             const type = i < halfPressure ? AGENT_TYPE.PRESSURE : AGENT_TYPE.MOISTURE;
             const seed = this.rng.rangeInt(1, 1000000);
             const agent = new PressureAgent(x, z, type, seed);
 
-            // Initialize agent state from local field
-            const field = this.envFields.get(`${x},${z}`);
-            if (field) {
-                agent.state.pressure = field.pressure;
-                agent.state.humidity = field.humidity;
-                agent.state.temperature = field.temperature;
-            }
+            // Initialize from local climate (or neutral if empty)
+            const field = this.sampleClimate(x, z);
+            agent.state.pressure = field.pressure;
+            agent.state.humidity = field.humidity;
+            agent.state.temperature = field.temperature;
 
-            // Give pressure agents some initial variance
+            // Give pressure agents extreme initial variance
             if (type === AGENT_TYPE.PRESSURE) {
                 agent.state.pressure = i % 2 === 0 ? 0.8 : 0.2;
             } else {
@@ -299,59 +322,92 @@ class EnvironmentalSimulation {
 
             this.agents.push(agent);
         }
+        // console.log(`[EnvSim] _spawnAgents done: ${this.agents.length} agents total`);
     }
 
     tick() {
         if (!this.running) return;
         this.tickCount++;
 
-        // Agent phase
-        for (const agent of this.agents) {
-            agent.tick(this.envFields, this.chunkSignatures, this.terrainGenerator);
+        this._updateWind();
+        this._mergeAgents();
+        if (this._clientFocals.size > 0) {
+            this._rebalanceAgents();
         }
 
-        // Diffusion phase: simple 3x3 box blur on env fields
+        const preCount = this.agents.length;
+        const dyingCount = this.agents.filter(a => a._dying).length;
+
+        // Agent phase
+        for (const agent of this.agents) {
+            agent.tick(this.envFields, this.terrainGenerator, this.windVector, this.moveScale, this.globalSampleCount);
+        }
+
+        // Remove agents that have fully faded out
+        const beforeFilter = this.agents.length;
+        this.agents = this.agents.filter(agent => !agent._dying || agent.life > 0);
+        const removed = beforeFilter - this.agents.length;
+        if (removed > 0 || dyingCount > 0) {
+            // console.log(`[EnvSim] tick=${this.tickCount} agents=${preCount} dying=${dyingCount} removed=${removed} remaining=${this.agents.length} focal=(${this.focalX},${this.focalZ})`);
+        }
+
+        // Diffusion phase: sparse 3x3 box blur
         this._diffuse();
 
-        // Decay toward baseline (prevents runaway)
+        // Decay pressure only (humidity/temperature conserved by agents)
         this._decay();
+
+        // Record climate for rolling average
+        for (const [key, field] of this.envFields) {
+            this._recordClimate(key, field);
+        }
+
+        // Prune stale fields every 10 ticks
+        if (this.tickCount % 10 === 0) {
+            this._pruneStaleFields();
+        }
+
+        // Respawn to maintain population
+        this._respawnAgents();
     }
 
     _diffuse() {
         const changes = new Map();
-        const { minX, maxX, minZ, maxZ } = this.bounds;
 
-        for (let x = minX + 1; x < maxX; x++) {
-            for (let z = minZ + 1; z < maxZ; z++) {
-                const key = `${x},${z}`;
-                const field = this.envFields.get(key);
-                if (!field) continue;
+        for (const [key, field] of this.envFields) {
+            let pSum = field.pressure;
+            let hSum = field.humidity;
+            let tSum = field.temperature;
+            let count = 1;
 
-                let pSum = field.pressure;
-                let hSum = field.humidity;
-                let tSum = field.temperature;
-                let count = 1;
-
-                for (let dx = -1; dx <= 1; dx++) {
-                    for (let dz = -1; dz <= 1; dz++) {
-                        if (dx === 0 && dz === 0) continue;
-                        const neighbor = this.envFields.get(`${x + dx},${z + dz}`);
-                        if (neighbor) {
-                            pSum += neighbor.pressure;
-                            hSum += neighbor.humidity;
-                            tSum += neighbor.temperature;
-                            count++;
-                        }
+            const [x, z] = key.split(',').map(Number);
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    if (dx === 0 && dz === 0) continue;
+                    const neighbor = this.envFields.get(`${x + dx},${z + dz}`);
+                    if (neighbor) {
+                        pSum += neighbor.pressure;
+                        hSum += neighbor.humidity;
+                        tSum += neighbor.temperature;
+                        count++;
+                    } else {
+                        pSum += 0.5;
+                        hSum += 0.5;
+                        tSum += 0.5;
+                        count++;
                     }
                 }
-
-                const diffRate = 0.15;
-                changes.set(key, {
-                    pressure: field.pressure + (pSum / count - field.pressure) * diffRate,
-                    humidity: field.humidity + (hSum / count - field.humidity) * diffRate,
-                    temperature: field.temperature + (tSum / count - field.temperature) * diffRate
-                });
             }
+
+            const pDiffRate = 0.05;
+            const hDiffRate = 0.15;
+            const tDiffRate = 0.15;
+
+            changes.set(key, {
+                pressure: field.pressure + (pSum / count - field.pressure) * pDiffRate,
+                humidity: field.humidity + (hSum / count - field.humidity) * hDiffRate,
+                temperature: field.temperature + (tSum / count - field.temperature) * tDiffRate
+            });
         }
 
         for (const [key, vals] of changes) {
@@ -365,16 +421,142 @@ class EnvironmentalSimulation {
     }
 
     _decay() {
-        const { minX, maxX, minZ, maxZ } = this.bounds;
-        for (let x = minX; x <= maxX; x++) {
-            for (let z = minZ; z <= maxZ; z++) {
-                const key = `${x},${z}`;
-                const field = this.envFields.get(key);
-                if (!field) continue;
-                // Very slow decay toward neutral
-                field.pressure += (0.5 - field.pressure) * 0.001;
+        for (const field of this.envFields.values()) {
+            // Only pressure decays toward neutral
+            field.pressure += (0.5 - field.pressure) * 0.001;
+        }
+    }
+
+    _updateWind() {
+        this.windTimer++;
+        if (this.windTimer >= this.windChangeInterval) {
+            this.windTimer = 0;
+            // Slowly evolving global wind using superimposed sine waves
+            // (simulates continental-scale weather patterns)
+            const t = this.tickCount * 0.08;
+            const angle = Math.sin(t * 0.31) * 1.2 + Math.sin(t * 0.17) * 0.7 + Math.sin(t * 0.53) * 0.4;
+            const magnitude = 0.3 + Math.sin(t * 0.23) * 0.2 + Math.cos(t * 0.11) * 0.15;
+            this.windVector.dx = Math.cos(angle) * magnitude;
+            this.windVector.dz = Math.sin(angle) * magnitude;
+        }
+    }
+
+    _mergeAgents() {
+        const mergeDistance = 8.0;
+        const absorbDistance = 1.5;
+        const toRemove = new Set();
+        let candidatesChecked = 0;
+        let withinMergeRange = 0;
+        let absorbed = 0;
+        let dragged = 0;
+
+        for (let i = 0; i < this.agents.length; i++) {
+            const a = this.agents[i];
+            if (toRemove.has(i)) continue;
+
+            for (let j = i + 1; j < this.agents.length; j++) {
+                const b = this.agents[j];
+                if (toRemove.has(j)) continue;
+                if (a.type !== b.type) continue;
+                candidatesChecked++;
+
+                const dx = b.x - a.x;
+                const dz = b.z - a.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < mergeDistance) {
+                    withinMergeRange++;
+                    const [stronger, weaker, strongIdx, weakIdx] =
+                        a.strength >= b.strength ? [a, b, i, j] : [b, a, j, i];
+
+                    if (dist < absorbDistance) {
+                        // Absorb weaker into stronger
+                        const totalStrength = stronger.strength + weaker.strength;
+                        stronger.x = (stronger.x * stronger.strength + weaker.x * weaker.strength) / totalStrength;
+                        stronger.z = (stronger.z * stronger.strength + weaker.z * weaker.strength) / totalStrength;
+
+                        const wStrong = stronger.strength / totalStrength;
+                        const wWeak = weaker.strength / totalStrength;
+                        stronger.state.pressure = stronger.state.pressure * wStrong + weaker.state.pressure * wWeak;
+                        stronger.state.humidity = stronger.state.humidity * wStrong + weaker.state.humidity * wWeak;
+                        stronger.state.temperature = stronger.state.temperature * wStrong + weaker.state.temperature * wWeak;
+                        stronger.state.instability = Math.max(stronger.state.instability, weaker.state.instability) * 0.85;
+
+                        stronger.strength = Math.min(stronger.maxStrength, totalStrength * 0.9);
+                        toRemove.add(weakIdx);
+                        weaker.mergeTarget = null;
+                        absorbed++;
+                    } else {
+                        // Drag weaker toward stronger over multiple ticks
+                        weaker.mergeTarget = stronger;
+                        dragged++;
+                    }
+                } else {
+                    // Clear stale merge targets
+                    if (b.mergeTarget === a) b.mergeTarget = null;
+                    if (a.mergeTarget === b) a.mergeTarget = null;
+                }
             }
         }
+
+        if (candidatesChecked > 0 && (withinMergeRange > 0 || absorbed > 0 || dragged > 0)) {
+            // console.log(`[EnvSim] Merge: checked=${candidatesChecked} inRange=${withinMergeRange} absorbed=${absorbed} dragged=${dragged} removed=${toRemove.size}`);
+        }
+
+        if (toRemove.size > 0) {
+            this.agents = this.agents.filter((_, idx) => !toRemove.has(idx));
+        }
+    }
+
+    _respawnAgents() {
+        const activeCount = this.agents.filter(a => !a._dying).length;
+        const needed = this.agentCount - activeCount;
+        if (needed <= 0) return;
+        // console.log(`[EnvSim] _respawnAgents needed=${needed} active=${activeCount} total=${this.agents.length} focal=(${this.focalX},${this.focalZ})`);
+
+        const halfPressure = Math.floor(needed / 2);
+
+        for (let i = 0; i < needed; i++) {
+            // Spawn within spawnRadius of focal point
+            let x, z;
+            let attempts = 0;
+            let tooClose = true;
+            while (tooClose && attempts < 30) {
+                const angle = this.rng.next() * Math.PI * 2;
+                const dist = this.rng.next() * this.spawnRadius;
+                x = Math.round(this.focalX + Math.cos(angle) * dist);
+                z = Math.round(this.focalZ + Math.sin(angle) * dist);
+                tooClose = false;
+                for (const a of this.agents) {
+                    const dx = a.x - x;
+                    const dz = a.z - z;
+                    if (Math.sqrt(dx * dx + dz * dz) < 20) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+
+            const type = i < halfPressure ? AGENT_TYPE.PRESSURE : AGENT_TYPE.MOISTURE;
+            const seed = this.rng.rangeInt(1, 1000000);
+            const agent = new PressureAgent(x, z, type, seed);
+
+            // Initialize from local climate (or neutral if empty)
+            const field = this.sampleClimate(x, z);
+            agent.state.pressure = field.pressure;
+            agent.state.humidity = field.humidity;
+            agent.state.temperature = field.temperature;
+
+            if (type === AGENT_TYPE.PRESSURE) {
+                agent.state.pressure = this.rng.next() < 0.5 ? 0.8 : 0.2;
+            } else {
+                agent.state.humidity = 0.7;
+            }
+
+            this.agents.push(agent);
+        }
+        // console.log(`[EnvSim] _respawnAgents done: ${this.agents.length} agents total`);
     }
 
     getFieldsInRegion(minX, minZ, maxX, maxZ) {
@@ -418,8 +600,244 @@ class EnvironmentalSimulation {
             type: a.type,
             pressure: a.state.pressure,
             humidity: a.state.humidity,
-            instability: a.state.instability
+            instability: a.state.instability,
+            strength: a.strength,
+            life: a.life,
+            dying: a._dying
         }));
+    }
+
+    // Pure read: sample climate at (x,z). Returns weighted average of nearby
+    // envFields entries, or neutral (0.5) if none found. Never creates entries.
+    sampleClimate(x, z) {
+        const searchRadius = 8;
+        let pSum = 0, hSum = 0, tSum = 0, weightSum = 0, pSqSum = 0;
+        let sampleCount = 0;
+
+        for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (let dz = -searchRadius; dz <= searchRadius; dz++) {
+                const nx = Math.round(x) + dx;
+                const nz = Math.round(z) + dz;
+                const field = this.envFields.get(`${nx},${nz}`);
+                if (!field) continue;
+
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > searchRadius) continue;
+
+                const weight = 1 / (1 + dist);
+                pSum += field.pressure * weight;
+                hSum += field.humidity * weight;
+                tSum += field.temperature * weight;
+                pSqSum += field.pressure * field.pressure * weight;
+                weightSum += weight;
+                sampleCount++;
+            }
+        }
+
+        if (weightSum === 0) {
+            return {
+                pressure: 0.5,
+                humidity: 0.5,
+                temperature: 0.5,
+                pressureVariance: 0,
+                sampleCount: 0
+            };
+        }
+
+        const pressure = pSum / weightSum;
+        const pressureVariance = Math.max(0, pSqSum / weightSum - pressure * pressure);
+
+        return {
+            pressure,
+            humidity: hSum / weightSum,
+            temperature: tSum / weightSum,
+            pressureVariance,
+            sampleCount
+        };
+    }
+
+    // Return 30-second rolling average of climate at (x,z), or fall back to sampleClimate
+    sampleClimateSmoothed(x, z) {
+        const key = `${Math.round(x)},${Math.round(z)}`;
+        const history = this.climateHistory.get(key);
+        if (!history || history.length === 0) {
+            return this.sampleClimate(x, z);
+        }
+
+        const base = this.sampleClimate(x, z);
+        const now = Date.now();
+        const cutoff = now - this.rollingWindowMs;
+        let pSum = 0, hSum = 0, tSum = 0, count = 0;
+
+        for (const entry of history) {
+            if (entry.time < cutoff) continue;
+            pSum += entry.field.pressure;
+            hSum += entry.field.humidity;
+            tSum += entry.field.temperature;
+            count++;
+        }
+
+        if (count === 0) {
+            return base;
+        }
+
+        return {
+            pressure: pSum / count,
+            humidity: hSum / count,
+            temperature: tSum / count,
+            pressureVariance: base.pressureVariance,
+            sampleCount: Math.max(base.sampleCount, count)
+        };
+    }
+
+    _recordClimate(key, field) {
+        let history = this.climateHistory.get(key);
+        if (!history) {
+            history = [];
+            this.climateHistory.set(key, history);
+        }
+        history.push({
+            time: Date.now(),
+            field: { pressure: field.pressure, humidity: field.humidity, temperature: field.temperature }
+        });
+        // Prune old entries
+        const cutoff = Date.now() - this.rollingWindowMs;
+        while (history.length > 0 && history[0].time < cutoff) {
+            history.shift();
+        }
+        // Hard cap to prevent unbounded growth for very active fields
+        if (history.length > this.maxHistoryPerField) {
+            history.splice(0, history.length - this.maxHistoryPerField);
+        }
+    }
+
+    // Update focal point from client position. Computes centroid of active clients.
+    updateFocalPoint(x, z, clientId) {
+        this._clientFocals.set(clientId, { x, z, time: Date.now() });
+
+        // Expire old entries (>60s)
+        const now = Date.now();
+        for (const [id, data] of this._clientFocals) {
+            if (now - data.time > 60000) {
+                this._clientFocals.delete(id);
+            }
+        }
+
+        // Compute centroid
+        let cx = 0, cz = 0, count = 0;
+        for (const data of this._clientFocals.values()) {
+            cx += data.x;
+            cz += data.z;
+            count++;
+        }
+        if (count === 0) return;
+
+        const newFocalX = Math.round(cx / count);
+        const newFocalZ = Math.round(cz / count);
+
+        // Only rebalance if focal moved significantly (>16 tiles)
+        const dist = Math.sqrt((newFocalX - this.focalX) ** 2 + (newFocalZ - this.focalZ) ** 2);
+        if (dist > 16) {
+            // console.log(`[EnvSim] Focal moved ${dist.toFixed(1)} -> (${newFocalX},${newFocalZ}) from (${this.focalX},${this.focalZ})`);
+            this.focalX = newFocalX;
+            this.focalZ = newFocalZ;
+            this._rebalanceAgents();
+        }
+    }
+
+    // Mark distant agents as dying, remove dead ones
+    _rebalanceAgents() {
+        let marked = 0, cleared = 0;
+        for (const agent of this.agents) {
+            const dx = agent.x - this.focalX;
+            const dz = agent.z - this.focalZ;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            const wasDying = agent._dying;
+            if (dist > this.despawnRadius) {
+                agent._dying = true;
+                if (!wasDying) marked++;
+            } else {
+                agent._dying = false;
+                if (wasDying) cleared++;
+            }
+        }
+        if (marked > 0 || cleared > 0) {
+            // console.log(`[EnvSim] Rebalance: marked=${marked} cleared=${cleared} despawnRadius=${this.despawnRadius} focal=(${this.focalX},${this.focalZ})`);
+        }
+    }
+
+    setAgentCount(target) {
+        if (!Number.isFinite(target)) return;
+        const clamped = Math.max(0, Math.min(500, Math.round(target)));
+        if (clamped === this.agentCount) return;
+
+        this.agentCount = clamped;
+        console.log(`[EnvSim] Agent target set to ${this.agentCount}`);
+
+        if (!this.running) {
+            this._respawnAgents();
+            return;
+        }
+
+        const deficit = this.agentCount - this.agents.length;
+        if (deficit > 0) {
+            this._respawnAgents();
+            return;
+        }
+
+        const excess = Math.abs(deficit);
+        if (excess === 0) return;
+
+        const sorted = [...this.agents].sort((a, b) => a.life - b.life);
+        for (let i = 0; i < excess && i < sorted.length; i++) {
+            const agent = sorted[i];
+            agent._dying = true;
+            agent.life = Math.min(agent.life, 0.3);
+        }
+    }
+
+    // Remove envFields entries close to neutral (0.5) to prevent unbounded growth
+    _pruneStaleFields() {
+        const stale = [];
+        for (const [key, field] of this.envFields) {
+            const nearNeutral =
+                Math.abs(field.pressure - 0.5) < 0.05 &&
+                Math.abs(field.humidity - 0.5) < 0.05 &&
+                Math.abs(field.temperature - 0.5) < 0.05;
+            if (nearNeutral) {
+                stale.push(key);
+            }
+        }
+        for (const key of stale) {
+            this.envFields.delete(key);
+            this.climateHistory.delete(key);
+        }
+        if (stale.length > 0) {
+            console.log(`[EnvSim] Pruned ${stale.length} stale field entries`);
+        }
+    }
+
+    setActiveRadius(radius) {
+        this.activeRadius = radius;
+        this.spawnRadius = Math.floor(radius * 0.75);
+        this.despawnRadius = Math.floor(radius * 1.25);
+        console.log(`[EnvSim] Active radius set: active=${this.activeRadius}, spawn=${this.spawnRadius}, despawn=${this.despawnRadius}`);
+    }
+
+    setMoveScale(scale) {
+        if (!Number.isFinite(scale)) return;
+        const clamped = Math.max(0.25, Math.min(4.0, scale));
+        if (clamped === this.moveScale) return;
+        this.moveScale = clamped;
+        console.log(`[EnvSim] Move scale set to ${this.moveScale}`);
+    }
+
+    setSampleCount(count) {
+        if (!Number.isFinite(count)) return;
+        const clamped = Math.max(2, Math.min(12, Math.round(count)));
+        if (clamped === this.globalSampleCount) return;
+        this.globalSampleCount = clamped;
+        console.log(`[EnvSim] Global sample count set to ${this.globalSampleCount}`);
     }
 
     start() {

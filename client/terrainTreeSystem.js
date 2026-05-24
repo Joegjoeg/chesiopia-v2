@@ -34,6 +34,9 @@ class TerrainTreeSystem {
         this.seasonTextures = this._generateSeasonalTextures();
         this.currentSeason = 'summer';
 
+        // Global tree size multiplier (controlled by dev tools)
+        this.globalTreeSizeMult = 1.0;
+
         // Wind shader uniforms (shared across all materials via onBeforeCompile closure)
         this.windUniforms = {
             uTime:          { value: 0 },
@@ -425,6 +428,32 @@ class TerrainTreeSystem {
         }
     }
 
+    /** Remove a single tree by index using swap-with-last for O(1) removal. */
+    removeTree(index) {
+        if (index < 0 || index >= this.treeCount) return null;
+        const removed = this.treeData[index];
+        const lastIndex = this.treeCount - 1;
+        if (index !== lastIndex) {
+            const moved = this.treeData[lastIndex];
+            this.treeData[index] = moved;
+            this._currentHeights[index] = this._currentHeights[lastIndex];
+            // Copy wind attributes from last slot into removed slot
+            for (const part of this.parts) {
+                const attr = part.mesh.geometry.attributes.aWindMultiplier;
+                if (attr) attr.setX(index, attr.getX(lastIndex));
+                const attr2 = part.mesh.geometry.attributes.aWindPhase;
+                if (attr2) attr2.setX(index, attr2.getX(lastIndex));
+            }
+            this.updateTreeInstanceMatrix(index, moved);
+        }
+        this.treeData.length = lastIndex;
+        this.treeCount = lastIndex;
+        for (const part of this.parts) {
+            part.mesh.count = this.treeCount;
+        }
+        return removed;
+    }
+
     dispose() {
         for (const part of this.parts) {
             this.scene.remove(part.mesh);
@@ -456,7 +485,7 @@ class TerrainTreeSystem {
             return;
         }
         board.computeTreeWindField(this.treeData, this.windField);
-        console.log('[TerrainTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
+        // console.log('[TerrainTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
     }
 
     recomputeWindMultipliers() {
@@ -467,6 +496,7 @@ class TerrainTreeSystem {
         const windDir = new THREE.Vector3(wd.x, 0, wd.y).normalize();
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            if (!data || data._lodVisible === false) continue;
             const normal = data.normal || new THREE.Vector3(0, 1, 0);
             const windwardFactor = Math.max(0, normal.dot(windDir));
             let mult = 1.0 + 0.5 * exposureScale;
@@ -504,6 +534,7 @@ class TerrainTreeSystem {
 
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
+            if (!tree || tree._lodVisible === false) continue;
 
             // Check if tree is within mesh range
             const dx = Math.abs(tree.x - camera.position.x);
@@ -564,7 +595,7 @@ class TerrainTreeSystem {
     }
 
     updateTreeInstanceMatrix(i, tree) {
-        const scale = tree.scale;
+        const scale = tree.scale * this.globalTreeSizeMult;
         const rotY = tree.rotY;
         const height = tree.y;
 
@@ -608,6 +639,13 @@ class TerrainTreeSystem {
         // Mark instance matrices for GPU update
         for (const part of this.parts) {
             part.mesh.instanceMatrix.needsUpdate = true;
+        }
+    }
+
+    setGlobalTreeSizeMult(value) {
+        this.globalTreeSizeMult = value;
+        for (let i = 0; i < this.treeCount; i++) {
+            this.updateTreeInstanceMatrix(i, this.treeData[i]);
         }
     }
 

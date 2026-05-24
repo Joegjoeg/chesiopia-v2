@@ -25,9 +25,6 @@ class CleanBoardSystem {
         this.chunks = new Map();
         this.terrainModifiers = new Map();
 
-        // Toggle to switch between regular terrain shader and flat-water shader
-        this.useFlatWaterShader = false;
-
         // Game time sync (server-side authoritative time)
         this.serverGameTime = 0;
         this.serverDayLength = 60000; // 60 seconds per day
@@ -40,10 +37,10 @@ class CleanBoardSystem {
         // Seasonal system
         this.yearLength = 120 * this.serverDayLength; // 120 days = 360 seconds (6 minutes per year)
         this.seasonConfig = {
-            SPRING: { days: [0, 30],   sunTilt: 0.3,  moonColor: [0.5,0.5,0.7], moonIntensity: 0.4, treeColor: [0.7,0.9,0.5], fogColor: [200,220,200] },
-            SUMMER: { days: [30, 60],  sunTilt: 0.5,  moonColor: [0.4,0.5,0.8], moonIntensity: 0.5, treeColor: [0.4,0.8,0.3], fogColor: [235,245,255] },
-            AUTUMN: { days: [60, 90],  sunTilt: 0.2,  moonColor: [0.6,0.4,0.5], moonIntensity: 0.4, treeColor: [0.9,0.6,0.2], fogColor: [200,180,150] },
-            WINTER: { days: [90, 120], sunTilt: 0.0,  moonColor: [0.3,0.3,0.5], moonIntensity: 0.3, treeColor: [0.8,0.8,0.9], fogColor: [180,190,210] }
+            SPRING: { days: [0, 30],   sunTilt: 0.3,  moonColor: [0.5,0.5,0.7], moonIntensity: 0.4, treeColor: [0.7,0.9,0.5], fogColor: [200,220,200], skyTransparency: 0.95 },
+            SUMMER: { days: [30, 60],  sunTilt: 0.5,  moonColor: [0.4,0.5,0.8], moonIntensity: 0.5, treeColor: [0.4,0.8,0.3], fogColor: [235,245,255], skyTransparency: 1.0 },
+            AUTUMN: { days: [60, 90],  sunTilt: 0.2,  moonColor: [0.6,0.4,0.5], moonIntensity: 0.4, treeColor: [0.9,0.6,0.2], fogColor: [200,180,150], skyTransparency: 0.85 },
+            WINTER: { days: [90, 120], sunTilt: 0.0,  moonColor: [0.3,0.3,0.5], moonIntensity: 0.3, treeColor: [0.8,0.8,0.9], fogColor: [180,190,210], skyTransparency: 0.7 }
         };
         this.currentSeason = 'SPRING';
         this.seasonProgress = 0; // 0-1 within current season
@@ -93,7 +90,11 @@ class CleanBoardSystem {
 
         this.mouseWorldPosition = new THREE.Vector3(0, 0, 0);
 
-
+        // Pre-allocated reusable objects for raycasting (eliminates per-frame GC pressure)
+        this._raycaster = new THREE.Raycaster();
+        this._rayMouse = new THREE.Vector2();
+        this._rayPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        this._rayIntersect = new THREE.Vector3();
 
         this.currentMouseX = window.innerWidth / 2;
 
@@ -190,6 +191,9 @@ class CleanBoardSystem {
         this.waterLevel = -1.5;
         this.tideAmplitude = 0.3;
         this.tidalWaterLevel = -1.5;
+        this.shoreWaterLevel = -1.5;
+        this.shoreLagTimeConstant = 8.0;
+        this._lastShoreUpdate = 0;
         this.snowLevelSeasonal = 8.0;
         this.beachWidth = 4; // Tiles: keep full resolution within this distance of water line
         this.shorelineSubdivision = 0; // 0=off, 1=medium, 2=high subdivision near shoreline
@@ -499,45 +503,12 @@ class CleanBoardSystem {
         // console.log(`[Board] Sun system initialized`);
     }
 
-    /**
-     * Return the terrain shader material, respecting the useFlatWaterShader toggle.
-     * The flat-water variant flattens all underwater vertices so the water surface
-     * renders over a flat bed; the fragment shader still sees the original terrain
-     * height for water depth, beaches, grass, etc.
-     */
     _getTerrainShaderMaterial() {
         if (!this.textureBlendingSystem) return null;
-        if (this.useFlatWaterShader) {
-            return this.textureBlendingSystem.createFlatWaterShaderMaterial();
-        }
         return this.textureBlendingSystem.createShaderMaterial();
     }
 
-    /**
-     * Toggle flat-water shader on/off and immediately apply it to all existing
-     * terrain meshes (continuous, clipmap, rolling). Call from console:
-     *   boardSystem.setFlatWaterEnabled(true)
-     */
-    setFlatWaterEnabled(enabled) {
-        this.useFlatWaterShader = enabled;
-        const material = this._getTerrainShaderMaterial();
-        if (!material) return;
-
-        // Rolling / continuous mesh
-        if (this.continuousMesh) {
-            this.continuousMesh.material = material;
-        }
-
-        // Clipmap terrain
-        if (this._clipmapLevels) {
-            this._clipmapLevels.forEach(level => {
-                if (level.mesh) level.mesh.material = material;
-            });
-        }
-
-        console.log(`[Board] Flat water shader ${enabled ? 'ENABLED' : 'DISABLED'}`);
-    }
-
+    
     createCircularTerrainMask() {
         const size = 512;
         const canvas = document.createElement('canvas');
@@ -585,21 +556,23 @@ class CleanBoardSystem {
 
         // Sun configuration - 3 second full rotation
         this.sun = {
-            orbitRadius: 10,         // Distance from camera (much closer)
+            orbitRadius: 2000,       // Fixed world-origin orbit — light direction is stable during camera drag
             orbitSpeed: (2 * Math.PI) / (3 * 60),  // Full rotation in 3 seconds at 60fps
             angle: 0,               // Start at noon for immediate light
             height: 30,             // Max height above ground (lower)
             intensity: 1,           // Light intensity (reduced further)
             color: 0xffffff,         // White light
             // Lens flare settings
-            flareSize: 15,          // Larger flare size
-            flareOpacity: 0.9,
+            flareSize: 9,          // Base flare size
+            flareOpacity: 0.5,
             horizonFadeDistance: 20  // Distance from horizon where flare starts fading
         };
+        this.sun.baseFlareSize = this.sun.orbitRadius * 0.045;
+        this.sun.flareSize = this.sun.baseFlareSize;
 
         // Moon configuration - independent orbit with phases
         this.moon = {
-            orbitRadius: 10,         // Same as sun
+            orbitRadius: 2000,       // Same large world-origin orbit as sun
             orbitPeriodDays: 28,     // Independent lunar month
             orbitSpeed: (2 * Math.PI) / (3 * 60),  // Fallback local speed
             angle: Math.PI,          // Starting angle (will be driven by game time)
@@ -611,6 +584,8 @@ class CleanBoardSystem {
             horizonFadeDistance: 20,
             lastPhase: -1           // For phase texture caching
         };
+        this.moon.baseFlareSize = this.moon.orbitRadius * 0.04;
+        this.moon.flareSize = this.moon.baseFlareSize;
 
         // Lighting rig — artist-driven keyframe system (feature flag, defaults off)
         this.lightingRig = {
@@ -649,6 +624,24 @@ class CleanBoardSystem {
                     { time: 18, color: '#2a3a5a', intensity: 0.0 },
                     { time: 20, color: '#2a3a5a', intensity: 0.06 },
                     { time: 24, color: '#2a3a5a', intensity: 0.12 }
+                ],
+                sky: [
+                    { time: 0,  color: '#000022', intensity: 0.3, transparency: 0.2 },
+                    { time: 5,  color: '#1a0a2e', intensity: 0.5, transparency: 0.4 },
+                    { time: 6,  color: '#ff8844', intensity: 0.8, transparency: 0.7 },
+                    { time: 12, color: '#4488ff', intensity: 1.0, transparency: 1.0 },
+                    { time: 18, color: '#ff6622', intensity: 0.8, transparency: 0.7 },
+                    { time: 20, color: '#1a0a2e', intensity: 0.5, transparency: 0.3 },
+                    { time: 24, color: '#000022', intensity: 0.3, transparency: 0.2 }
+                ],
+                fog: [
+                    { time: 0,  color: '#000000', intensity: 0.0 },
+                    { time: 5,  color: '#000000', intensity: 0.0 },
+                    { time: 6,  color: '#404040', intensity: 0.0 },
+                    { time: 12, color: '#ffffff', intensity: 0.0 },
+                    { time: 18, color: '#404040', intensity: 0.0 },
+                    { time: 20, color: '#151515', intensity: 0.0 },
+                    { time: 24, color: '#000000', intensity: 0.0 }
                 ]
             }
         };
@@ -691,7 +684,7 @@ class CleanBoardSystem {
         this.sun.light.shadow.mapSize.width = 1024;
         this.sun.light.shadow.mapSize.height = 1024;
         this.sun.light.shadow.camera.near = 0.5;
-        this.sun.light.shadow.camera.far = 500;
+        this.sun.light.shadow.camera.far = 3000;  // Must exceed orbit radius (2000) + margin
         this.sun.light.shadow.bias = -0.0005;
         this.sun.light.shadow.normalBias = 0.02;
         const sunShadowSize = 400;
@@ -752,7 +745,7 @@ class CleanBoardSystem {
         this.moon.light.shadow.mapSize.width = 1024;
         this.moon.light.shadow.mapSize.height = 1024;
         this.moon.light.shadow.camera.near = 0.5;
-        this.moon.light.shadow.camera.far = 500;
+        this.moon.light.shadow.camera.far = 3000;  // Must exceed orbit radius (2000) + margin
         this.moon.light.shadow.bias = -0.0005;
         this.moon.light.shadow.normalBias = 0.02;
         const moonShadowSize = 400;
@@ -1018,7 +1011,10 @@ class CleanBoardSystem {
     }
 
     updateFogColor(sunElevation, cameraHeight = 0) {
-        if (!this.scene.fog) return;
+        if (!this.scene.fog) {
+            this._syncFogToSkyAndWater();
+            return;
+        }
 
         // Scale transition thresholds based on day length (shorter day = wider angular range for transitions)
         const referenceDayLength = 60000; // 60 seconds reference
@@ -1087,6 +1083,7 @@ class CleanBoardSystem {
                 this.scene.fog = null;
                 console.log('[FOG] DISABLED at altitude', cameraHeight.toFixed(1));
             }
+            this._syncFogToSkyAndWater();
             return; // Fog is off, nothing more to do
         }
 
@@ -1130,6 +1127,35 @@ class CleanBoardSystem {
                 this.scene.fog.color.copy(currentFogColor);
             }
         }
+
+        this._syncFogToSkyAndWater();
+    }
+
+    /**
+     * Push current scene fog state to custom sky and water shaders so they
+     * blend seamlessly with the distance fog applied to terrain and objects.
+     */
+    _syncFogToSkyAndWater() {
+        const fogActive = this.scene.fog !== null;
+        const fogColor = fogActive ? this.scene.fog.color : (this._savedFog ? this._savedFog.color : new THREE.Color(0, 0, 0));
+        const currentFogNear = fogActive ? this.scene.fog.near : 20;
+        const currentFogFar = fogActive ? this.scene.fog.far : 60;
+
+        // Water
+        if (this.rollingTerrain?.waterMesh?.material?.uniforms) {
+            const u = this.rollingTerrain.waterMesh.material.uniforms;
+            if (u.fogColor) u.fogColor.value.copy(fogColor);
+            if (u.fogNear) u.fogNear.value = currentFogNear;
+            if (u.fogFar) u.fogFar.value = currentFogFar;
+            if (u.fogEnabled) u.fogEnabled.value = fogActive ? 1.0 : 0.0;
+        }
+
+        // Sky
+        if (this.skyShaderSystem?.skySphere?.material?.uniforms) {
+            const u = this.skyShaderSystem.skySphere.material.uniforms;
+            if (u.uFogColor) u.uFogColor.value.copy(fogColor);
+            if (u.uFogHorizonStrength) u.uFogHorizonStrength.value = fogActive ? 0.75 : 0.0;
+        }
     }
 
     interpolateRig(keyframes, time) {
@@ -1139,8 +1165,8 @@ class CleanBoardSystem {
         // Sort keyframes by time (defensive)
         const sorted = keyframes.slice().sort((a, b) => a.time - b.time);
         if (sorted.length < 2) {
-            const k = sorted[0] || { color: '#000000', intensity: 0 };
-            return { color: new THREE.Color(k.color), intensity: k.intensity };
+            const k = sorted[0] || { color: '#000000', intensity: 0, transparency: 1 };
+            return { color: new THREE.Color(k.color), intensity: k.intensity, transparency: k.transparency ?? 1 };
         }
 
         // Find keyframes before and after wrappedTime, with 24h looping
@@ -1163,10 +1189,16 @@ class CleanBoardSystem {
 
         const colorA = new THREE.Color(before.color);
         const colorB = new THREE.Color(after.color);
-        return {
+        const result = {
             color: colorA.lerp(colorB, clampedT),
             intensity: before.intensity + (after.intensity - before.intensity) * clampedT
         };
+        if (before.transparency !== undefined || after.transparency !== undefined) {
+            const beforeT = before.transparency ?? 1;
+            const afterT = after.transparency ?? 1;
+            result.transparency = beforeT + (afterT - beforeT) * clampedT;
+        }
+        return result;
     }
 
     updateSunPosition(cameraPosition) {
@@ -1215,10 +1247,10 @@ class CleanBoardSystem {
         const dayProgress = (currentGameTime % this.serverDayLength) / this.serverDayLength;
         const hours = dayProgress * 24;
 
-        // Calculate sun position
-        const sunX = cameraPosition.x + Math.cos(this.sun.angle) * this.sun.orbitRadius;
-        const sunZ = cameraPosition.z + Math.sin(this.sun.angle) * this.sun.orbitRadius;
-        const sunY = cameraPosition.y + sunHeight;
+        // Calculate sun position — fixed world-origin orbit, camera drag does NOT move the light
+        const sunX = Math.cos(this.sun.angle) * this.sun.orbitRadius;
+        const sunZ = Math.sin(this.sun.angle) * this.sun.orbitRadius;
+        const sunY = sunHeight;
 
         // Update sun light position
         this.sun.light.position.set(sunX, sunY, sunZ);
@@ -1226,18 +1258,21 @@ class CleanBoardSystem {
         // Compute sun direction for sky shader (from camera toward sun)
         const sunDir = new THREE.Vector3(sunX - cameraPosition.x, sunY - cameraPosition.y, sunZ - cameraPosition.z).normalize();
 
-        // Update sun light target to center on camera position
-        this.sun.light.target.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z);
+        // Target world origin so shadow camera is stationary relative to world
+        this.sun.light.target.position.set(0, 0, 0);
         this.sun.light.target.updateMatrixWorld();
 
-        // Configure shadow camera to be wide enough for the board and distant mountains
-        const shadowSize = 400;  // Doubled from 200 to cover distant mountains
-        this.sun.light.shadow.camera.left = -shadowSize;
-        this.sun.light.shadow.camera.right = shadowSize;
-        this.sun.light.shadow.camera.top = shadowSize;
-        this.sun.light.shadow.camera.bottom = -shadowSize;
-        this.sun.light.shadow.camera.updateProjectionMatrix();
-        this.sun.light.shadow.needsUpdate = true;
+        // Only recompute shadow projection when size actually changes (avoids GPU stall every frame)
+        const shadowSize = 400;
+        const cam = this.sun.light.shadow.camera;
+        if (cam.left !== -shadowSize) {
+            cam.left = -shadowSize;
+            cam.right = shadowSize;
+            cam.top = shadowSize;
+            cam.bottom = -shadowSize;
+            cam.updateProjectionMatrix();
+            this.sun.light.shadow.needsUpdate = true;
+        }
 
         // Calculate camera height above terrain
         const terrainHeight = this.getTerrainHeight ? this.getTerrainHeight(cameraPosition.x, cameraPosition.z) : 0;
@@ -1275,35 +1310,53 @@ class CleanBoardSystem {
         const tidalOffset = tideAmplitude * moonElevation * springNeapFactor;
         this.tidalWaterLevel = (this.waterLevel || -1.5) + tidalOffset;
 
-        // Calculate moon position
-        const moonX = cameraPosition.x + Math.cos(this.moon.angle) * this.moon.orbitRadius;
-        const moonZ = cameraPosition.z + Math.sin(this.moon.angle) * this.moon.orbitRadius;
-        const moonY = cameraPosition.y + moonHeight;
+        // Shore water level lags behind tidal level for realistic beach wet/dry
+        const now = performance.now();
+        const dt = Math.min((now - (this._lastShoreUpdate || now)) / 1000, 0.1);
+        this._lastShoreUpdate = now;
+        const tau = this.shoreLagTimeConstant || 8.0;
+        const alpha = 1.0 - Math.exp(-dt / tau);
+        this.shoreWaterLevel += (this.tidalWaterLevel - this.shoreWaterLevel) * alpha;
+
+        // Throttled debug: verify lag is active
+        if (!this._shoreDebugLast || now - this._shoreDebugLast > 2000) {
+            this._shoreDebugLast = now;
+        }
+
+        // Calculate moon position — fixed world-origin orbit
+        const moonX = Math.cos(this.moon.angle) * this.moon.orbitRadius;
+        const moonZ = Math.sin(this.moon.angle) * this.moon.orbitRadius;
+        const moonY = moonHeight;
 
         // Update moon light position
         this.moon.light.position.set(moonX, moonY, moonZ);
 
-        // Update moon light target
-        this.moon.light.target.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z);
+        // Target world origin
+        this.moon.light.target.position.set(0, 0, 0);
         this.moon.light.target.updateMatrixWorld();
 
-        // Configure moon shadow camera
+        // Only recompute shadow projection when size actually changes
         const moonShadowSize = 400;
-        this.moon.light.shadow.camera.left = -moonShadowSize;
-        this.moon.light.shadow.camera.right = moonShadowSize;
-        this.moon.light.shadow.camera.top = moonShadowSize;
-        this.moon.light.shadow.camera.bottom = -moonShadowSize;
-        this.moon.light.shadow.camera.updateProjectionMatrix();
-        this.moon.light.shadow.needsUpdate = true;
+        const mCam = this.moon.light.shadow.camera;
+        if (mCam.left !== -moonShadowSize) {
+            mCam.left = -moonShadowSize;
+            mCam.right = moonShadowSize;
+            mCam.top = moonShadowSize;
+            mCam.bottom = -moonShadowSize;
+            mCam.updateProjectionMatrix();
+            this.moon.light.shadow.needsUpdate = true;
+        }
 
         if (this.lightingRig && this.lightingRig.enabled) {
             // Rig-driven color/intensity overrides
             const sunState = this.interpolateRig(this.lightingRig.lights.sun, hours);
             this.sun.light.color.copy(sunState.color);
+            this._computedSunIntensity = sunState.intensity;
             this.sun.light.intensity = sunState.intensity;
 
             const moonState = this.interpolateRig(this.lightingRig.lights.moon, (hours + 12) % 24);
             this.moon.light.color.copy(moonState.color);
+            this._computedMoonIntensity = moonState.intensity;
             this.moon.light.intensity = moonState.intensity;
 
             const ambientState = this.interpolateRig(this.lightingRig.lights.ambient, hours);
@@ -1313,10 +1366,26 @@ class CleanBoardSystem {
             const nightAmbientState = this.interpolateRig(this.lightingRig.lights.nightAmbient, hours);
             this.nightAmbientLight.color.copy(nightAmbientState.color);
             this.nightAmbientLight.intensity = nightAmbientState.intensity;
+
+            // Sky transparency from rig
+            if (this.lightingRig.lights.sky && this.skyShaderSystem) {
+                const skyState = this.interpolateRig(this.lightingRig.lights.sky, hours);
+                if (skyState.transparency !== undefined) {
+                    this.skyShaderSystem.setSkyTransparency(skyState.transparency);
+                }
+            }
+
+            // Fog color from rig
+            if (this.lightingRig.lights.fog && this.scene.fog) {
+                const fogState = this.interpolateRig(this.lightingRig.lights.fog, hours);
+                this.scene.fog.color.copy(fogState.color);
+                this._syncFogToSkyAndWater();
+            }
         } else {
             // Legacy hardcoded color/intensity thresholds
             // Fade light intensity when sun is below horizon
             const lightIntensity = Math.max(0, sunElevation) * this.sun.intensity;
+            this._computedSunIntensity = lightIntensity;
             this.sun.light.intensity = lightIntensity;
 
             // Smooth sun color transition based on elevation
@@ -1390,6 +1459,7 @@ class CleanBoardSystem {
                 }
             }
             moonIntensity *= nightDarkenFactor;
+            this._computedMoonIntensity = moonIntensity;
             this.moon.light.intensity = moonIntensity;
 
             // Red-tinted moon events
@@ -1431,18 +1501,28 @@ class CleanBoardSystem {
             let ambientIntensity = 0;
             let nightAmbientIntensity = 0;
             if (sunElevation >= sunsetThreshold) {
-                ambientIntensity = 0.25;
+                ambientIntensity = 0.15;
             } else if (sunElevation > 0) {
                 const t = sunElevation / sunsetThreshold;
-                ambientIntensity = 0.2 + 0.05 * t;
+                ambientIntensity = 0.12 + 0.03 * t;
             } else if (sunElevation > -0.2 * timeScale) {
                 const t = 1.0 - (Math.abs(sunElevation) / (0.2 * timeScale));
-                ambientIntensity = 0.2 * t;
+                ambientIntensity = 0.12 * t;
             } else {
-                nightAmbientIntensity = 0.08;
+                nightAmbientIntensity = 0.02;
             }
             this.ambientLight.intensity = ambientIntensity;
             this.nightAmbientLight.intensity = nightAmbientIntensity;
+
+            // Seasonal sky transparency when rig is off
+            if (this.skyShaderSystem) {
+                const baseTransparency = season.skyTransparency ?? 1.0;
+                // Day/night variation: reduce transparency at night for clearer stars
+                const dayFactor = Math.max(0, sunElevation * 2);
+                const nightTransparency = baseTransparency * 0.4;
+                const targetTransparency = nightTransparency + (baseTransparency - nightTransparency) * dayFactor;
+                this.skyShaderSystem.setSkyTransparency(targetTransparency);
+            }
         }
 
         // Winter night fog (cold color, fade in during winter)
@@ -1571,23 +1651,38 @@ class CleanBoardSystem {
         const sunVisibility = horizonFade * orbitFade;
         const moonVisibility = moonHorizonFade * orbitFade;
 
-        // Update sprite opacity based on horizon fade
+        // Update sprite opacity and scale based on horizon fade
         this.sun.sprite.material.opacity = this.sun.flareOpacity * sunVisibility;
         this.moon.sprite.material.opacity = this.moon.flareOpacity * moonVisibility;
+        if (this.sun.sprite) this.sun.sprite.scale.set(this.sun.flareSize * 2, this.sun.flareSize * 2, 1);
+        if (this.moon.sprite) this.moon.sprite.scale.set(this.moon.flareSize * 2, this.moon.flareSize * 2, 1);
 
-        // Update lens flares (Sprite always faces camera automatically)
+        // Update lens flares — position along camera-to-sun axis for proper screen-relative placement
+        const toSunDir = new THREE.Vector3(sunX - cameraPosition.x, sunY - cameraPosition.y, sunZ - cameraPosition.z);
+        const sunDist = toSunDir.length();
+        toSunDir.normalize();
+
+        const flareSpread = (window.parameterSystem && window.parameterSystem.getParameter('flareSpread')) || 1.0;
+        // Multipliers define where along the axis each flare sits (<1 = before sun, >1 = past sun, negative = opposite side)
+        const flareMultipliers = [-0.5, 0.25, 0.6, 1.35, 2.0];
+
         this.sun.lensFlares.forEach((flare, index) => {
-            flare.position.set(sunX, sunY, sunZ);
+            const mult = flareMultipliers[index] !== undefined ? flareMultipliers[index] * flareSpread : 1.0;
+            const flareDist = sunDist * mult;
 
-            // Apply horizon fade and additional distance fade
-            const baseOpacity = (0.5 - index * 0.15);
-            const distanceFade = Math.max(0, 1 - this.sun.orbitRadius / 200);
-            flare.material.opacity = baseOpacity * sunVisibility * distanceFade;
+            flare.position.set(
+                cameraPosition.x + toSunDir.x * flareDist,
+                cameraPosition.y + toSunDir.y * flareDist,
+                cameraPosition.z + toSunDir.z * flareDist
+            );
 
-            // Add slight offset for lens flare effect
-            const offset = (index + 1) * 2;
-            flare.position.x += (cameraPosition.x - sunX) * 0.01 * offset;
-            flare.position.z += (cameraPosition.z - sunZ) * 0.01 * offset;
+            // Vary opacity and size per flare for natural look
+            const baseOpacity = [0.35, 0.25, 0.45, 0.20, 0.15][index] || 0.2;
+            flare.material.opacity = baseOpacity * sunVisibility * this.sun.flareOpacity;
+
+            // Scale each flare individually
+            const baseSize = this.sun.flareSize * ([1.0, 0.7, 1.2, 0.5, 0.4][index] || 0.5);
+            flare.scale.set(baseSize * 2, baseSize * 2, 1);
         });
     }
 
@@ -1608,7 +1703,7 @@ class CleanBoardSystem {
         // Recalculate yearLength whenever dayLength changes from server
         this.yearLength = 120 * this.serverDayLength;
 
-        console.log(`[Board] Server time sync: ${this.serverGameTime}ms elapsed, day length: ${this.serverDayLength}ms, year: ${year}, dayOfYear: ${dayOfYear}, timeOfDay: ${timeOfDay.toFixed?.(2) ?? timeOfDay}`);
+        // console.log(`[Board] Server time sync: ${this.serverGameTime}ms elapsed, day length: ${this.serverDayLength}ms, year: ${year}, dayOfYear: ${dayOfYear}, timeOfDay: ${timeOfDay.toFixed?.(2) ?? timeOfDay}`);
     }
 
     updateSeasons() {
@@ -1699,6 +1794,7 @@ class CleanBoardSystem {
             await this.rollingTerrain.initAt(centerX, centerZ);
             this.continuousMesh = this.rollingTerrain.mesh;
             this.scene.add(this.continuousMesh);
+            this.scene.add(this.rollingTerrain.waterMesh);
             // console.log(`[ROLLING TERRAIN] Board created with ${gridSize}x${gridSize} fixed grid`);
         } else {
             this.continuousMesh = await this.createContinuousMeshAround(centerX, centerZ);
@@ -1717,17 +1813,20 @@ class CleanBoardSystem {
         const wx = Math.cos(windDirection);
         const wz = Math.sin(windDirection);
         this._windDirection.set(wx, wz);
+        // Forward to rolling terrain so geometry and texture waves align with wind
+        if (this.rollingTerrain) {
+            this.rollingTerrain.windSpeed = windSpeed;
+            this.rollingTerrain.windDir.set(wx, wz);
+        }
     }
 
     // Clear all existing chunks when switching to continuous mesh
     clearAllChunks() {
         console.log(`[CONTINUOUS MESH] Clearing all existing chunks`);
 
-        // Remove rolling terrain mesh if it exists
+        // Remove rolling terrain mesh (and water plane) if it exists
         if (this.rollingTerrain) {
-            this.scene.remove(this.rollingTerrain.mesh);
-            this.rollingTerrain.mesh.geometry.dispose();
-            // material is shared — do not dispose here
+            this.rollingTerrain.destroy(this.scene);
             this.rollingTerrain = null;
         }
 
@@ -1746,6 +1845,16 @@ class CleanBoardSystem {
         // Remove continuous mesh if it exists (non-clipmap fallback)
         if (this.continuousMesh) {
             this.scene.remove(this.continuousMesh);
+            if (this.continuousMesh.geometry) {
+                this.continuousMesh.geometry.dispose();
+            }
+            if (this.continuousMesh.material) {
+                if (Array.isArray(this.continuousMesh.material)) {
+                    this.continuousMesh.material.forEach(m => m.dispose());
+                } else {
+                    this.continuousMesh.material.dispose();
+                }
+            }
             this.continuousMesh = null;
         }
 
@@ -2391,95 +2500,48 @@ class CleanBoardSystem {
     }
 
     updateMouseWorldPosition(camera) {
-
-
-
-        // Get raycaster from mouse position
-
-
-
-        const raycaster = new THREE.Raycaster();
-
-
-
-        raycaster.setFromCamera(
-
-
-
-            new THREE.Vector2(
-
-
-
-                (this.currentMouseX / window.innerWidth) * 2 - 1,
-
-
-
-                -(this.currentMouseY / window.innerHeight) * 2 + 1
-
-
-
-            ),
-
-
-
-            camera
-
-
-
+        // Reuse pre-allocated objects to eliminate per-frame GC pressure
+        const raycaster = this._raycaster;
+        const rayMouse = this._rayMouse;
+        rayMouse.set(
+            (this.currentMouseX / window.innerWidth) * 2 - 1,
+            -(this.currentMouseY / window.innerHeight) * 2 + 1
         );
-
-
-
-        
-
-
+        raycaster.setFromCamera(rayMouse, camera);
 
         // Use continuous mesh for intersection if available, otherwise fall back to chunks
         const boardMeshes = [];
-        
         if (this.continuousMesh) {
             boardMeshes.push(this.continuousMesh);
         } else {
-            // Fallback to chunk system
             for (const [chunkKey, chunk] of this.chunks) {
-                if (chunk.mesh) {
-                    boardMeshes.push(chunk.mesh);
-                }
+                if (chunk.mesh) boardMeshes.push(chunk.mesh);
             }
         }
-        
+
         if (this.useViewportMesh) {
-            // Viewport mesh: use abstracted ray-plane intersection (no mesh dependency)
-            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-            const intersection = new THREE.Vector3();
-            if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
-                this.mouseWorldPosition.copy(intersection);
+            if (raycaster.ray.intersectPlane(this._rayPlane, this._rayIntersect)) {
+                this.mouseWorldPosition.copy(this._rayIntersect);
             }
             return;
         }
 
-        // Intersect with board meshes
         const intersects = raycaster.intersectObjects(boardMeshes);
-
         if (intersects.length > 0) {
-            // Use the first intersection point with board geometry
             this.mouseWorldPosition.copy(intersects[0].point);
         } else {
-            // Fallback to ground plane if no board intersection
-            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-            const intersection = new THREE.Vector3();
-            raycaster.ray.intersectPlane(plane, intersection);
-            this.mouseWorldPosition.copy(intersection);
+            raycaster.ray.intersectPlane(this._rayPlane, this._rayIntersect);
+            this.mouseWorldPosition.copy(this._rayIntersect);
         }
-
-
-
     }
 
 
 
     updateStreaming(cameraPosition, camera = null) {
         // console.log(`[STREAMING ENTRY] camera=${camera ? 'YES' : 'NULL'}, cameraPosition=${cameraPosition.x.toFixed(2)},${cameraPosition.z.toFixed(2)}`);
+        // Update sun system first so _computed* intensities are fresh
+        this.updateSunPosition(cameraPosition);
+
         // DYNAMIC CONTINUOUS MESH SYSTEM
         if (this.continuousMesh) {
             // Update mouse position
@@ -2494,10 +2556,7 @@ class CleanBoardSystem {
                 // Rolling terrain: update edge rows/cols when camera crosses thresholds
                 if (this.rollingTerrain) {
                     this.rollingTerrain.update(cameraPosition);
-                }
-                // Keep shader uniforms fresh (seasonal colors, cursor, time)
-                if (this.textureBlendingSystem) {
-                    this.textureBlendingSystem.updateShaderUniforms(cameraPosition, performance.now() * 0.001, this.planetMapping);
+                    this.rollingTerrain.updateWaves();
                 }
             } else {
                 // Traditional mesh: only regenerate when camera moves far enough
@@ -2509,16 +2568,18 @@ class CleanBoardSystem {
                     this.needsFadeUpdate = false;
                 }
             }
-            
+
             // Update orbit sphere visibility based on altitude
             this.updateOrbitSphere(cameraPosition);
 
-            // Update sun system
-            this.updateSunPosition(cameraPosition);
+            // Keep shader uniforms fresh (seasonal colors, cursor, time, sun intensity)
+            if (this.textureBlendingSystem) {
+                this.textureBlendingSystem.updateShaderUniforms(cameraPosition, performance.now() * 0.001, this.planetMapping);
+            }
 
             return; // Skip all chunk processing
         }
-        
+
         // Old chunk system (disabled when continuous mesh is active)
         const frameStartTime = performance.now();
         this.frameCount++;
@@ -3684,7 +3745,7 @@ class CleanBoardSystem {
             windFieldMap.set(key, windMult);
         }
 
-        console.log('[Board] Wind field computed for', windFieldMap.size, 'tiles');
+        // console.log('[Board] Wind field computed for', windFieldMap.size, 'tiles');
 
         if (this.textureBlendingSystem && typeof this.textureBlendingSystem.updateForestMaskFromDensity === 'function' && this.meshBounds) {
             this.textureBlendingSystem.updateForestMaskFromDensity({

@@ -16,7 +16,7 @@ class KnightSystem {
     }
 
     init() {
-        this.knightGeometry = new THREE.CapsuleGeometry(0.2, 0.5, 4, 8);
+        this.knightGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.5, 8);
         this.knightMaterial = new THREE.MeshLambertMaterial({ color: 0xc0c0c0 });
         this.horseGeometry = new THREE.BoxGeometry(0.5, 0.6, 1.0);
         this.horseMaterial = new THREE.MeshLambertMaterial({ color: 0x8b6914 });

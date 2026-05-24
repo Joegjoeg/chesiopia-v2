@@ -908,7 +908,15 @@ class Pieces3D {
                 if (shouldPlayFootstep) {
                     window.soundManager.playFootstep();
                     if (window.soundManager.playGrumble && Math.random() < 0.05) {
-                        window.soundManager.playGrumble(pieceType);
+                        const camera = window.game && window.game.camera;
+                        let distanceToCamera = null;
+                        if (camera) {
+                            const dx = group.position.x - camera.position.x;
+                            const dy = group.position.y - camera.position.y;
+                            const dz = group.position.z - camera.position.z;
+                            distanceToCamera = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        }
+                        window.soundManager.playGrumble(pieceType, distanceToCamera);
                     }
                 }
             }
@@ -1002,7 +1010,15 @@ class Pieces3D {
                 
                 // Play movement sounds with piece type
                 if (window.soundManager) {
-                    window.soundManager.playMoveSound(pieceType);
+                    let distanceToCamera = null;
+                    const camera = window.game && window.game.camera;
+                    if (camera) {
+                        const dx = endPos.x - camera.position.x;
+                        const dy = endPos.y - camera.position.y;
+                        const dz = endPos.z - camera.position.z;
+                        distanceToCamera = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    }
+                    window.soundManager.playMoveSound(pieceType, distanceToCamera);
                 }
                 
                 // Special flourish for higher final hop

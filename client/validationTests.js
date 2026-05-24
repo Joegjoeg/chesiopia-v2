@@ -54,33 +54,38 @@ class ChessopiaValidator {
     
     // Test 1: Trees should not spawn in water (height < -1.5)
     testTreeSpawning() {
-        const game = window.gameInstance;
-        if (!game || !game.treeSystem) {
-            this.log('TREES', 'Tree system exists', false, 'No game instance or tree system');
+        const game = window.gameInstance || window.game;
+        const htm = game && game.hybridTreeManager;
+        if (!game || !htm) {
+            this.log('TREES', 'Tree manager exists', false, 'No game instance or hybridTreeManager');
             return;
         }
-        
+
+        const systems = htm._systems || {};
         let underwaterTrees = 0;
         let totalTrees = 0;
         const waterLevel = -1.5;
-        
-        if (game.treeSystem.trees) {
-            for (const [key, tree] of game.treeSystem.trees) {
+
+        Object.values(systems).forEach((sys) => {
+            if (!sys || !Array.isArray(sys.treeData)) return;
+            for (const tree of sys.treeData) {
+                if (!tree) continue;
                 totalTrees++;
-                if (tree.position.y < waterLevel) {
+                const height = typeof tree.y === 'number' ? tree.y : (tree.position?.y ?? 0);
+                if (height < waterLevel) {
                     underwaterTrees++;
                 }
             }
-        }
-        
-        this.log('TREES', 'Tree system exists', true, `${totalTrees} trees found`);
+        });
+
+        this.log('TREES', 'Tree manager exists', true, `${totalTrees} trees tracked`);
         this.log('TREES', 'No trees in water', underwaterTrees === 0, 
-            underwaterTrees === 0 ? `${underwaterTrees} underwater` : `${underwaterTrees} trees below water level ${waterLevel}`);
+            underwaterTrees === 0 ? `0 underwater` : `${underwaterTrees} trees below water level ${waterLevel}`);
     }
     
     // Test 2: Nintendo trees should be removed
     testNintendoTreesRemoved() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         
         // Check oldTreeSystem is null/undefined
         const oldSystemRemoved = !game || game.oldTreeSystem === null || game.oldTreeSystem === undefined;
@@ -104,7 +109,7 @@ class ChessopiaValidator {
     
     // Test 3: Performance manager should be active
     testPerformanceManager() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         
         if (!game || !game.performanceManager) {
             this.log('PERFORMANCE', 'PerformanceManager exists', false, 'Not initialized');
@@ -131,7 +136,7 @@ class ChessopiaValidator {
     
     // Test 4: Grass texture should be visible on terrain
     testGrassTexture() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         
         if (!game || !game.boardSystem) {
             this.log('VISUALS', 'Board system exists', false, 'Not initialized');
@@ -182,7 +187,7 @@ class ChessopiaValidator {
     
     // Test 5: Vertex budget should be tracked
     testVertexBudget() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         
         if (!game || !game.scene) {
             this.log('PERFORMANCE', 'Scene exists for vertex counting', false);
@@ -232,7 +237,7 @@ class ChessopiaValidator {
     
     // Test 7: Procedural terrain should generate varied heights
     testProceduralTerrain() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         if (!game || !game.terrainSystem) {
             this.log('TERRAIN', 'TerrainSystem exists', false, 'Not initialized');
             return;
@@ -274,7 +279,7 @@ class ChessopiaValidator {
     
     // Test 8: Grass wind effects should be active
     testGrassWind() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         if (!game || !game.decorativeVisuals) {
             this.log('WIND', 'DecorativeVisuals exists', false, 'Not initialized');
             return;
@@ -304,7 +309,7 @@ class ChessopiaValidator {
 
     // Test 9: Underwater terrain vertices should be merged to coarser grid
     testUnderwaterMeshMerge() {
-        const game = window.gameInstance;
+        const game = window.gameInstance || window.game;
         if (!game || !game.boardSystem) {
             this.log('MESH', 'BoardSystem exists', false, 'Not initialized');
             return;
@@ -369,7 +374,8 @@ function runChessopiaTests() {
 
 // Auto-run tests after a delay if game is loaded
 setTimeout(() => {
-    if (window.gameInstance && window.gameInstance.isInitialized) {
+    const game = window.gameInstance || window.game;
+    if (game && game.isInitialized) {
         console.log('[Validator] Game detected, auto-running tests in 5 seconds...');
         setTimeout(() => runChessopiaTests(), 5000);
     }

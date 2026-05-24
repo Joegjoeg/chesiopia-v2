@@ -723,43 +723,39 @@ class VisualFeedbackSystem {
     animatePath(path) {
         const duration = 500;
         const startTime = Date.now();
-        
+
+        // Reuse single dot instead of allocating per frame
+        const dotGeometry = new THREE.SphereGeometry(0.1);
+        const dotMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            emissive: 0x00ff00
+        });
+        const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+        dot.name = 'movePathDot';
+        this.scene.add(dot);
+
+        const points = path.geometry.attributes.position.array;
+
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = (elapsed % duration) / duration;
-            
-            // Create moving dot along path
-            const dotGeometry = new THREE.SphereGeometry(0.1);
-            const dotMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
-                emissive: 0x00ff00
-            });
-            
-            const dot = new THREE.Mesh(dotGeometry, dotMaterial);
-            dot.name = 'movePathDot';
-            
-            // Position along path
-            const points = path.geometry.attributes.position.array;
             const t = progress;
-            const x = points[0] + (points[3] - points[0]) * t;
-            const y = points[1] + (points[4] - points[1]) * t + Math.sin(progress * Math.PI) * 0.5;
-            const z = points[2] + (points[5] - points[2]) * t;
-            
-            dot.position.set(x, y, z);
-            this.scene.add(dot);
-            
-            // Remove dot after short time
-            setTimeout(() => {
+
+            dot.position.set(
+                points[0] + (points[3] - points[0]) * t,
+                points[1] + (points[4] - points[1]) * t + Math.sin(progress * Math.PI) * 0.5,
+                points[2] + (points[5] - points[2]) * t
+            );
+
+            if (elapsed < duration * 2) {
+                requestAnimationFrame(animate);
+            } else {
                 this.scene.remove(dot);
                 dot.geometry.dispose();
                 dot.material.dispose();
-            }, 100);
-            
-            if (elapsed < duration * 2) {
-                requestAnimationFrame(animate);
             }
         };
-        
+
         animate();
     }
     

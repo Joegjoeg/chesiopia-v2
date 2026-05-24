@@ -7,7 +7,7 @@ class DevInterface {
         this.isVisible = false;
         this.container = null;
         this.parameterSystem = window.parameterSystem;
-        this.categories = ['terrain', 'planet', 'lighting', 'time', 'environment', 'graphics', 'taa', 'performance', 'lod', 'water', 'shoreline', 'landCover', 'cliff', 'tree', 'blending', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus'];
+        this.categories = ['terrain', 'planet', 'lighting', 'spotlight', 'time', 'environment', 'graphics', 'taa', 'performance', 'lod', 'distances', 'water', 'reflection', 'shoreline', 'landCover', 'cliff', 'tree', 'blending', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus', 'settlement', 'flare', 'minimap', 'cursor', 'shader', 'weather', 'blur'];
         this.categoryCache = new Map(); // Cache DOM elements for each category
         this.activeCategories = new Set(); // Multiple categories can be active
         this._jesusStatusInterval = null;
@@ -15,6 +15,13 @@ class DevInterface {
         this._taaStatusRefs = null;
         this.memoryPanelMount = null;
         this._edgePairCache = this._loadEdgePairsFromStorage();
+        this._absoluteSliderParams = new Set([
+            'cursorBuzzVolume',
+            'cursorBuzzFadeNear',
+            'cursorBuzzFadeFar',
+            'cursorDragSpeedCap',
+            'cursorDragCutoffDistance'
+        ]);
         
         this.init();
         console.log('[DevInterface] Enhanced dev interface initialized');
@@ -25,6 +32,27 @@ class DevInterface {
         this.setupEventListeners();
         this.setupKeyboardShortcuts();
         this.createMobileDevButton();
+    }
+
+    setupEventListeners() {
+        if (this.parameterSystem && this.parameterSystem.onParameterChange) {
+            this._parameterChangeUnsub = this.parameterSystem.onParameterChange((name, value) => {
+                this.updateParameterDisplay(name, value);
+            });
+        }
+    }
+
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.key === ' ') {
+                const target = e.target;
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                    return;
+                }
+                e.preventDefault();
+                this.toggle();
+            }
+        });
     }
 
     createMobileDevButton() {
@@ -110,6 +138,34 @@ class DevInterface {
 
     _edgePairStorageKey() {
         return 'chesiopia-edge-pairs';
+    }
+
+    _getStepPrecision(step) {
+        if (typeof step !== 'number' || !Number.isFinite(step) || step <= 0) {
+            return 2;
+        }
+        if (step >= 1) return 0;
+        const stepStr = step.toString();
+        if (stepStr.includes('e-')) {
+            const parts = stepStr.split('e-');
+            const exp = parseInt(parts[1], 10);
+            return Number.isFinite(exp) ? Math.min(exp, 6) : 2;
+        }
+        const decimals = stepStr.split('.')[1];
+        return Math.min(decimals ? decimals.length : 0, 6);
+    }
+
+    _formatNumericValue(value, step) {
+        const num = Number(value);
+        if (!Number.isFinite(num)) {
+            return value !== undefined && value !== null ? String(value) : '0';
+        }
+        const precision = this._getStepPrecision(step);
+        return num.toFixed(precision);
+    }
+
+    _shouldUseAbsoluteSlider(name) {
+        return this._absoluteSliderParams?.has(name);
     }
 
     _loadEdgePairsFromStorage() {
@@ -216,6 +272,9 @@ class DevInterface {
                 color: state && state.color ? '#' + state.color.getHexString() : '#ffffff',
                 intensity: state ? Math.round(state.intensity * 100) / 100 : 0
             };
+            if (state && state.transparency !== undefined) {
+                newKf.transparency = Math.round(state.transparency * 100) / 100;
+            }
             kfs.push(newKf);
             kfs.sort((a, b) => a.time - b.time);
             if (section._rigTrackRefs && section._rigTrackRefs[key]) {
@@ -333,7 +392,7 @@ class DevInterface {
             flex-wrap: wrap;
         `;
 
-        const categoryLabels = { shoreline: 'Shore', landCover: 'Land', graphics: 'GRA', taa: 'TAA', tree: 'TRE', blending: 'BLD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES' };
+        const categoryLabels = { shoreline: 'Shore', landCover: 'Land', graphics: 'GRA', taa: 'TAA', tree: 'TRE', blending: 'BLD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES', settlement: 'SET', distances: 'DST', flare: 'FLR', minimap: 'MAP', spotlight: 'SPT', reflection: 'REF', shader: 'SHD', weather: 'WTH', blur: 'BLR' };
         this.categories.forEach(category => {
             const tab = document.createElement('button');
             tab.textContent = (categoryLabels[category] || category.slice(0, 3)).toUpperCase();
@@ -546,6 +605,9 @@ class DevInterface {
                 if (content.parentNode === this.contentArea) {
                     this.contentArea.removeChild(content);
                 }
+                if (typeof content._cleanup === 'function') {
+                    content._cleanup();
+                }
             }
             if (category === 'taa') {
                 this._stopTaaStatusPolling();
@@ -616,8 +678,23 @@ class DevInterface {
         if (category === 'jesus') {
             return this._createJesusContent();
         }
+        if (category === 'settlement') {
+            return this._createSettlementContent();
+        }
         if (category === 'taa') {
             return this._createTaaContent();
+        }
+        if (category === 'shader') {
+            return this._createShaderContent();
+        }
+        if (category === 'weather') {
+            return this._createWeatherContent();
+        }
+        if (category === 'cursor') {
+            return this._createCursorContent();
+        }
+        if (category === 'environment') {
+            return this._createEnvironmentContent();
         }
         return this._buildParameterSection(category);
     }
@@ -685,6 +762,7 @@ class DevInterface {
                 }
             }
             const paramRow = document.createElement('div');
+            paramRow.dataset.paramRow = name;
             paramRow.style.cssText = `
                 display: flex;
                 align-items: center;
@@ -721,6 +799,19 @@ class DevInterface {
                 checkbox.addEventListener('change', (e) => {
                     console.log(`[DevInterface] Checkbox "${name}" ->`, e.target.checked);
                     this.parameterSystem.setParameter(name, e.target.checked);
+                    if (config.rebuildCategory) {
+                        const cat = config.category;
+                        if (cat && this.activeCategories.has(cat)) {
+                            const old = this.categoryCache.get(cat);
+                            if (old && old.parentNode === this.contentArea) {
+                                this.contentArea.removeChild(old);
+                            }
+                            this.categoryCache.delete(cat);
+                            const newContent = this.createCategoryContent(cat);
+                            this.categoryCache.set(cat, newContent);
+                            this.contentArea.appendChild(newContent);
+                        }
+                    }
                 });
                 paramRow.appendChild(checkbox);
             } else if (config.type === 'color') {
@@ -767,7 +858,7 @@ class DevInterface {
                     console.warn(`[DevInterface] Select "${name}" has ZERO options!`);
                 }
                 select.addEventListener('change', (e) => {
-                    console.log(`[DevInterface] Select "${name}" changed to:`, e.target.value);
+                    // console.log(`[DevInterface] Select "${name}" changed to:`, e.target.value);
                     const rawValue = e.target.value;
                     const nextValue = typeof config.value === 'number' ? parseFloat(rawValue) : rawValue;
                     this.parameterSystem.setParameter(name, nextValue);
@@ -813,38 +904,62 @@ class DevInterface {
                 editBtn.onclick = () => this.toggleCategory('modifier');
                 summary.appendChild(editBtn);
                 paramRow.appendChild(summary);
-            } else {
+            } else if (config.type === 'number') {
+                const useAbsoluteSlider = this._shouldUseAbsoluteSlider(name);
+                const stepValue = typeof config.step === 'number' ? config.step : undefined;
+                const currentValueRaw = config.value !== undefined ? config.value : config.defaultValue;
+                const currentValue = Number.isFinite(Number(currentValueRaw)) ? Number(currentValueRaw) : 0;
+
                 const slider = document.createElement('input');
                 slider.type = 'range';
-                slider.min = -100;
-                slider.max = 100;
-                slider.step = 1;
-                slider.value = 0;
-                slider.style.cssText = `
-                    flex: 1;
-                    height: 3px;
-                    background: rgba(0, 255, 0, 0.15);
-                    outline: none;
-                    margin: 0;
-                `;
+                slider.dataset.parameter = name;
+
+                if (useAbsoluteSlider) {
+                    slider.dataset.mode = 'absolute';
+                    slider.min = config.min !== undefined ? config.min : 0;
+                    slider.max = config.max !== undefined ? config.max : 1;
+                    slider.step = stepValue !== undefined ? stepValue : 0.01;
+                    slider.value = currentValue;
+                    slider.style.cssText = `
+                        flex: 1;
+                        height: 4px;
+                        cursor: pointer;
+                        accent-color: #00ff99;
+                    `;
+                } else {
+                    slider.min = -100;
+                    slider.max = 100;
+                    slider.step = 1;
+                    slider.value = 0;
+                    slider.style.cssText = `
+                        flex: 1;
+                        height: 3px;
+                        background: rgba(0, 255, 0, 0.15);
+                        outline: none;
+                        margin: 0;
+                    `;
+                }
 
                 const valueDisplay = document.createElement('span');
                 valueDisplay.className = 'param-value';
-                valueDisplay.textContent = config.value;
+                valueDisplay.dataset.step = stepValue !== undefined ? String(stepValue) : '';
+                valueDisplay.textContent = this._formatNumericValue(currentValue, stepValue);
                 valueDisplay.style.cssText = `
                     font-size: 9px;
                     color: #00ff00;
-                    width: 28px;
+                    width: 36px;
                     text-align: right;
                     flex-shrink: 0;
                 `;
 
                 const numberInput = document.createElement('input');
                 numberInput.type = 'number';
-                numberInput.step = config.step || 1;
-                numberInput.value = config.value;
+                numberInput.step = stepValue !== undefined ? stepValue : 1;
+                numberInput.value = currentValue;
+                if (config.min !== undefined) numberInput.min = config.min;
+                if (config.max !== undefined) numberInput.max = config.max;
                 numberInput.style.cssText = `
-                    width: 38px;
+                    width: 48px;
                     background: rgba(0, 0, 0, 0.4);
                     border: 1px solid rgba(0, 255, 0, 0.2);
                     color: #00ff00;
@@ -854,54 +969,80 @@ class DevInterface {
                     text-align: right;
                 `;
 
-                let lastSliderVal = 0;
-                slider.addEventListener('input', (e) => {
-                    const sliderVal = parseFloat(e.target.value);
-                    const rawDelta = sliderVal - lastSliderVal;
-                    lastSliderVal = sliderVal;
+                if (useAbsoluteSlider) {
+                    const clampValue = (val) => {
+                        let next = val;
+                        if (config.min !== undefined) next = Math.max(config.min, next);
+                        if (config.max !== undefined) next = Math.min(config.max, next);
+                        return next;
+                    };
+                    const commitValue = (nextVal) => {
+                        if (Number.isNaN(nextVal)) return;
+                        const clamped = clampValue(nextVal);
+                        const formatted = this._formatNumericValue(clamped, stepValue);
+                        valueDisplay.textContent = formatted;
+                        slider.value = clamped;
+                        numberInput.value = clamped;
+                        this.parameterSystem.setParameter(name, clamped, 'user', { clamp: true });
+                    };
+                    slider.addEventListener('input', (e) => commitValue(parseFloat(e.target.value)));
+                    numberInput.addEventListener('change', (e) => commitValue(parseFloat(e.target.value)));
+                } else {
+                    let lastSliderVal = 0;
+                    slider.addEventListener('input', (e) => {
+                        const sliderVal = parseFloat(e.target.value);
+                        const rawDelta = sliderVal - lastSliderVal;
+                        lastSliderVal = sliderVal;
 
-                    const dist = Math.abs(sliderVal);
-                    const paramStep = config.step || 1;
-                    const sensitivity = paramStep * (0.1 + dist / 200);
+                        const dist = Math.abs(sliderVal);
+                        const paramStep = stepValue || 1;
+                        const sensitivity = paramStep * (0.1 + dist / 200);
 
-                    const currentValue = this.parameterSystem.getParameter(name) || config.value;
-                    let newValue = currentValue + rawDelta * sensitivity;
+                        const current = this.parameterSystem.getParameter(name) ?? currentValue;
+                        let newValue = current + rawDelta * sensitivity;
 
-                    const min = config.min !== undefined ? config.min : -Infinity;
-                    const max = config.max !== undefined ? config.max : Infinity;
-                    newValue = Math.max(min, Math.min(max, newValue));
+                        const min = config.min !== undefined ? config.min : -Infinity;
+                        const max = config.max !== undefined ? config.max : Infinity;
+                        newValue = Math.max(min, Math.min(max, newValue));
 
-                    numberInput.value = newValue;
-                    console.log(`[DevInterface] Slider "${name}" delta=${rawDelta} sens=${sensitivity.toFixed(4)} ->`, newValue);
-                    this.parameterSystem.setParameter(name, newValue, 'user', { clamp: false });
-                });
+                        numberInput.value = newValue;
+                        valueDisplay.textContent = this._formatNumericValue(newValue, stepValue);
+                        // console.log(`[DevInterface] Slider "${name}" delta=${rawDelta} sens=${sensitivity.toFixed(4)} ->`, newValue);
+                        this.parameterSystem.setParameter(name, newValue, 'user', { clamp: false });
+                    });
 
-                slider.addEventListener('change', () => {
-                    slider.value = 0;
-                    lastSliderVal = 0;
-                });
+                    slider.addEventListener('change', () => {
+                        slider.value = 0;
+                        lastSliderVal = 0;
+                    });
 
-                numberInput.addEventListener('input', (e) => {
-                    let value = parseFloat(e.target.value);
-                    const min = config.min !== undefined ? config.min : -Infinity;
-                    const max = config.max !== undefined ? config.max : Infinity;
-                    value = Math.max(min, Math.min(max, value));
-                    if (value >= min && value <= max) {
-                        slider.value = value;
-                    }
-                    console.log(`[DevInterface] Number "${name}" ->`, value);
-                    this.parameterSystem.setParameter(name, value, 'user', { clamp: false });
-                });
+                    numberInput.addEventListener('input', (e) => {
+                        let value = parseFloat(e.target.value);
+                        const min = config.min !== undefined ? config.min : -Infinity;
+                        const max = config.max !== undefined ? config.max : Infinity;
+                        value = Math.max(min, Math.min(max, value));
+                        if (value >= min && value <= max) {
+                            slider.value = value;
+                            valueDisplay.textContent = this._formatNumericValue(value, stepValue);
+                            this.parameterSystem.setParameter(name, value, 'user', { clamp: true });
+                        }
+                    });
+                }
 
-                paramRow.dataset.parameter = name;
                 paramRow.appendChild(slider);
                 paramRow.appendChild(valueDisplay);
                 paramRow.appendChild(numberInput);
+            } else {
+                const fallback = document.createElement('span');
+                fallback.textContent = 'Unsupported parameter type';
+                fallback.style.cssText = 'font-size:8px;color:#ff8888;';
+                paramRow.appendChild(fallback);
             }
 
             const resetBtn = document.createElement('button');
             resetBtn.textContent = '↺';
             resetBtn.title = 'Reset to default';
+            resetBtn.dataset.resetButton = name;
             resetBtn.style.cssText = `
                 background: ${config.userOverridden ? 'rgba(255,100,100,0.2)' : 'transparent'};
                 border: ${config.userOverridden ? '1px solid rgba(255,100,100,0.4)' : 'none'};
@@ -930,6 +1071,68 @@ class DevInterface {
 
         section.appendChild(paramsContainer);
         return section;
+    }
+
+    updateParameterDisplay(name, value) {
+        if (!this.container) return;
+        const isOverridden = this.parameterSystem && this.parameterSystem.isOverridden
+            ? this.parameterSystem.isOverridden(name)
+            : false;
+
+        const targets = this.container.querySelectorAll(`[data-parameter="${name}"]`);
+        targets.forEach(el => {
+            if (el.tagName === 'INPUT') {
+                const type = el.type;
+                if (type === 'range') {
+                    return; // handled via row to respect delta sliders
+                }
+                if (el.matches(':focus')) return;
+                if (type === 'checkbox') {
+                    el.checked = !!value;
+                } else if (type === 'color') {
+                    if (typeof value === 'string') el.value = value;
+                } else {
+                    el.value = value ?? '';
+                }
+            } else if (el.tagName === 'SELECT') {
+                el.value = value;
+            }
+        });
+
+        const rows = this.container.querySelectorAll(`[data-param-row="${name}"]`);
+        rows.forEach(row => {
+            const slider = row.querySelector('input[type="range"][data-parameter]');
+            if (slider && !slider.matches(':focus')) {
+                if (slider.dataset.mode === 'absolute') {
+                    if (value !== undefined && value !== null) {
+                        slider.value = value;
+                    }
+                } else {
+                    slider.value = 0;
+                }
+            }
+
+            const numInput = row.querySelector('input[type="number"]');
+            if (numInput && !numInput.matches(':focus')) {
+                numInput.value = value ?? '';
+            }
+
+            const display = row.querySelector('.param-value');
+            if (display) {
+                const stepAttr = display.dataset.step;
+                const stepVal = stepAttr ? parseFloat(stepAttr) : undefined;
+                display.textContent = this._formatNumericValue(value, stepVal);
+            }
+
+            const resetBtn = row.querySelector(`[data-reset-button="${name}"]`);
+            if (resetBtn) {
+                resetBtn.style.visibility = isOverridden ? 'visible' : 'hidden';
+                resetBtn.style.background = isOverridden ? 'rgba(255,100,100,0.2)' : 'transparent';
+                resetBtn.style.border = isOverridden ? '1px solid rgba(255,100,100,0.4)' : 'none';
+                resetBtn.style.color = isOverridden ? '#ff8888' : '#444';
+                resetBtn.style.cursor = isOverridden ? 'pointer' : 'default';
+            }
+        });
     }
 
     _createTaaContent() {
@@ -982,157 +1185,11 @@ class DevInterface {
         makeRow('Samples', refs.samples);
         makeRow('Jitter', refs.jitter);
         makeRow('Resolution', refs.resolution);
-        makeRow('History', refs.reset);
-
-        const buttonRow = document.createElement('div');
-        buttonRow.style.cssText = 'display:flex; justify-content:flex-end; margin-top:4px;';
-        const resetBtn = document.createElement('button');
-        resetBtn.textContent = 'Reset History';
-        resetBtn.style.cssText = `
-            background: rgba(0, 255, 0, 0.08);
-            border: 1px solid rgba(0, 255, 0, 0.3);
-            color: #aaffc4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 9px;
-            cursor: pointer;
-        `;
-        resetBtn.onclick = () => {
-            const taa = window.game && window.game.temporalAA;
-            if (taa) {
-                taa.resetHistory('devtools');
-                this._updateTaaStatusCard();
-                console.log('[DevInterface] Temporal AA history reset via dev tools');
-            } else {
-                console.warn('[DevInterface] Temporal AA system not available');
-            }
-        };
-        buttonRow.appendChild(resetBtn);
+        makeRow('Reset', refs.reset);
 
         statusCard.appendChild(grid);
-        statusCard.appendChild(buttonRow);
-        section.insertBefore(statusCard, section.children[1] || null);
-
-        this._taaStatusRefs = refs;
-        this._updateTaaStatusCard();
-        if (this.activeCategories.has('taa')) {
-            this._startTaaStatusPolling();
-        }
+        section.appendChild(statusCard);
         return section;
-    }
-
-    _updateTaaStatusCard() {
-        if (!this._taaStatusRefs) return;
-        const refs = this._taaStatusRefs;
-        const game = window.game;
-        const taa = game && game.temporalAA;
-        if (!taa) {
-            Object.values(refs).forEach(ref => { ref.textContent = '—'; ref.style.color = '#888'; });
-            return;
-        }
-        const status = taa.getStatus();
-        refs.support.textContent = status.supported ? 'Yes' : 'No';
-        refs.enabled.textContent = status.enabled ? 'ON' : 'OFF';
-        refs.active.textContent = status.active ? 'Accumulating' : 'Warming';
-        refs.samples.textContent = status.accumulatedSamples.toString();
-        refs.jitter.textContent = `${status.jitterIndex + 1}/${status.jitterSpan}`;
-        refs.resolution.textContent = `${status.resolution} @${status.pixelRatio}x`;
-        refs.reset.textContent = `${status.historyResets} (${status.lastResetReason || '-'})`;
-        refs.enabled.style.color = status.enabled ? '#a4ffb0' : '#ff9a9a';
-        refs.active.style.color = status.active ? '#a4ffb0' : '#ffd27f';
-    }
-
-    _startTaaStatusPolling() {
-        if (this._taaStatusInterval || !this._taaStatusRefs) return;
-        this._taaStatusInterval = setInterval(() => this._updateTaaStatusCard(), 750);
-        this._updateTaaStatusCard();
-    }
-
-    _stopTaaStatusPolling() {
-        if (this._taaStatusInterval) {
-            clearInterval(this._taaStatusInterval);
-            this._taaStatusInterval = null;
-        }
-    }
-    
-    // Legacy - no longer used with additive categories
-    showCachedCategory(category) {
-        // Categories are now additive, handled by toggleCategory
-    }
-    
-    setupEventListeners() {
-        // Listen for parameter updates from server
-        if (window.game && window.game.networkManager) {
-            window.game.networkManager.on('parameterUpdate', (data) => {
-                const { name, value } = data;
-                this.updateParameterDisplay(name, value);
-            });
-        }
-    }
-    
-    setupKeyboardShortcuts() {
-        document.addEventListener('keydown', (e) => {
-            // Toggle dev interface with Space key (dev only)
-            if (e.code === 'Space' && !e.target.matches('input, textarea')) {
-                e.preventDefault();
-                const isDev = window.authState && window.authState.isDev();
-                if (isDev) {
-                    this.toggle();
-                } else {
-                    console.log('[DevInterface] Dev tools restricted to dev users only');
-                }
-            }
-            
-            // Quick category switching with number keys
-            if (this.isVisible && e.key >= '1' && e.key <= '9') {
-                const index = parseInt(e.key) - 1;
-                if (index < this.categories.length) {
-                    this.showCategory(this.categories[index]);
-                }
-            }
-        });
-    }
-    
-    updateParameterDisplay(name, value) {
-        if (!this.container) return;
-        const isOverridden = this.parameterSystem && this.parameterSystem.isOverridden && this.parameterSystem.isOverridden(name);
-
-        // Find the param row and update controls
-        const rows = this.container.querySelectorAll(`[data-parameter="${name}"]`);
-        rows.forEach(row => {
-            const slider = row.querySelector('input[type="range"]');
-            const num = row.querySelector('input[type="number"]');
-            if (slider && !slider.matches(':focus')) {
-                if (slider.dataset.mode === 'absolute') {
-                    slider.value = value;
-                } else {
-                    slider.value = 0;
-                }
-            }
-            if (num && !num.matches(':focus')) num.value = value;
-            const checkbox = row.querySelector('input[type="checkbox"]');
-            if (checkbox && !checkbox.matches(':focus')) {
-                checkbox.checked = !!value;
-            }
-            const valueDisplay = row.querySelector('.param-value');
-            if (valueDisplay) valueDisplay.textContent = value;
-
-            // Update reset button visibility
-            const resetBtn = row.querySelector('button');
-            if (resetBtn) {
-                resetBtn.style.visibility = isOverridden ? 'visible' : 'hidden';
-                resetBtn.style.background = isOverridden ? 'rgba(255,100,100,0.2)' : 'transparent';
-                resetBtn.style.border = isOverridden ? '1px solid rgba(255,100,100,0.4)' : 'none';
-                resetBtn.style.color = isOverridden ? '#ff8888' : '#444';
-                resetBtn.style.cursor = isOverridden ? 'pointer' : 'default';
-            }
-        });
-
-        // Update color inputs
-        const colorInputs = this.container.querySelectorAll(`input[type="color"][data-parameter="${name}"]`);
-        colorInputs.forEach(input => {
-            if (!input.matches(':focus')) input.value = value;
-        });
     }
     
     show() {
@@ -1273,10 +1330,7 @@ class DevInterface {
             reader.onload = (event) => {
                 try {
                     const config = JSON.parse(event.target.result);
-                    localStorage.setItem('chesiopia-default-env', JSON.stringify(config));
-                    localStorage.setItem('chesiopia-default-env-name', file.name);
-                    console.log('[DevInterface] Default ENV set:', file.name);
-                    this._showToast(`Default ENV set: ${file.name}`);
+                    this._postDefaultsToServer(config, file.name);
                 } catch (error) {
                     console.error('[DevInterface] Failed to set default ENV:', error);
                     alert('Failed to set default ENV');
@@ -1293,6 +1347,34 @@ class DevInterface {
         localStorage.removeItem('chesiopia-default-env-name');
         console.log('[DevInterface] Default ENV cleared:', name);
         return name;
+    }
+
+    _postDefaultsToServer(config, fileName) {
+        return fetch('/api/defaults', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        })
+        .then(async r => {
+            const text = await r.text();
+            let data;
+            try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
+            return { ok: r.ok, status: r.status, data };
+        })
+        .then(({ ok, status, data }) => {
+            if (ok && data.success) {
+                localStorage.removeItem('chesiopia-default-env');
+                localStorage.removeItem('chesiopia-default-env-name');
+                console.log('[DevInterface] Default ENV saved to server:', fileName);
+                this._showToast(`Default ENV saved: ${fileName}`);
+            } else {
+                alert(`Failed to save defaults (HTTP ${status}): ${data.error || data.raw || 'Unknown error'}`);
+            }
+        })
+        .catch(err => {
+            console.error('[DevInterface] Error saving defaults:', err);
+            alert('Failed to save defaults. Check console.');
+        });
     }
 
     clearDefaults() {
@@ -1375,6 +1457,8 @@ class DevInterface {
                     try {
                         const config = JSON.parse(event.target.result);
                         const board = window.boardSystem;
+                        // Keep a deep copy for server storage before we mutate the live object
+                        const configForStorage = JSON.parse(JSON.stringify(config));
                         if (config.lightingRig && board && board.lightingRig) {
                             Object.assign(board.lightingRig, JSON.parse(JSON.stringify(config.lightingRig)));
                             delete config.lightingRig;
@@ -1384,6 +1468,10 @@ class DevInterface {
                         });
                         console.log('[DevInterface] Configuration imported successfully');
                         alert('Configuration imported successfully');
+
+                        if (confirm('Set this configuration as the default that loads on page start?')) {
+                            this._postDefaultsToServer(configForStorage, file.name);
+                        }
                     } catch (error) {
                         console.error('[DevInterface] Failed to import configuration:', error);
                         alert('Failed to import configuration');
@@ -1443,39 +1531,97 @@ class DevInterface {
 
     async recreateMap() {
         console.log('[DevInterface] Recreate map');
+
+        // Step 1: ALWAYS clear local state first so old settlements disappear
+        // regardless of whether the server call succeeds
+        if (window.game) {
+            const g = window.game;
+            if (g.terrainSystem) g.terrainSystem.chunks.clear();
+            if (g.hybridTreeManager && g.hybridTreeManager.terrainTreeSystem) {
+                g.hybridTreeManager.terrainTreeSystem.clear();
+            }
+            if (g.boardSystem && typeof g.boardSystem.clearTerrainCache === 'function') g.boardSystem.clearTerrainCache();
+            if (g.settlementSystem) {
+                const ss = g.settlementSystem;
+                g.settlementSystem = null;
+                window.settlementSystem = null;
+                try {
+                    ss.dispose();
+                    console.log('[DevInterface] Settlements disposed');
+                } catch (err) {
+                    console.error('[DevInterface] dispose error:', err);
+                }
+            }
+        }
+
+        // Step 2: Ask server to regenerate
+        let result;
         try {
             const response = await fetch('/api/world/recreate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            const result = await response.json();
-            if (result.success) {
-                if (window.game) {
-                    const g = window.game;
-                    if (g.terrainSystem) g.terrainSystem.chunks.clear();
-                    if (g.hybridTreeManager && g.hybridTreeManager.terrainTreeSystem) {
-                        g.hybridTreeManager.terrainTreeSystem.treeQuads.clear();
-                        g.hybridTreeManager.terrainTreeSystem.treeGeometry.clear();
-                    }
-                    if (g.boardSystem) g.boardSystem.clearTerrainCache();
-                    const cam = g.cameraController && g.cameraController.camera;
-                    if (cam && g.terrainSystem) {
-                        await g.terrainSystem.generateInitialTerrain(
-                            Math.floor(cam.position.x),
-                            Math.floor(cam.position.z),
-                            g.terrainSystem.loadDistance
-                        );
-                    }
-                    if (g.boardSystem) g.boardSystem.updateTerrainMesh();
-                    if (g.cameraController) g.cameraController.updateCameraPosition();
-                }
-                alert('Map recreated! New seed: ' + result.seed);
-            } else {
-                alert('Failed: ' + result.message);
-            }
+            result = await response.json();
         } catch (error) {
-            console.error('[DevInterface] Recreate map error:', error);
-            alert('Error: ' + error.message);
+            console.error('[DevInterface] Recreate fetch failed:', error);
+            alert('Server call failed — local state was still cleared. Refresh to reconnect.');
+            return;
+        }
+
+        if (!result || !result.success) {
+            alert('Failed: ' + (result?.message || 'unknown'));
+            return;
+        }
+
+        // Step 3: Rebuild subsystems and request fresh data
+        try {
+            if (window.game) {
+                const g = window.game;
+                if (g.settlementSystem) {
+                    // already cleared above; shouldn't happen
+                    console.warn('[DevInterface] settlementSystem still present after clear');
+                }
+                const ss = new SettlementSystem(g.scene, g.terrainSystem, g);
+                ss.init();
+
+                const bs = new BuildingSystem(g.scene, g.terrainSystem, ss);
+                bs.init();
+                const rs = new RoadSystem(g.scene, g.terrainSystem, ss);
+                rs.init();
+                const vs = new VillagerSystem(g.scene, g.terrainSystem, ss);
+                vs.init();
+                const ks = new KnightSystem(g.scene, g.terrainSystem, ss);
+                ks.init();
+                const ts = new TournamentSystem(g.scene, g.terrainSystem, ss, ks);
+                ts.init();
+                ss.setSubsystems(vs, bs, rs, ks, ts);
+
+                g.settlementSystem = ss;
+                window.settlementSystem = ss;
+                console.log('[DevInterface] Settlement subsystems rebuilt');
+
+                const cam = g.cameraController && g.cameraController.camera;
+                if (cam && g.terrainSystem) {
+                    await g.terrainSystem.generateInitialTerrain(
+                        Math.floor(cam.position.x),
+                        Math.floor(cam.position.z),
+                        g.terrainSystem.loadDistance
+                    );
+                }
+                if (g.boardSystem) g.boardSystem.updateTerrainMesh();
+                if (g.cameraController) g.cameraController.updateCameraPosition();
+                if (g.settlementSystem) {
+                    g.settlementSystem.requestSettlements(
+                        g.cameraController?.camera?.position?.x || 0,
+                        g.cameraController?.camera?.position?.z || 0,
+                        400
+                    );
+                }
+            }
+            alert('Map recreated! New seed: ' + result.seed);
+        } catch (error) {
+            console.error('[DevInterface] Rebuild error:', error);
+            alert('Local rebuild error: ' + error.message);
         }
     }
 
@@ -2374,7 +2520,9 @@ class DevInterface {
             { key: 'sun', label: 'SUN' },
             { key: 'moon', label: 'MOON' },
             { key: 'ambient', label: 'AMBIENT' },
-            { key: 'nightAmbient', label: 'NIGHT AMB' }
+            { key: 'sky', label: 'SKY' },
+            { key: 'nightAmbient', label: 'NIGHT AMB' },
+            { key: 'fog', label: 'FOG' }
         ];
 
         const trackRefs = {};
@@ -2383,9 +2531,9 @@ class DevInterface {
             section.appendChild(panel);
         });
 
-        // Global add slider
-        const addSliderBlock = document.createElement('div');
-        addSliderBlock.style.cssText = `
+        // Global add button (draggable onto any track)
+        const addBtnBlock = document.createElement('div');
+        addBtnBlock.style.cssText = `
             display: flex;
             flex-direction: column;
             gap: 4px;
@@ -2395,89 +2543,67 @@ class DevInterface {
             background: rgba(0, 30, 0, 0.25);
         `;
 
-        const addSliderLabel = document.createElement('div');
-        addSliderLabel.textContent = 'ADD NEW — drag handle, release to drop keyframes for every light';
-        addSliderLabel.style.cssText = `font-size: 8px; color: #88aa88; letter-spacing: 0.3px;`;
-        addSliderBlock.appendChild(addSliderLabel);
+        const addBtnLabel = document.createElement('div');
+        addBtnLabel.textContent = 'DRAG button onto any track to drop a new keyframe';
+        addBtnLabel.style.cssText = `font-size: 8px; color: #88aa88; letter-spacing: 0.3px;`;
+        addBtnBlock.appendChild(addBtnLabel);
 
-        const addSliderRow = document.createElement('div');
-        addSliderRow.style.cssText = `display: flex; align-items: center; gap: 6px;`;
-
-        const addSlider = document.createElement('input');
-        addSlider.type = 'range';
-        addSlider.min = '0';
-        addSlider.max = '24';
-        addSlider.step = '0.1';
-        const initialHours = this._getCurrentHours(board);
-        addSlider.value = initialHours !== null ? initialHours : 12;
-        addSlider.style.cssText = `
-            flex: 1;
-            appearance: none;
-            height: 4px;
-            border-radius: 3px;
-            background: rgba(0,255,0,0.15);
-            border: 1px solid rgba(0,255,0,0.3);
-            outline: none;
+        const addBtn = document.createElement('div');
+        addBtn.textContent = '+ Add Keyframe';
+        addBtn.draggable = true;
+        addBtn.style.cssText = `
+            display: inline-block;
+            width: fit-content;
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            color: #00ff00;
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 4px;
             cursor: grab;
-            transition: box-shadow 0.2s ease;
+            user-select: none;
         `;
 
-        const sliderValue = document.createElement('span');
-        sliderValue.textContent = `${parseFloat(addSlider.value).toFixed(1)}h`;
-        sliderValue.style.cssText = `font-size: 9px; color: #00ff00; min-width: 32px; text-align: right;`;
-
-        addSliderRow.appendChild(addSlider);
-        addSliderRow.appendChild(sliderValue);
-        addSliderBlock.appendChild(addSliderRow);
-
-        const sliderHint = document.createElement('div');
-        sliderHint.textContent = 'Use this single timeline instead of adding dots per row.';
-        sliderHint.style.cssText = `font-size: 8px; color: #668866;`;
-        addSliderBlock.appendChild(sliderHint);
-        section.appendChild(addSliderBlock);
-
-        let sliderDragging = false;
-        let sliderFeedbackTimeout = null;
-        const updateSliderValue = () => {
-            sliderValue.textContent = `${parseFloat(addSlider.value).toFixed(1)}h`;
-        };
-        const flashSlider = () => {
-            if (sliderFeedbackTimeout) clearTimeout(sliderFeedbackTimeout);
-            addSlider.style.boxShadow = '0 0 8px rgba(0,255,0,0.6)';
-            sliderFeedbackTimeout = setTimeout(() => {
-                addSlider.style.boxShadow = 'none';
-            }, 180);
-        };
-        const commitSliderDrop = () => {
-            const hours = parseFloat(addSlider.value);
-            if (Number.isNaN(hours) || !board) return;
-            this._addRigKeyframesAtTime(section, rig, hours, board);
-            flashSlider();
-        };
-        const finishSliderDrag = () => {
-            if (!sliderDragging) return;
-            sliderDragging = false;
-            commitSliderDrop();
-        };
-        addSlider.addEventListener('pointerdown', (e) => {
-            sliderDragging = true;
-            if (addSlider.setPointerCapture) {
-                addSlider.setPointerCapture(e.pointerId);
+        addBtn.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', 'add-keyframe');
+            e.dataTransfer.effectAllowed = 'copy';
+            this._rigDraggingAdd = true;
+            addBtn.style.cursor = 'grabbing';
+            addBtn.style.opacity = '0.6';
+        });
+        addBtn.addEventListener('dragend', () => {
+            this._rigDraggingAdd = false;
+            addBtn.style.cursor = 'grab';
+            addBtn.style.opacity = '1';
+        });
+        addBtn.addEventListener('click', () => {
+            const board = window.game;
+            if (!board || typeof board.interpolateRig !== 'function') return;
+            const dayLength = (Number.isFinite(board.serverDayLength) && board.serverDayLength > 0) ? board.serverDayLength : 60000;
+            let currentGameTime = board.serverGameTime || 0;
+            if (board.lastTimeSyncTimestamp > 0) {
+                currentGameTime += Date.now() - board.lastTimeSyncTimestamp;
             }
+            const dayProgress = (currentGameTime % dayLength) / dayLength;
+            const hours = dayProgress * 24;
+            this._addRigKeyframesAtTime(section, rig, hours, board);
         });
-        addSlider.addEventListener('pointerup', finishSliderDrag);
-        addSlider.addEventListener('pointercancel', finishSliderDrag);
-        addSlider.addEventListener('lostpointercapture', finishSliderDrag);
-        addSlider.addEventListener('change', () => {
-            if (!sliderDragging) commitSliderDrop();
-        });
-        addSlider.addEventListener('input', updateSliderValue);
+
+        addBtnBlock.appendChild(addBtn);
+        section.appendChild(addBtnBlock);
 
         // Hint text
         const hint = document.createElement('div');
-        hint.textContent = 'Tip: select a coloured dot to edit its colour + intensity. Drag the global slider to drop new ones.';
+        hint.textContent = 'Tip: click a coloured dot to edit colour, intensity & transparency below. Drag the + Add Keyframe button onto any track to drop a new keyframe.';
         hint.style.cssText = `font-size: 8px; color: #668866; margin-top: 2px; line-height: 1.3;`;
         section.appendChild(hint);
+
+        // Shared keyframe editor (appears at bottom when any dot is selected)
+        const sharedEditor = document.createElement('div');
+        sharedEditor.dataset.rigSharedEditor = 'true';
+        sharedEditor.style.cssText = `display: none; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid rgba(0,255,0,0.25); border-radius: 4px; background: rgba(0,20,0,0.4); margin-top: 4px;`;
+        section.appendChild(sharedEditor);
+        section._rigSharedEditor = sharedEditor;
 
         // Global actions
         const actionRow = document.createElement('div');
@@ -2535,6 +2661,13 @@ class DevInterface {
         };
         const onMouseUp = () => {
             if (dragState.info) {
+                if (!dragState.info.active) {
+                    const editor = section?._rigSharedEditor;
+                    if (editor) {
+                        const colorInput = editor.querySelector('input[type="color"]');
+                        if (colorInput) colorInput.click();
+                    }
+                }
                 dragState.info = null;
                 this._saveRigToStorage(rig);
             }
@@ -2770,6 +2903,7 @@ class DevInterface {
         fadeSlider.max = 1;
         fadeSlider.step = 0.01;
         fadeSlider.value = 1;
+        fadeSlider.dataset.parameter = 'checkerFadeStrength';
         fadeSlider.style.cssText = `flex: 1; height: 3px; background: rgba(0, 255, 0, 0.15); outline: none; margin: 0;`;
         
         const fadeValueDisplay = document.createElement('span');
@@ -2780,6 +2914,7 @@ class DevInterface {
             const value = parseFloat(e.target.value);
             fadeValueDisplay.textContent = value.toFixed(2);
             this._updateCheckerboardFade(value);
+            this.parameterSystem?.setParameter('checkerFadeStrength', value);
         });
         
         fadeRow.appendChild(fadeLabel);
@@ -2791,8 +2926,9 @@ class DevInterface {
         section._fadeSlider = fadeSlider;
         section._fadeValueDisplay = fadeValueDisplay;
 
-        // Initialize slider from current system state if available
-        const currentFadeStrength = window.game?.textureBlendingSystem?.checkerFadeStrength;
+        // Initialize slider from parameter system or system state
+        const paramFade = this.parameterSystem?.getParameter('checkerFadeStrength');
+        const currentFadeStrength = typeof paramFade === 'number' ? paramFade : window.game?.textureBlendingSystem?.checkerFadeStrength;
         if (typeof currentFadeStrength === 'number') {
             const clamped = Math.max(0, Math.min(1, currentFadeStrength));
             fadeSlider.value = clamped;
@@ -2889,13 +3025,76 @@ class DevInterface {
             t = Math.max(0, Math.min(1, t));
             const time = Math.round(t * 24 * 10) / 10;
             const kfs = rig.lights[lightKey];
+            if (!kfs) return;
             const state = board.interpolateRig(kfs, time);
-            kfs.push({ time, color: '#' + state.color.getHexString(), intensity: Math.round(state.intensity * 100) / 100 });
+            const newKf = { time, color: '#' + state.color.getHexString(), intensity: Math.round(state.intensity * 100) / 100 };
+            if (state.transparency !== undefined) newKf.transparency = Math.round(state.transparency * 100) / 100;
+            kfs.push(newKf);
             kfs.sort((a, b) => a.time - b.time);
-            track._selectedIndex = kfs.findIndex(k => k.time === time);
+            const newIdx = kfs.findIndex(k => k.time === time);
+            track._selectedIndex = newIdx;
+            // Clear selection on other tracks and set global selection
+            if (section && section._rigTrackRefs) {
+                Object.entries(section._rigTrackRefs).forEach(([k, t]) => {
+                    if (k !== lightKey) t._selectedIndex = -1;
+                });
+            }
+            if (section) {
+                section._selectedLightKey = lightKey;
+                section._selectedKfIndex = newIdx;
+            }
             this._refreshRigUI(section, rig);
             this._saveRigToStorage(rig);
         };
+
+        // Drop zone for draggable add button
+        track.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            track.style.borderColor = 'rgba(0,255,0,0.6)';
+        });
+        track.addEventListener('dragleave', () => {
+            track.style.borderColor = 'rgba(0,255,0,0.15)';
+        });
+        track.addEventListener('drop', (e) => {
+            e.preventDefault();
+            track.style.borderColor = 'rgba(0,255,0,0.15)';
+            if (!this._rigDraggingAdd) return;
+            this._rigDraggingAdd = false;
+            const rect = track.getBoundingClientRect();
+            let t = (e.clientX - rect.left) / rect.width;
+            t = Math.max(0, Math.min(1, t));
+            const time = Math.round(t * 24 * 10) / 10;
+            const kfs = rig.lights[lightKey];
+            if (!kfs) return;
+            const boardRef = window.boardSystem;
+            const state = boardRef && typeof boardRef.interpolateRig === 'function' ? boardRef.interpolateRig(kfs, time) : null;
+            const newKf = {
+                time,
+                color: state && state.color ? '#' + state.color.getHexString() : '#ffffff',
+                intensity: state ? Math.round(state.intensity * 100) / 100 : 0
+            };
+            if (state && state.transparency !== undefined) {
+                newKf.transparency = Math.round(state.transparency * 100) / 100;
+            }
+            kfs.push(newKf);
+            kfs.sort((a, b) => a.time - b.time);
+            const newIdx = kfs.findIndex(k => k.time === time);
+            track._selectedIndex = newIdx;
+            const section = track.closest('[data-category-section="rig"]');
+            if (section && section._rigTrackRefs) {
+                Object.entries(section._rigTrackRefs).forEach(([k, t]) => {
+                    if (k !== lightKey) t._selectedIndex = -1;
+                });
+            }
+            if (section) {
+                section._selectedLightKey = lightKey;
+                section._selectedKfIndex = newIdx;
+            }
+            this._refreshRigUI(section, rig);
+            this._saveRigToStorage(rig);
+        });
+
         trackRefs[lightKey] = track;
         panel.appendChild(track);
 
@@ -2914,23 +3113,19 @@ class DevInterface {
         `;
         track.appendChild(timeLine);
 
-        // Editor area
-        const editor = document.createElement('div');
-        editor.style.cssText = `display: none; flex-direction: row; gap: 4px; align-items: center; flex-wrap: wrap;`;
-        panel.appendChild(editor);
-
         // Populate handles
-        this._renderRigHandles(track, editor, lightKey, rig);
+        this._renderRigHandles(track, lightKey, rig);
 
         return panel;
     }
 
-    _renderRigHandles(track, editor, lightKey, rig) {
+    _renderRigHandles(track, lightKey, rig) {
         // Clear existing handles, keep current time line
         const toRemove = track.querySelectorAll('[data-rig-handle]');
         toRemove.forEach(el => el.remove());
 
         const kfs = rig.lights[lightKey];
+        if (!kfs) return;
         const selectedIdx = track._selectedIndex ?? -1;
 
         kfs.forEach((kf, idx) => {
@@ -2953,12 +3148,24 @@ class DevInterface {
                 handle.style.borderColor = '#00ff00';
                 handle.style.boxShadow = '0 0 4px #00ff00';
             }
-            handle.title = `${kf.time.toFixed(1)}h — ${kf.color} @ ${kf.intensity.toFixed(2)}`;
+            const transPart = kf.transparency !== undefined ? ` / T:${kf.transparency.toFixed(2)}` : '';
+            handle.title = `${kf.time.toFixed(1)}h — ${kf.color} @ ${kf.intensity.toFixed(2)}${transPart}`;
             handle.onmousedown = (e) => {
                 e.stopPropagation();
-                track._selectedIndex = idx;
+                // Clear selection on all other tracks
                 const section = track.closest('[data-category-section="rig"]');
-                if (section && section._rigData) this._refreshRigUI(section, section._rigData);
+                if (section && section._rigTrackRefs) {
+                    Object.entries(section._rigTrackRefs).forEach(([k, t]) => {
+                        if (k !== lightKey) t._selectedIndex = -1;
+                    });
+                }
+                track._selectedIndex = idx;
+                if (section) {
+                    section._selectedLightKey = lightKey;
+                    section._selectedKfIndex = idx;
+                    this._updateSharedRigEditor(section, section._rigData);
+                    if (section._rigData) this._refreshRigUI(section, section._rigData);
+                }
                 const dragState = section?._rigDragState;
                 if (dragState) {
                     dragState.startX = e.clientX;
@@ -2968,15 +3175,6 @@ class DevInterface {
             };
             track.appendChild(handle);
         });
-
-        // Setup editor for selected
-        if (selectedIdx >= 0 && selectedIdx < kfs.length) {
-            editor.style.display = 'flex';
-            this._buildRigKeyframeEditor(editor, kfs, selectedIdx, rig, track);
-        } else {
-            editor.style.display = 'none';
-            editor.innerHTML = '';
-        }
     }
 
     _updateRigHandleAppearance(track, idx, kf) {
@@ -2985,49 +3183,102 @@ class DevInterface {
         const handle = handles[idx];
         if (!handle) return;
         handle.style.background = kf.color;
-        handle.title = `${kf.time.toFixed(1)}h — ${kf.color} @ ${kf.intensity.toFixed(2)}`;
+        const intensityScale = Math.max(0.5, Math.min(1.5, 0.5 + (kf.intensity / 3)));
+        handle.style.transform = `translateX(-50%) scale(${intensityScale})`;
+        handle.style.opacity = Math.max(0.35, Math.min(1, kf.intensity / 2.5)).toString();
+        const transPart = kf.transparency !== undefined ? ` / T:${kf.transparency.toFixed(2)}` : '';
+        handle.title = `${kf.time.toFixed(1)}h — ${kf.color} @ ${kf.intensity.toFixed(2)}${transPart}`;
     }
 
-    _buildRigKeyframeEditor(editor, kfs, idx, rig, track) {
-        editor.innerHTML = '';
-        editor.style.cssText = `
-            display: flex;
-            flex-direction: row;
-            gap: 6px;
-            align-items: center;
-            flex-wrap: wrap;
-            background: rgba(0,30,0,0.25);
-            border: 1px solid rgba(0,255,0,0.15);
-            border-radius: 3px;
-            padding: 4px 6px;
-            margin-top: 2px;
-        `;
-        const kf = kfs[idx];
+    _refreshRigUI(section, rig) {
+        if (!section || !section._rigTrackRefs) return;
+        const refs = section._rigTrackRefs;
+        const lightKeys = ['sun', 'moon', 'ambient', 'nightAmbient', 'sky', 'fog'];
+        lightKeys.forEach(key => {
+            const track = refs[key];
+            if (!track) return;
+            this._renderRigHandles(track, key, rig);
+        });
+        this._updateSharedRigEditor(section, rig);
+    }
 
+    _updateSharedRigEditor(section, rig) {
+        const editor = section?._rigSharedEditor;
+        if (!editor) return;
+
+        const lightKey = section._selectedLightKey;
+        const kfIdx = section._selectedKfIndex;
+
+        if (!lightKey || kfIdx == null || !rig?.lights?.[lightKey]) {
+            editor.style.display = 'none';
+            editor.innerHTML = '';
+            return;
+        }
+
+        const kfs = rig.lights[lightKey];
+        if (kfIdx < 0 || kfIdx >= kfs.length) {
+            editor.style.display = 'none';
+            editor.innerHTML = '';
+            return;
+        }
+
+        const kf = kfs[kfIdx];
+        const labelMap = { sun: 'SUN', moon: 'MOON', ambient: 'AMBIENT', nightAmbient: 'NIGHT AMB', sky: 'SKY', fog: 'FOG' };
+        const label = labelMap[lightKey] || lightKey.toUpperCase();
+
+        editor.innerHTML = '';
+        editor.style.display = 'flex';
+
+        // Header row
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = `display: flex; justify-content: space-between; align-items: center; width: 100%;`;
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = `Editing ${label} — ${kf.time.toFixed(1)}h`;
+        headerTitle.style.cssText = `font-size: 10px; font-weight: 600; color: #00ff00;`;
+        headerRow.appendChild(headerTitle);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '\u00D7';
+        closeBtn.style.cssText = `background: none; border: none; color: #ff6666; font-size: 12px; cursor: pointer; padding: 0; width: 16px; height: 16px; line-height: 16px;`;
+        closeBtn.onclick = () => {
+            // Clear all selections
+            if (section._rigTrackRefs) {
+                Object.values(section._rigTrackRefs).forEach(t => { t._selectedIndex = -1; });
+            }
+            section._selectedLightKey = null;
+            section._selectedKfIndex = -1;
+            this._refreshRigUI(section, rig);
+        };
+        headerRow.appendChild(closeBtn);
+        editor.appendChild(headerRow);
+
+        // Controls row
+        const controlsRow = document.createElement('div');
+        controlsRow.style.cssText = `display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%;`;
+
+        // Colour picker
         const colorLabel = document.createElement('span');
         colorLabel.textContent = 'Colour';
         colorLabel.style.cssText = `font-size: 9px; color: #88cc88;`;
-        editor.appendChild(colorLabel);
+        controlsRow.appendChild(colorLabel);
 
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
         colorInput.value = kf.color;
-        colorInput.title = 'Keyframe colour';
         colorInput.style.cssText = `width: 28px; height: 20px; border: none; padding: 0; cursor: pointer; background: none;`;
         colorInput.oninput = () => {
             kf.color = colorInput.value;
-            this._updateRigHandleAppearance(track, idx, kf);
+            const track = section._rigTrackRefs?.[lightKey];
+            if (track) this._updateRigHandleAppearance(track, kfIdx, kf);
             this._saveRigToStorage(rig);
         };
-        editor.appendChild(colorInput);
+        controlsRow.appendChild(colorInput);
 
+        // Intensity slider
         const intLabel = document.createElement('span');
         intLabel.textContent = 'Intensity';
         intLabel.style.cssText = `font-size: 9px; color: #88cc88;`;
-        editor.appendChild(intLabel);
-
-        const intControls = document.createElement('div');
-        intControls.style.cssText = `display: flex; align-items: center; gap: 4px; min-width: 150px;`;
+        controlsRow.appendChild(intLabel);
 
         const intSlider = document.createElement('input');
         intSlider.type = 'range';
@@ -3035,7 +3286,7 @@ class DevInterface {
         intSlider.max = '5';
         intSlider.step = '0.01';
         intSlider.value = kf.intensity.toFixed(2);
-        intSlider.style.cssText = `flex: 1; appearance: none; height: 4px; border-radius: 3px; background: rgba(0,255,0,0.15); border: 1px solid rgba(0,255,0,0.3);`; 
+        intSlider.style.cssText = `flex: 1; appearance: none; height: 4px; border-radius: 3px; background: rgba(0,255,0,0.15); border: 1px solid rgba(0,255,0,0.3); min-width: 80px;`;
 
         const intValue = document.createElement('span');
         intValue.textContent = kf.intensity.toFixed(2);
@@ -3045,44 +3296,62 @@ class DevInterface {
             const val = parseFloat(intSlider.value);
             kf.intensity = Number.isNaN(val) ? 0 : val;
             intValue.textContent = kf.intensity.toFixed(2);
-            this._updateRigHandleAppearance(track, idx, kf);
+            const track = section._rigTrackRefs?.[lightKey];
+            if (track) this._updateRigHandleAppearance(track, kfIdx, kf);
             this._saveRigToStorage(rig);
         };
+        controlsRow.appendChild(intSlider);
+        controlsRow.appendChild(intValue);
 
-        intControls.appendChild(intSlider);
-        intControls.appendChild(intValue);
-        editor.appendChild(intControls);
+        // Transparency slider (for sky track)
+        if (kf.transparency !== undefined) {
+            const transLabel = document.createElement('span');
+            transLabel.textContent = 'Transparency';
+            transLabel.style.cssText = `font-size: 9px; color: #88cc88;`;
+            controlsRow.appendChild(transLabel);
 
-        const timeLabel = document.createElement('span');
-        timeLabel.textContent = `${kf.time.toFixed(1)}h`;
-        timeLabel.style.cssText = `font-size: 9px; color: #88aa88; min-width: 28px;`;
-        editor.appendChild(timeLabel);
+            const transSlider = document.createElement('input');
+            transSlider.type = 'range';
+            transSlider.min = '0';
+            transSlider.max = '1';
+            transSlider.step = '0.01';
+            transSlider.value = (kf.transparency ?? 1).toFixed(2);
+            transSlider.style.cssText = `flex: 1; appearance: none; height: 4px; border-radius: 3px; background: rgba(0,255,0,0.15); border: 1px solid rgba(0,255,0,0.3); min-width: 80px;`;
 
+            const transValue = document.createElement('span');
+            transValue.textContent = (kf.transparency ?? 1).toFixed(2);
+            transValue.style.cssText = `font-size: 9px; color: #00ff00; min-width: 34px; text-align: right;`;
+
+            transSlider.oninput = () => {
+                const val = parseFloat(transSlider.value);
+                kf.transparency = Number.isNaN(val) ? 1 : val;
+                transValue.textContent = kf.transparency.toFixed(2);
+                const track = section._rigTrackRefs?.[lightKey];
+                if (track) this._updateRigHandleAppearance(track, kfIdx, kf);
+                this._saveRigToStorage(rig);
+            };
+            controlsRow.appendChild(transSlider);
+            controlsRow.appendChild(transValue);
+        }
+
+        // Delete button
         if (kfs.length > 2) {
             const delBtn = document.createElement('button');
             delBtn.textContent = 'Delete';
             delBtn.style.cssText = `background: rgba(255,0,0,0.08); border: 1px solid rgba(255,0,0,0.25); color: #ff8888; font-size: 9px; cursor: pointer; padding: 2px 6px; border-radius: 2px;`;
             delBtn.onclick = () => {
-                kfs.splice(idx, 1);
-                track._selectedIndex = -1;
-                this._refreshRigUI(editor.closest('[data-category-section="rig"]'), rig);
+                kfs.splice(kfIdx, 1);
+                section._selectedKfIndex = -1;
+                if (section._rigTrackRefs?.[lightKey]) {
+                    section._rigTrackRefs[lightKey]._selectedIndex = -1;
+                }
+                this._refreshRigUI(section, rig);
                 this._saveRigToStorage(rig);
             };
-            editor.appendChild(delBtn);
+            controlsRow.appendChild(delBtn);
         }
-    }
 
-    _refreshRigUI(section, rig) {
-        if (!section || !section._rigTrackRefs) return;
-        const refs = section._rigTrackRefs;
-        const lightKeys = ['sun', 'moon', 'ambient', 'nightAmbient'];
-        lightKeys.forEach(key => {
-            const track = refs[key];
-            if (!track) return;
-            const panel = track.parentElement;
-            const editor = panel.querySelector('div:nth-child(4)');
-            this._renderRigHandles(track, editor, key, rig);
-        });
+        editor.appendChild(controlsRow);
     }
 
     _createModelsContent() {
@@ -3139,10 +3408,12 @@ class DevInterface {
             { value: 'trunk', label: 'trunk' }
         ];
 
-        let overrides = {};
-        try {
-            overrides = JSON.parse(localStorage.getItem('chessiopia_piece_models') || '{}');
-        } catch (e) { /* ignore */ }
+        let overrides = this.parameterSystem?.getParameter('pieceModelOverrides') || {};
+        if (!overrides || Object.keys(overrides).length === 0) {
+            try {
+                overrides = JSON.parse(localStorage.getItem('chessiopia_piece_models') || '{}');
+            } catch (e) { /* ignore */ }
+        }
 
         pieceTypes.forEach(type => {
             const row = document.createElement('div');
@@ -3194,11 +3465,8 @@ class DevInterface {
                         delete current[type];
                     }
                     localStorage.setItem('chessiopia_piece_models', JSON.stringify(current));
+                    this.parameterSystem?.setParameter('pieceModelOverrides', { ...current });
                     console.log(`[DevInterface] Piece model override: ${type} -> ${value || 'default'}`);
-                    if (window.game && window.game.piecesSystem) {
-                        window.game.piecesSystem.glbModelCache.clear();
-                        console.log(`[DevInterface] Cleared piece model cache`);
-                    }
                 } catch (err) {
                     console.error('[DevInterface] Failed to save piece model override:', err);
                 }
@@ -3259,15 +3527,19 @@ class DevInterface {
         slider.min = '1';
         slider.max = '20';
         slider.step = '0.5';
-        slider.value = '4';
+        const initialLift = this.parameterSystem?.getParameter('jesusLift');
+        slider.value = Number.isFinite(initialLift) ? initialLift : 4;
         slider.dataset.jesusHeightControl = '1';
+        slider.dataset.parameter = 'jesusLift';
         slider.style.cssText = 'flex:1;';
+        sliderLabel.textContent = `Lift: ${parseFloat(slider.value).toFixed(1)}m`;
         slider.addEventListener('input', () => {
             const value = parseFloat(slider.value);
             sliderLabel.textContent = `Lift: ${value.toFixed(1)}m`;
             if (window.jesusSummonSystem && typeof window.jesusSummonSystem.setTargetLift === 'function') {
                 window.jesusSummonSystem.setTargetLift(value);
             }
+            this.parameterSystem?.setParameter('jesusLift', value);
         });
         sliderRow.appendChild(sliderLabel);
         sliderRow.appendChild(slider);
@@ -3302,6 +3574,110 @@ class DevInterface {
         hint.style.cssText = 'font-size: 8px; color: #889; line-height: 1.4;';
         hint.textContent = 'Hover near the origin shoreline and watch the waters rise.';
         section.appendChild(hint);
+
+        return section;
+    }
+
+    _createSettlementContent() {
+        const section = document.createElement('div');
+        section.dataset.categorySection = 'settlement';
+        section.style.cssText = `
+            border: 1px solid rgba(0, 255, 0, 0.15);
+            border-radius: 4px;
+            padding: 6px;
+            background: rgba(10, 10, 30, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.1);
+            padding-bottom: 4px;
+        `;
+        const title = document.createElement('span');
+        title.textContent = 'SETTLEMENT DEBUG';
+        title.style.cssText = 'font-size: 10px; font-weight: 600; color: #00ffcc; letter-spacing: 0.5px;';
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = 'background:none;border:none;color:#ff6666;font-size:11px;cursor:pointer;padding:0;width:12px;height:12px;line-height:12px;';
+        closeBtn.onclick = () => this.toggleCategory('settlement');
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        section.appendChild(header);
+
+        const status = document.createElement('div');
+        status.dataset.settlementStatus = '1';
+        status.style.cssText = 'font-size: 9px; color: #88aa88;';
+        status.textContent = 'Status: Ready';
+        section.appendChild(status);
+
+        const button = document.createElement('button');
+        button.textContent = 'Force Spawn Village at Camera';
+        button.style.cssText = `
+            background: rgba(0, 255, 100, 0.15);
+            border: 1px solid rgba(0, 255, 100, 0.3);
+            color: #00ff88;
+            padding: 6px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 500;
+            transition: all 0.2s;
+        `;
+        button.onmouseenter = () => button.style.transform = 'translateY(-1px)';
+        button.onmouseleave = () => button.style.transform = 'translateY(0)';
+        button.onclick = () => {
+            if (window.settlementSystem && typeof window.settlementSystem.forceSpawnVillage === 'function') {
+                const camPos = window.game?.camera?.position;
+                if (camPos) {
+                    const result = window.settlementSystem.forceSpawnVillage(camPos.x, camPos.z);
+                    status.textContent = `Status: ${result ? 'Spawned at (' + camPos.x.toFixed(0) + ', ' + camPos.z.toFixed(0) + ')' : 'Failed'}`;
+                } else {
+                    status.textContent = 'Status: Camera position unavailable';
+                }
+            } else {
+                status.textContent = 'Status: Settlement system unavailable';
+            }
+        };
+        section.appendChild(button);
+
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size: 8px; color: #889; line-height: 1.4;';
+        hint.textContent = 'Forces a village spawn at current camera position. Bypasses server placement rules for testing.';
+        section.appendChild(hint);
+
+        const listBtn = document.createElement('button');
+        listBtn.textContent = 'List All Settlements';
+        listBtn.style.cssText = `
+            background: rgba(0, 150, 255, 0.15);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            color: #00aaff;
+            padding: 6px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 500;
+            transition: all 0.2s;
+        `;
+        listBtn.onmouseenter = () => listBtn.style.transform = 'translateY(-1px)';
+        listBtn.onmouseleave = () => listBtn.style.transform = 'translateY(0)';
+        listBtn.onclick = () => {
+            if (window.settlementSystem && window.settlementSystem.settlements) {
+                const list = window.settlementSystem.settlements.map(s => 
+                    `${s.name} (${s.type}) at (${s.x.toFixed(0)}, ${s.z.toFixed(0)})`
+                ).join('\n') || 'No settlements';
+                console.log('[DevInterface] Settlements:\n' + list);
+                status.textContent = `Status: ${window.settlementSystem.settlements.length} settlements logged`;
+            } else {
+                status.textContent = 'Status: Settlement system unavailable';
+            }
+        };
+        section.appendChild(listBtn);
 
         return section;
     }
@@ -3373,6 +3749,24 @@ class DevInterface {
                     { time: 18, color: '#2a3a5a', intensity: 0.0 },
                     { time: 20, color: '#2a3a5a', intensity: 0.06 },
                     { time: 24, color: '#2a3a5a', intensity: 0.12 }
+                ],
+                sky: [
+                    { time: 0,  color: '#000022', intensity: 0.3, transparency: 0.2 },
+                    { time: 5,  color: '#1a0a2e', intensity: 0.5, transparency: 0.4 },
+                    { time: 6,  color: '#ff8844', intensity: 0.8, transparency: 0.7 },
+                    { time: 12, color: '#4488ff', intensity: 1.0, transparency: 1.0 },
+                    { time: 18, color: '#ff6622', intensity: 0.8, transparency: 0.7 },
+                    { time: 20, color: '#1a0a2e', intensity: 0.5, transparency: 0.3 },
+                    { time: 24, color: '#000022', intensity: 0.3, transparency: 0.2 }
+                ],
+                fog: [
+                    { time: 0,  color: '#000000', intensity: 0.0 },
+                    { time: 5,  color: '#000000', intensity: 0.0 },
+                    { time: 6,  color: '#404040', intensity: 0.0 },
+                    { time: 12, color: '#ffffff', intensity: 0.0 },
+                    { time: 18, color: '#404040', intensity: 0.0 },
+                    { time: 20, color: '#151515', intensity: 0.0 },
+                    { time: 24, color: '#000000', intensity: 0.0 }
                 ]
             }
         };
@@ -3414,6 +3808,24 @@ class DevInterface {
                     { time: 17, color: '#2a3a5a', intensity: 0.0 },
                     { time: 20, color: '#1a2a44', intensity: 0.08 },
                     { time: 24, color: '#223355', intensity: 0.15 }
+                ],
+                sky: [
+                    { time: 0,  color: '#0a0a1a', intensity: 0.2, transparency: 0.15 },
+                    { time: 5,  color: '#1a1020', intensity: 0.4, transparency: 0.5 },
+                    { time: 7,  color: '#ffddee', intensity: 0.9, transparency: 0.9 },
+                    { time: 14, color: '#ccddff', intensity: 1.1, transparency: 1.0 },
+                    { time: 18, color: '#ffccaa', intensity: 0.9, transparency: 0.85 },
+                    { time: 20, color: '#1a1020', intensity: 0.4, transparency: 0.4 },
+                    { time: 24, color: '#0a0a1a', intensity: 0.2, transparency: 0.15 }
+                ],
+                fog: [
+                    { time: 0,  color: '#000000', intensity: 0.0 },
+                    { time: 5,  color: '#000000', intensity: 0.0 },
+                    { time: 7,  color: '#404040', intensity: 0.0 },
+                    { time: 14, color: '#ffffff', intensity: 0.0 },
+                    { time: 18, color: '#404040', intensity: 0.0 },
+                    { time: 20, color: '#151515', intensity: 0.0 },
+                    { time: 24, color: '#000000', intensity: 0.0 }
                 ]
             };
         }
@@ -3434,6 +3846,14 @@ class DevInterface {
                 nightAmbient: [
                     { time: 0,  color: '#ffffff', intensity: 0.2 },
                     { time: 24, color: '#ffffff', intensity: 0.2 }
+                ],
+                sky: [
+                    { time: 0,  color: '#ffffff', intensity: 0.5, transparency: 0.5 },
+                    { time: 24, color: '#ffffff', intensity: 0.5, transparency: 0.5 }
+                ],
+                fog: [
+                    { time: 0,  color: '#ffffff', intensity: 0.0 },
+                    { time: 24, color: '#ffffff', intensity: 0.0 }
                 ]
             };
         }
@@ -3466,16 +3886,531 @@ class DevInterface {
                     { time: 6,  color: '#1a2030', intensity: 0.04 },
                     { time: 18, color: '#1a2030', intensity: 0.04 },
                     { time: 24, color: '#1a2030', intensity: 0.1 }
+                ],
+                sky: [
+                    { time: 0,  color: '#050510', intensity: 0.15, transparency: 0.1 },
+                    { time: 6,  color: '#556677', intensity: 0.4, transparency: 0.5 },
+                    { time: 10, color: '#8899aa', intensity: 0.6, transparency: 0.7 },
+                    { time: 14, color: '#99aabb', intensity: 0.65, transparency: 0.75 },
+                    { time: 17, color: '#556677', intensity: 0.4, transparency: 0.5 },
+                    { time: 20, color: '#101025', intensity: 0.1, transparency: 0.15 },
+                    { time: 24, color: '#050510', intensity: 0.15, transparency: 0.1 }
+                ],
+                fog: [
+                    { time: 0,  color: '#000000', intensity: 0.0 },
+                    { time: 6,  color: '#151515', intensity: 0.0 },
+                    { time: 10, color: '#404040', intensity: 0.0 },
+                    { time: 14, color: '#ffffff', intensity: 0.0 },
+                    { time: 17, color: '#404040', intensity: 0.0 },
+                    { time: 20, color: '#151515', intensity: 0.0 },
+                    { time: 24, color: '#000000', intensity: 0.0 }
                 ]
             };
         }
         return null;
     }
 
+    // ---------- Shader (Dynamic Uniforms from Material Registry) ----------
+
+    _createShaderContent() {
+        const container = document.createElement('div');
+        container.dataset.categorySection = 'shader';
+        container.style.cssText = `
+            display: flex; flex-direction: column; gap: 6px;
+            border: 1px solid rgba(0, 255, 0, 0.15);
+            border-radius: 4px; padding: 4px 6px;
+            background: rgba(0, 20, 0, 0.3);
+        `;
+
+        // Header
+        const header = document.createElement('div');
+        header.style.cssText = 'font-size: 11px; color: #0f0; margin-bottom: 4px;';
+        header.textContent = 'Shader Wrangler Uniforms';
+        container.appendChild(header);
+
+        // Material selector
+        const matRow = document.createElement('div');
+        matRow.style.cssText = 'display: flex; gap: 6px; align-items: center; margin-bottom: 4px;';
+        const matLabel = document.createElement('label');
+        matLabel.textContent = 'Material:';
+        matLabel.style.cssText = 'font-size: 10px; width: 50px;';
+        const matSelect = document.createElement('select');
+        matSelect.id = 'dev-shader-material-select';
+        matSelect.style.cssText = 'flex: 1; background: #111; color: #0f0; border: 1px solid #0f03; border-radius: 3px; padding: 3px; font-size: 10px;';
+        matSelect.innerHTML = '<option value="">-- none --</option>';
+        matSelect.addEventListener('change', () => this._rebuildShaderUniforms(container));
+        matRow.appendChild(matLabel);
+        matRow.appendChild(matSelect);
+        container.appendChild(matRow);
+
+        // Refresh button
+        const refreshBtn = document.createElement('button');
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.style.cssText = 'background: #0f03; border: 1px solid #0f03; color: #0f0; border-radius: 3px; padding: 3px 8px; font-size: 10px; cursor: pointer; margin-bottom: 4px;';
+        refreshBtn.addEventListener('click', () => {
+            this._refreshShaderMaterials(matSelect);
+            this._rebuildShaderUniforms(container);
+        });
+        container.appendChild(refreshBtn);
+
+        // Uniforms container
+        const uniformsDiv = document.createElement('div');
+        uniformsDiv.id = 'dev-shader-uniforms';
+        uniformsDiv.style.cssText = 'display: flex; flex-direction: column; gap: 3px;';
+        container.appendChild(uniformsDiv);
+
+        // Populate material list async
+        this._refreshShaderMaterials(matSelect);
+
+        return container;
+    }
+
+    async _refreshShaderMaterials(select) {
+        if (!window.materialRegistry) return;
+        try {
+            await window.materialRegistry._loadMaterials();
+            const current = select.value;
+            select.innerHTML = '<option value="">-- none --</option>';
+            for (const name of window.materialRegistry.materials.keys()) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                select.appendChild(opt);
+            }
+            select.value = current;
+        } catch (e) { console.log('[DevInterface] Shader materials not ready'); }
+    }
+
+    _rebuildShaderUniforms(container) {
+        const select = container.querySelector('#dev-shader-material-select');
+        const div = container.querySelector('#dev-shader-uniforms');
+        if (!select || !div) return;
+        div.innerHTML = '';
+
+        const name = select.value;
+        if (!name) { div.textContent = 'Select a material to edit uniforms'; return; }
+
+        const entry = window.materialRegistry && window.materialRegistry.materials.get(name);
+        if (!entry || !entry.definition) { div.textContent = 'Material not loaded'; return; }
+
+        const def = entry.definition;
+        if (!def.uniforms) { div.textContent = 'No uniforms found'; return; }
+
+        for (const [uName, uInfo] of Object.entries(def.uniforms)) {
+            const type = uInfo.type || 'float';
+            if (type === 'float') {
+                const row = this._createShaderSliderRow(uName, uInfo.value || 0, 0, 2, 0.01);
+                div.appendChild(row);
+            } else if (type === 'vec3') {
+                const row = this._createShaderColorRow(uName, uInfo.value || [0.5, 0.5, 0.5]);
+                div.appendChild(row);
+            }
+        }
+    }
+
+    _createShaderSliderRow(name, value, min, max, step) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+        const label = document.createElement('label');
+        label.textContent = name.slice(0, 12);
+        label.style.cssText = 'font-size: 9px; width: 60px; color: #ccc; overflow: hidden; text-overflow: ellipsis;';
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = min; slider.max = max; slider.step = step; slider.value = value;
+        slider.style.cssText = 'flex: 1; height: 14px;';
+        const valLabel = document.createElement('span');
+        valLabel.textContent = value.toFixed(2);
+        valLabel.style.cssText = 'font-size: 9px; color: #888; width: 30px; text-align: right;';
+
+        slider.addEventListener('input', () => {
+            valLabel.textContent = parseFloat(slider.value).toFixed(2);
+            this._updateShaderUniform(name, parseFloat(slider.value));
+        });
+
+        row.appendChild(label);
+        row.appendChild(slider);
+        row.appendChild(valLabel);
+        return row;
+    }
+
+    _createShaderColorRow(name, value) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+        const label = document.createElement('label');
+        label.textContent = name.slice(0, 12);
+        label.style.cssText = 'font-size: 9px; width: 60px; color: #ccc; overflow: hidden; text-overflow: ellipsis;';
+        const picker = document.createElement('input');
+        picker.type = 'color';
+        const hex = '#' + value.map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+        picker.value = hex;
+        picker.style.cssText = 'width: 40px; height: 18px; padding: 0; border: none;';
+        picker.addEventListener('input', () => {
+            const c = new THREE.Color(picker.value);
+            this._updateShaderUniform(name, [c.r, c.g, c.b]);
+        });
+        row.appendChild(label);
+        row.appendChild(picker);
+        return row;
+    }
+
+    _updateShaderUniform(name, value) {
+        const select = document.getElementById('dev-shader-material-select');
+        if (!select) return;
+        const matName = select.value;
+        if (!matName) return;
+        const material = window.materialRegistry && window.materialRegistry.createMaterial(matName);
+        if (!material || !material.uniforms) return;
+        if (material.uniforms[name]) {
+            if (Array.isArray(value)) {
+                material.uniforms[name].value.set(value[0], value[1], value[2]);
+            } else {
+                material.uniforms[name].value = value;
+            }
+        }
+    }
+
+    _createWeatherContent() {
+        const section = this._buildParameterSection('weather');
+        section.style.maxHeight = '320px';
+        section.style.overflowY = 'auto';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,255,0,0.1); padding: 8px 0 4px 0; margin-top: 4px;';
+        const title = document.createElement('span');
+        title.textContent = 'WEATHER DEBUG';
+        title.style.cssText = 'font-size: 9px; font-weight: 600; color: #00ff00; letter-spacing: 0.5px;';
+        header.appendChild(title);
+        section.appendChild(header);
+
+        // Status display
+        const statusDiv = document.createElement('div');
+        statusDiv.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 4px; color: #aaffaa;';
+
+        const agentCountEl = document.createElement('div');
+        agentCountEl.innerHTML = 'Agents: <span id="wdbg-agentCount" style="color:#fff">-</span>';
+        statusDiv.appendChild(agentCountEl);
+
+        const playerPosEl = document.createElement('div');
+        playerPosEl.innerHTML = 'Player: <span id="wdbg-playerPos" style="color:#fff">-</span>';
+        statusDiv.appendChild(playerPosEl);
+
+        const receivedEl = document.createElement('div');
+        receivedEl.innerHTML = 'Last RX: <span id="wdbg-lastRx" style="color:#fff">-</span>';
+        statusDiv.appendChild(receivedEl);
+
+        const simStatusEl = document.createElement('div');
+        simStatusEl.innerHTML = 'Sim: <span id="wdbg-simStatus" style="color:#fff">-</span>';
+        statusDiv.appendChild(simStatusEl);
+
+        section.appendChild(statusDiv);
+
+        // Force toggle all weather layers
+        const layerRow = document.createElement('div');
+        layerRow.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap;';
+        const layers = [
+            { key: 'pressure', label: 'P' },
+            { key: 'moisture', label: 'M' },
+            { key: 'temperature', label: 'T' },
+            { key: 'fronts', label: 'F' }
+        ];
+        layers.forEach(l => {
+            const btn = document.createElement('button');
+            btn.textContent = l.label;
+            btn.style.cssText = `
+                background: rgba(0,0,0,0.3); border: 1px solid rgba(0,255,0,0.2);
+                color: #88aa88; padding: 3px 8px; border-radius: 3px; cursor: pointer;
+                font-size: 9px; font-weight: 600;
+            `;
+            btn.onclick = () => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) {
+                    mo.weatherLayers[l.key] = !mo.weatherLayers[l.key];
+                    btn.style.color = mo.weatherLayers[l.key] ? '#00ff00' : '#88aa88';
+                    btn.style.borderColor = mo.weatherLayers[l.key] ? 'rgba(0,255,0,0.5)' : 'rgba(0,255,0,0.2)';
+                    mo.requestRender();
+                }
+            };
+            layerRow.appendChild(btn);
+        });
+        section.appendChild(layerRow);
+
+        // Spawn buttons
+        const spawnRow = document.createElement('div');
+        spawnRow.style.cssText = 'display: flex; gap: 4px;';
+
+        const spawnNearBtn = document.createElement('button');
+        spawnNearBtn.textContent = 'Spawn Near Player';
+        spawnNearBtn.style.cssText = `
+            flex: 1; background: rgba(0,150,255,0.15); border: 1px solid rgba(0,150,255,0.4);
+            color: #44aaff; padding: 5px; border-radius: 3px; cursor: pointer; font-size: 9px;
+        `;
+        spawnNearBtn.onclick = () => {
+            const cam = window.game?.camera;
+            if (!cam) return;
+            const x = Math.round(cam.position.x);
+            const z = Math.round(cam.position.z);
+            console.log('[WeatherDebug] Spawning agents near player at', x, z);
+            if (window.game?.networkManager) {
+                const ps = window.parameterSystem;
+                const radius = ps ? (ps.getParameter('weatherSpawnRadius') ?? 40) : 40;
+                const count = ps ? (ps.getParameter('weatherSpawnCount') ?? 8) : 8;
+                window.game.networkManager.emit('spawnWeatherAgents', { x, z, radius, count });
+            }
+        };
+        spawnRow.appendChild(spawnNearBtn);
+
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Clear Agents';
+        clearBtn.style.cssText = `
+            flex: 1; background: rgba(255,50,50,0.15); border: 1px solid rgba(255,50,50,0.4);
+            color: #ff6666; padding: 5px; border-radius: 3px; cursor: pointer; font-size: 9px;
+        `;
+        clearBtn.onclick = () => {
+            if (window.game?.networkManager) {
+                window.game.networkManager.emit('clearWeatherAgents', {});
+            }
+        };
+        spawnRow.appendChild(clearBtn);
+        section.appendChild(spawnRow);
+
+        // Agent list
+        const listTitle = document.createElement('div');
+        listTitle.textContent = 'AGENT LIST';
+        listTitle.style.cssText = 'font-size: 9px; font-weight: 600; color: #00ff00; margin-top: 2px;';
+        section.appendChild(listTitle);
+
+        const agentList = document.createElement('div');
+        agentList.id = 'wdbg-agentList';
+        agentList.style.cssText = `
+            max-height: 140px; overflow-y: auto;
+            background: rgba(0,0,0,0.25); border-radius: 3px; padding: 4px;
+            font-family: monospace; font-size: 9px; color: #ccc;
+        `;
+        agentList.textContent = 'No agent data received yet.';
+        section.appendChild(agentList);
+
+        // Polling update
+        this._weatherPollInterval = setInterval(() => {
+            const game = window.game;
+            const mo = game?.minimapOverlay;
+            const agents = mo?._envAgents || [];
+
+            document.getElementById('wdbg-agentCount').textContent = agents.length;
+            const cam = game?.camera;
+            document.getElementById('wdbg-playerPos').textContent = cam
+                ? `${Math.round(cam.position.x)},${Math.round(cam.position.z)}`
+                : '-';
+
+            // Sim status from status line
+            const statusEl = document.getElementById('serverStatus');
+            const envText = statusEl?.textContent?.match(/EnvSim:\s*(\w+)/);
+            document.getElementById('wdbg-simStatus').textContent = envText ? envText[1] : 'unknown';
+
+            // Build agent list
+            if (agents.length > 0) {
+                let html = '';
+                for (let i = 0; i < Math.min(agents.length, 20); i++) {
+                    const a = agents[i];
+                    const type = a.pressure > 0.5 ? 'H' : 'L';
+                    const color = a.pressure > 0.5 ? '#ff6666' : '#66aaff';
+                    html += `<div style="display:flex;justify-content:space-between;padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <span style="color:${color};font-weight:bold;">${type}</span>
+                        <span>(${Math.round(a.x)},${Math.round(a.z)})</span>
+                        <span style="color:#888;">p=${a.pressure.toFixed(2)}</span>
+                    </div>`;
+                }
+                if (agents.length > 20) {
+                    html += `<div style="text-align:center;color:#888;">...${agents.length - 20} more</div>`;
+                }
+                agentList.innerHTML = html;
+            } else {
+                agentList.textContent = 'No agent data received yet.';
+            }
+        }, 1000);
+
+        // Cleanup on close
+        section._cleanup = () => {
+            if (this._weatherPollInterval) {
+                clearInterval(this._weatherPollInterval);
+                this._weatherPollInterval = null;
+            }
+        };
+
+        return section;
+    }
+
+    _createCursorContent() {
+        const section = this._buildParameterSection('cursor');
+        const paramsContainer = section.querySelector('[style*="flex-direction: column"]');
+        if (!paramsContainer) return section;
+
+        const subsections = [
+            {
+                title: 'Appearance',
+                names: ['cursorEnabled', 'cursorSize', 'cursorPulseSpeed',
+                    'cursorCoreColorInner', 'cursorCoreColorOuter', 'cursorGlowColor']
+            },
+            {
+                title: 'Wings',
+                names: ['cursorWingWidth', 'cursorWingHeight', 'cursorWingOffset', 'cursorWingAngle',
+                    'cursorWingColor', 'cursorWingSpeedScale', 'cursorWingScaleMult', 'cursorWingOpacityMult']
+            },
+            {
+                title: 'Trail',
+                names: ['cursorTrailColor', 'cursorTrailScaleX', 'cursorTrailScaleY', 'cursorTrailOpacity']
+            },
+            {
+                title: 'Distance Scale',
+                names: ['cursorDistanceScale', 'cursorDistanceNear', 'cursorDistanceFar',
+                    'cursorDistanceMinScale', 'cursorSpeedSize']
+            },
+            {
+                title: 'Drag Speed',
+                names: ['cursorDragSpeedCap', 'cursorDragCutoffDistance']
+            },
+            {
+                title: 'Grab Behavior',
+                names: ['cursorGrabDisableSpeedScale', 'cursorGrabSlowFactor', 'cursorGrabBuzzIntensity']
+            },
+            {
+                title: 'Sound',
+                names: ['cursorBuzzVolume', 'cursorBuzzFadeNear', 'cursorBuzzFadeFar']
+            },
+            {
+                title: 'Drowning Animation',
+                names: ['cursorDrownSubmergeMs', 'cursorDrownUnderwaterMs', 'cursorDrownEmergeMs',
+                    'cursorDrownFlyUpMs', 'cursorDrownShakeMs', 'cursorDrownHarumphMs',
+                    'cursorDrownShakeAmplitude', 'cursorDrownShakeCycles',
+                    'cursorDrownSubmergeDepth', 'cursorDrownFlyHeight']
+            },
+            {
+                title: 'Underwater State',
+                names: ['cursorSubmergedOpacity', 'cursorSubmergedBrightness', 'cursorSubmergedSepia',
+                    'cursorSubmergedHue', 'cursorSubmergedSat', 'cursorSubmergedBlur', 'cursorSubmergedOverlay']
+            }
+        ];
+
+        subsections.forEach(sub => {
+            const subDiv = document.createElement('div');
+            subDiv.style.cssText = `
+                border: 1px solid rgba(0, 255, 0, 0.08);
+                border-radius: 3px;
+                padding: 3px 4px;
+                margin-bottom: 4px;
+                background: rgba(0, 15, 0, 0.25);
+            `;
+
+            const subTitle = document.createElement('div');
+            subTitle.textContent = sub.title;
+            subTitle.style.cssText = `
+                font-size: 8px;
+                font-weight: 600;
+                color: #88ff88;
+                letter-spacing: 0.4px;
+                margin-bottom: 2px;
+                padding-bottom: 2px;
+                border-bottom: 1px solid rgba(0, 255, 0, 0.08);
+                text-transform: uppercase;
+            `;
+            subDiv.appendChild(subTitle);
+
+            const rowContainer = document.createElement('div');
+            rowContainer.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+
+            let hasRow = false;
+            sub.names.forEach(name => {
+                const row = paramsContainer.querySelector(`[data-param-row="${name}"]`);
+                if (row) {
+                    rowContainer.appendChild(row);
+                    hasRow = true;
+                }
+            });
+
+            if (hasRow) {
+                subDiv.appendChild(rowContainer);
+                paramsContainer.parentNode.insertBefore(subDiv, paramsContainer);
+            }
+        });
+
+        // Remove the original flat params container
+        if (paramsContainer.parentNode) {
+            paramsContainer.parentNode.removeChild(paramsContainer);
+        }
+
+        return section;
+    }
+
+    _createEnvironmentContent() {
+        const section = this._buildParameterSection('environment');
+        const paramsContainer = section.querySelector('[style*="flex-direction: column"]');
+        if (!paramsContainer) return section;
+
+        const subsections = [
+            {
+                title: 'Wind',
+                names: ['windSpeed', 'windDirection', 'windExposureScale', 'windShadowStrength', 'windHeightPower', 'blusteryWind']
+            },
+            {
+                title: 'Fog',
+                names: ['fogNear', 'fogFar', 'fogGradientEnabled', 'fogGradientExponent', 'fogGradientBias', 'fogDensity', 'fogColorBandCount', 'fogColor1', 'fogColorStop1', 'fogColor2', 'fogColorStop2', 'fogColor3', 'fogColorStop3', 'fogColor4', 'fogColorStop4', 'fogColor5', 'fogColorStop5']
+            }
+        ];
+
+        subsections.forEach(sub => {
+            const subDiv = document.createElement('div');
+            subDiv.style.cssText = `
+                border: 1px solid rgba(0, 255, 0, 0.08);
+                border-radius: 3px;
+                padding: 4px 4px 4px 6px;
+                margin-bottom: 4px;
+                background: rgba(0, 10, 0, 0.2);
+            `;
+
+            const subTitle = document.createElement('div');
+            subTitle.textContent = sub.title;
+            subTitle.style.cssText = `
+                font-size: 8px;
+                font-weight: 600;
+                color: #88ff88;
+                letter-spacing: 0.4px;
+                margin-bottom: 2px;
+                padding-bottom: 2px;
+                border-bottom: 1px solid rgba(0, 255, 0, 0.08);
+                text-transform: uppercase;
+            `;
+            subDiv.appendChild(subTitle);
+
+            const rowContainer = document.createElement('div');
+            rowContainer.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+
+            let hasRow = false;
+            sub.names.forEach(name => {
+                const row = paramsContainer.querySelector(`[data-param-row="${name}"]`);
+                if (row) {
+                    rowContainer.appendChild(row);
+                    hasRow = true;
+                }
+            });
+
+            if (hasRow) {
+                subDiv.appendChild(rowContainer);
+                paramsContainer.parentNode.insertBefore(subDiv, paramsContainer);
+            }
+        });
+
+        if (paramsContainer.parentNode) {
+            paramsContainer.parentNode.removeChild(paramsContainer);
+        }
+
+        return section;
+    }
+
     _saveRigToStorage(rig) {
         try {
             localStorage.setItem('chesiopia-lighting-rig', JSON.stringify(rig));
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.warn('[DevInterface] Failed to save lighting rig to localStorage:', e);
+        }
     }
 }
 

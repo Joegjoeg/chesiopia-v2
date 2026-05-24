@@ -46,15 +46,25 @@ class ConsoleManager {
     }
     
     addToBuffer(level, args) {
+        const message = args.map(arg => {
+            if (arg === null || arg === undefined) return String(arg);
+            if (typeof arg === 'object') {
+                try {
+                    const str = JSON.stringify(arg);
+                    return str.length > 500 ? str.slice(0, 500) + '…' : str;
+                } catch {
+                    return '[object]';
+                }
+            }
+            return String(arg);
+        }).join(' ');
+
         const entry = {
             timestamp: new Date().toISOString(),
             level: level,
-            message: args.map(arg => 
-                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' '),
-            rawArgs: args
+            message: message
         };
-        
+
         this.consoleBuffer.push(entry);
 
         // Maintain buffer size

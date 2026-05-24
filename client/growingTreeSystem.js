@@ -510,6 +510,7 @@ class GrowingTreeSystem {
 
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            if (!data || data._lodVisible === false) continue;
             if (data.growthStage < 1.0) {
                 const growthRate = (1.0 / this.growthDuration) * data.growthSpeed * data.biomeModifier * seasonModifier;
                 data.growthStage = Math.min(data.growthStage + growthRate * deltaTime, 1.0);
@@ -521,6 +522,7 @@ class GrowingTreeSystem {
         let anyChanged = false;
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            if (!data || data._lodVisible === false) continue;
             // Skip fully-grown trees that already have correct scale cached
             if (data._lastGrowthScale === data.growthStage * data.finalHeight && data.growthStage >= 1.0) {
                 continue;
@@ -576,6 +578,7 @@ class GrowingTreeSystem {
 
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
+            if (!tree || tree._lodVisible === false) continue;
 
             // Check if tree is within mesh range
             const dx = Math.abs(tree.x - camera.position.x);
@@ -640,7 +643,7 @@ class GrowingTreeSystem {
 
     updateTreeInstanceMatrix(i, tree) {
         const growthScale = tree.growthStage * tree.finalHeight;
-        const scale = Math.max(growthScale, 0.1);
+        const scale = Math.max(growthScale, 0.1) * this.globalTreeSizeMult;
 
         const normal = tree.normal || UP;
         this._scratchQuat.setFromUnitVectors(UP, normal);
@@ -655,6 +658,13 @@ class GrowingTreeSystem {
 
         for (const part of this.parts) {
             part.mesh.setMatrixAt(i, this._scratchMatrix);
+        }
+    }
+
+    setGlobalTreeSizeMult(value) {
+        this.globalTreeSizeMult = value;
+        for (let i = 0; i < this.treeCount; i++) {
+            this.updateTreeInstanceMatrix(i, this.treeData[i]);
         }
     }
 
@@ -729,7 +739,7 @@ class GrowingTreeSystem {
 
     setSeason(season) {
         this.currentSeason = season.toUpperCase();
-        console.log('[GrowingTreeSystem] Season set to:', this.currentSeason, 'Growth modifier:', this.seasonGrowthModifiers[this.currentSeason]);
+        // console.log('[GrowingTreeSystem] Season set to:', this.currentSeason, 'Growth modifier:', this.seasonGrowthModifiers[this.currentSeason]);
     }
 
     computeWindField() {
@@ -739,7 +749,7 @@ class GrowingTreeSystem {
             return;
         }
         board.computeTreeWindField(this.treeData, this.windField);
-        console.log('[GrowingTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
+        // console.log('[GrowingTreeSystem] Wind field computed using board system for', this.windField.size, 'tiles');
     }
 
     recomputeWindMultipliers() {
@@ -750,6 +760,7 @@ class GrowingTreeSystem {
         const windDir = new THREE.Vector3(wd.x, 0, wd.y).normalize();
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            if (!data || data._lodVisible === false) continue;
             const normal = data.normal || new THREE.Vector3(0, 1, 0);
             const windwardFactor = Math.max(0, normal.dot(windDir));
             let mult = 1.0 + 0.5 * exposureScale;
@@ -768,6 +779,25 @@ class GrowingTreeSystem {
             part.mesh.instanceMatrix.needsUpdate = true;
         }
         console.log('[GrowingTreeSystem] Cleared all trees');
+    }
+
+    /** Remove a single tree by index using swap-with-last for O(1) removal. */
+    removeTree(index) {
+        if (index < 0 || index >= this.treeCount) return null;
+        const removed = this.treeData[index];
+        const lastIndex = this.treeCount - 1;
+        if (index !== lastIndex) {
+            const moved = this.treeData[lastIndex];
+            this.treeData[index] = moved;
+            this._currentHeights[index] = this._currentHeights[lastIndex];
+            this.updateTreeInstanceMatrix(index, moved);
+        }
+        this.treeData.length = lastIndex;
+        this.treeCount = lastIndex;
+        for (const part of this.parts) {
+            part.mesh.count = this.treeCount;
+        }
+        return removed;
     }
 
     dispose() {

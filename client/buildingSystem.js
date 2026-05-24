@@ -48,6 +48,49 @@ class BuildingSystem {
         console.log('[BuildingSystem] Initialized');
     }
 
+    syncBuildings(settlement, serverBuildings) {
+        if (!serverBuildings || !Array.isArray(serverBuildings)) return;
+
+        const uniqueTypes = new Set(['church', 'villageGreen', 'manor', 'maypole']);
+
+        // Helper: match local building to server building by (type, rounded x, rounded z)
+        const _key = b => `${b.type}:${Math.round(b.x)}:${Math.round(b.z)}`;
+
+        const serverKeys = new Set(serverBuildings.map(_key));
+        const localKeys = new Map(settlement.buildings.map((b, i) => [_key(b), i]));
+
+        // Remove local buildings that no longer exist on server
+        // (skip unique types that are placed once and never removed)
+        for (let i = settlement.buildings.length - 1; i >= 0; i--) {
+            const local = settlement.buildings[i];
+            if (uniqueTypes.has(local.type)) continue;
+            if (!serverKeys.has(_key(local))) {
+                if (local._mesh) {
+                    settlement._group.remove(local._mesh);
+                }
+                // Remove associated node
+                settlement.nodes = settlement.nodes.filter(n => n.buildingRef !== local);
+                settlement.buildings.splice(i, 1);
+            }
+        }
+
+        // Add server buildings not present locally (recompute Y from terrain when chunks loaded)
+        for (const sb of serverBuildings) {
+            const k = _key(sb);
+            if (!localKeys.has(k)) {
+                const footprint = this.getBuildingFootprint(sb.type);
+                const canRecompute = this._isFootprintLoaded(sb.x, sb.z, footprint.w, footprint.d);
+                const y = canRecompute ? undefined : sb.y;
+                this.addBuilding(settlement, sb.type, sb.x, sb.z, {
+                    skipValidation: true,
+                    y,
+                    state: sb.state || 'complete',
+                    startedAtDay: sb.startedAtDay
+                });
+            }
+        }
+    }
+
     placeInitialBuildings(settlement) {
         const { x, z, typeDef } = settlement;
 
@@ -80,7 +123,7 @@ class BuildingSystem {
         }
     }
 
-    addBuilding(settlement, type, forceX, forceZ) {
+    addBuilding(settlement, type, forceX, forceZ, options = {}) {
         const id = ++this.buildingIdCounter;
         let bx, bz;
         const footprint = this.getBuildingFootprint(type);
@@ -88,7 +131,7 @@ class BuildingSystem {
         if (forceX !== undefined && forceZ !== undefined) {
             const gx = Math.round(forceX);
             const gz = Math.round(forceZ);
-            if (this._isFootprintValid(settlement, type, gx, gz, footprint.w, footprint.d)) {
+            if (options.skipValidation || this._isFootprintValid(settlement, type, gx, gz, footprint.w, footprint.d)) {
                 bx = gx;
                 bz = gz;
             } else {
@@ -104,7 +147,10 @@ class BuildingSystem {
             bz = pos.z;
         }
 
-        const by = this.terrainSystem ? this.terrainSystem.getHeight(bx, bz) : 0;
+        const by = options.y !== undefined ? options.y :
+            (this.terrainSystem ? this._getFootprintAverageHeight(bx, bz, footprint.w, footprint.d) : 0);
+
+        const isConstruction = options.state === 'under_construction';
 
         const building = {
             id,
@@ -112,25 +158,35 @@ class BuildingSystem {
             x: bx,
             z: bz,
             y: by,
+            state: options.state || 'complete',
             _mesh: null,
-            _createdAt: settlement.age
+            _createdAt: settlement.age,
+            _startedAtDay: options.startedAtDay || 0
         };
 
-        this.createBuildingMesh(building, settlement);
+        if (isConstruction) {
+            this.createScaffoldingMesh(building, settlement);
+            this.createConstructionMesh(building, settlement);
+        } else {
+            this.createBuildingMesh(building, settlement);
+        }
         settlement.buildings.push(building);
 
         // Level terrain under elevated buildings and refresh meshes
         const shouldLevel = ['house', 'church', 'manor', 'barn', 'fishingHut', 'maypole', 'lampPost'].includes(type);
-        if (shouldLevel && this.terrainSystem) {
+        if (shouldLevel && this.terrainSystem && typeof this.terrainSystem.levelTerrainArea === 'function') {
             this.terrainSystem.levelTerrainArea(bx, bz, footprint.w, footprint.d, by);
             const boardSystem = this.settlementSystem?.game?.boardSystem;
-            if (boardSystem && boardSystem.refreshTerrainInArea) {
+            if (boardSystem && typeof boardSystem.refreshTerrainInArea === 'function') {
                 const refreshRadius = Math.max(footprint.w, footprint.d) + 1;
                 boardSystem.refreshTerrainInArea(bx, bz, refreshRadius);
             }
+            // Collect height deltas and sync to server
+            this.emitTerrainDeltas(settlement, bx, bz, footprint.w, footprint.d, by);
         }
 
-        if (type === 'house' || type === 'field' || type === 'barn' || type === 'fishingHut') {
+        const nodeTypes = ['house', 'field', 'barn', 'fishingHut', 'villageGreen', 'church', 'manor', 'pond', 'maypole', 'proclamationSpot', 'lampPost'];
+        if (nodeTypes.includes(type)) {
             const exists = settlement.nodes.find(n => n.type === type && n.buildingRef === building);
             if (!exists) {
                 settlement.nodes.push({
@@ -217,6 +273,27 @@ class BuildingSystem {
             }
         }
         return count > 0 ? total / count : 0;
+    }
+
+    isFootprintLoaded(gx, gz, fw, fd) {
+        return this._isFootprintLoaded(gx, gz, fw, fd);
+    }
+
+    _isFootprintLoaded(gx, gz, fw, fd) {
+        if (!this.terrainSystem || !this.terrainSystem.chunks) return false;
+        const cs = this.terrainSystem.chunkSize || 16;
+        for (let dx = 0; dx < fw; dx++) {
+            for (let dz = 0; dz < fd; dz++) {
+                const tx = gx + dx;
+                const tz = gz + dz;
+                const chunkX = Math.floor(tx / cs);
+                const chunkZ = Math.floor(tz / cs);
+                const chunkKey = `${chunkX},${chunkZ}`;
+                const chunk = this.terrainSystem.chunks.get(chunkKey);
+                if (!chunk || !chunk.data) return false;
+            }
+        }
+        return true;
     }
 
     _isFootprintValid(settlement, type, gx, gz, fw, fd) {
@@ -506,6 +583,218 @@ class BuildingSystem {
         foundation.position.y = -0.04;
         foundation.receiveShadow = true;
         group.add(foundation);
+    }
+
+    createScaffoldingTexture() {
+        if (this._scaffoldTex) return this._scaffoldTex;
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#8a7a5a';
+        ctx.fillRect(0, 0, size, size);
+        ctx.strokeStyle = '#6b5b3a';
+        ctx.lineWidth = 2;
+        // Border splines
+        ctx.strokeRect(2, 2, size - 4, size - 4);
+        // Diagonal splines on each face
+        ctx.beginPath();
+        ctx.moveTo(4, 4);
+        ctx.lineTo(size - 4, size - 4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(size - 4, 4);
+        ctx.lineTo(4, size - 4);
+        ctx.stroke();
+        // Cross bracing
+        ctx.strokeStyle = '#7a6a4a';
+        ctx.lineWidth = 1;
+        for (let i = 8; i < size; i += 12) {
+            ctx.beginPath();
+            ctx.moveTo(i, 2);
+            ctx.lineTo(i, size - 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(2, i);
+            ctx.lineTo(size - 2, i);
+            ctx.stroke();
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        this._scaffoldTex = tex;
+        return tex;
+    }
+
+    createScaffoldingMesh(building, settlement) {
+        const group = new THREE.Group();
+        const bx = building.x;
+        const bz = building.z;
+        const by = building.y;
+        const footprint = this.getBuildingFootprint(building.type);
+        const fw = footprint.w;
+        const fh = this.getBuildingHeight(building.type);
+        const fd = footprint.d;
+
+        const cubeSize = 0.6;
+        const tex = this.createScaffoldingTexture();
+        const mat = new THREE.MeshLambertMaterial({ map: tex });
+
+        const cols = Math.ceil(fw / cubeSize);
+        const rows = Math.ceil(fd / cubeSize);
+        const stacks = Math.ceil(fh / cubeSize);
+
+        const geo = new THREE.BoxGeometry(cubeSize * 0.95, cubeSize * 0.95, cubeSize * 0.95);
+
+        for (let sx = 0; sx < cols; sx++) {
+            for (let sz = 0; sz < rows; sz++) {
+                for (let sy = 0; sy < stacks; sy++) {
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set(
+                        (sx - (cols - 1) / 2) * cubeSize,
+                        sy * cubeSize + cubeSize / 2,
+                        (sz - (rows - 1) / 2) * cubeSize
+                    );
+                    mesh.castShadow = true;
+                    group.add(mesh);
+                }
+            }
+        }
+
+        group.position.set(bx, by, bz);
+        settlement._group.add(group);
+        building._scaffoldMesh = group;
+    }
+
+    getBuildingHeight(type) {
+        switch (type) {
+            case 'house': return 1.2;
+            case 'church': return 2.4;
+            case 'manor': return 2.2;
+            case 'barn': return 1.6;
+            case 'field': return 0.1;
+            case 'fishingHut': return 1.0;
+            case 'maypole': return 1.8;
+            case 'villageGreen': return 0.05;
+            case 'pond': return 0.05;
+            case 'lampPost': return 1.3;
+            default: return 1.0;
+        }
+    }
+
+    createConstructionMesh(building, settlement) {
+        // Create a temporary mesh that will grow via drawRange
+        const footprint = this.getBuildingFootprint(building.type);
+        const height = this.getBuildingHeight(building.type);
+
+        // Use a simple box that represents the final building volume
+        const geo = new THREE.BoxGeometry(footprint.w * 0.9, height * 0.9, footprint.d * 0.9);
+        const mat = new THREE.MeshLambertMaterial({
+            color: 0xc8b896,
+            transparent: true,
+            opacity: 0.3
+        });
+
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(building.x, building.y + height / 2, building.z);
+        mesh.castShadow = true;
+        settlement._group.add(mesh);
+
+        // Store for drawRange updates
+        building._constructionMesh = mesh;
+        building._constructionTotalVerts = geo.attributes.position.count;
+        building._constructionProgress = 0;
+
+        // Start with drawRange at 0 (nothing visible)
+        geo.setDrawRange(0, 0);
+    }
+
+    advanceConstruction(building, progressDelta) {
+        if (building.state !== 'under_construction') return false;
+
+        building._constructionProgress = Math.min(1, building._constructionProgress + progressDelta);
+        const total = building._constructionTotalVerts || 100;
+        const visible = Math.max(1, Math.floor(building._constructionProgress * total));
+
+        if (building._constructionMesh && building._constructionMesh.geometry) {
+            building._constructionMesh.geometry.setDrawRange(0, visible);
+            // Fade opacity as it approaches completion
+            building._constructionMesh.material.opacity = 0.3 + building._constructionProgress * 0.4;
+        }
+
+        if (building._constructionProgress >= 1.0) {
+            this.completeConstruction(building);
+            return true;
+        }
+        return false;
+    }
+
+    completeConstruction(building, settlement) {
+        if (!settlement) {
+            for (const s of this.settlementSystem.settlements) {
+                if (s.buildings.includes(building)) {
+                    settlement = s;
+                    break;
+                }
+            }
+        }
+        if (!settlement) return;
+
+        // Remove scaffolding
+        if (building._scaffoldMesh) {
+            settlement._group.remove(building._scaffoldMesh);
+            building._scaffoldMesh.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            });
+            building._scaffoldMesh = null;
+        }
+
+        // Remove construction mesh
+        if (building._constructionMesh) {
+            settlement._group.remove(building._constructionMesh);
+            building._constructionMesh.geometry.dispose();
+            building._constructionMesh.material.dispose();
+            building._constructionMesh = null;
+        }
+
+        // Mark complete — no individual mesh (motte model replaces buildings)
+        building.state = 'complete';
+
+        // Schedule opening ceremony
+        if (this.settlementSystem) {
+            this.settlementSystem.scheduleOpening(building);
+        }
+    }
+
+    emitTerrainDeltas(settlement, gx, gz, width, depth, targetHeight) {
+        if (!this.terrainSystem || !this.terrainSystem.chunks) return;
+        const deltas = [];
+        for (let dx = 0; dx < width; dx++) {
+            for (let dz = 0; dz < depth; dz++) {
+                const tx = gx + dx;
+                const tz = gz + dz;
+                const chunkX = Math.floor(tx / this.terrainSystem.chunkSize);
+                const chunkZ = Math.floor(tz / this.terrainSystem.chunkSize);
+                const localX = Math.floor(tx - chunkX * this.terrainSystem.chunkSize);
+                const localZ = Math.floor(tz - chunkZ * this.terrainSystem.chunkSize);
+                deltas.push({ chunkX, chunkZ, localX, localZ, height: targetHeight });
+            }
+        }
+
+        // Group by chunk
+        const chunkMap = new Map();
+        for (const d of deltas) {
+            const key = `${d.chunkX},${d.chunkZ}`;
+            if (!chunkMap.has(key)) chunkMap.set(key, []);
+            chunkMap.get(key).push({ localX: d.localX, localZ: d.localZ, height: d.height });
+        }
+
+        const chunks = Array.from(chunkMap.entries()).map(([key, deltas]) => ({ key, deltas }));
+        const nm = this.settlementSystem?.game?.networkManager;
+        if (nm && nm.socket) {
+            nm.socket.emit('terrainModified', { villageId: settlement.id, chunks });
+        }
     }
 
     updateBuildingVisuals(settlement, deltaTime) {

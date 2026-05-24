@@ -1,20 +1,20 @@
 {
   "dev@chesiopia.local": {
-    "id": "1d2b2e08-76a4-4fee-a29e-4ca7ae873d13",
+    "id": "b5112e75-3043-4814-860b-e09ddb3171da",
     "email": "dev@chesiopia.local",
     "username": "Dev",
-    "passwordHash": "$2b$10$L9qhWbOUdCU.J7H8wL/mT.lD0FjWJt7/tloxi8b.jJgt4eFdl1IdO",
-    "verifiedAt": "2026-05-16T06:48:20.429Z",
+    "passwordHash": "$2b$10$UY8bbb6rgfsmcIIRIZHON.1YNttofAJqm7GS6g/IGXadCx3qxuqq2",
+    "verifiedAt": "2026-05-24T03:28:42.160Z",
     "role": "dev",
-    "createdAt": "2026-05-16T06:48:20.429Z"
+    "createdAt": "2026-05-24T03:28:42.161Z"
   },
   "joe@chesiopia.local": {
-    "id": "8e708332-90d2-4a97-a11f-365933c96fe3",
+    "id": "91ba57c2-813a-4e47-b2b0-298a46bd1352",
     "email": "joe@chesiopia.local",
     "username": "Joe",
-    "passwordHash": "$2b$10$ASuTA8IIMkwT5rjg/567W.QUPvCxDdbqXlKwgK9SLX7KPOoixxEii",
-    "verifiedAt": "2026-05-16T06:48:20.521Z",
+    "passwordHash": "$2b$10$uaHUiWF0QPGjJk9zv8xDZeW3NyRIdhdwJ0u6h4EAS2Mg7HVslnh3e",
+    "verifiedAt": "2026-05-24T03:28:42.252Z",
     "role": "dev",
-    "createdAt": "2026-05-16T06:48:20.521Z"
+    "createdAt": "2026-05-24T03:28:42.252Z"
   }
 }

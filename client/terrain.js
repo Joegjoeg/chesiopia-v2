@@ -9,11 +9,12 @@ class TerrainSystem {
         this.treeSystem = treeSystem;
         this.chunks = new Map();
         this.loadingChunks = new Set(); // Track chunks currently being loaded
-        this.chunkSize = 16;
-        this.loadDistance = 6; // Expanded for wider camera cone (96 units / 16 chunk size)
+        this.chunkSize = 32;
+        this.loadDistance = 4; // Roughly equivalent to previous 96u coverage
         this.lastCameraChunk = { x: 0, z: 0 };
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
         this.onChunkLoaded = null; // Callback when a chunk is loaded
+        this.onChunkUnloaded = null; // Callback when a chunk is unloaded
         
         // Probe system: foreknowledge of distant terrain
         this._lastProbeRequest = 0;
@@ -143,11 +144,24 @@ class TerrainSystem {
             this._lastProbeRequest = now;
             const response = await fetch(`/api/terrain/probe?x=${px}&z=${pz}&radius=48&profile=textured`);
             if (response.ok) {
-                const data = await response.json();
-                console.log(`[Terrain] Probe placed at (${px}, ${pz}) height=${data.height.toFixed(2)}`);
+                await response.json();
             }
         } catch (err) {
             // Silently ignore probe failures — non-critical
+        }
+    }
+
+    setChunkSize(size) {
+        const clamped = Math.max(8, Math.floor(size));
+        if (clamped === this.chunkSize) return;
+        console.log(`[Terrain] chunkSize changed ${this.chunkSize} -> ${clamped}`);
+        this.chunkSize = clamped;
+        this.loadDistance = Math.max(2, Math.round(96 / clamped));
+        this.chunks.clear();
+        this.loadingChunks.clear();
+        this.lastCameraChunk = { x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY };
+        if (this._lastCameraPos) {
+            this.updateStreaming(this._lastCameraPos);
         }
     }
 
@@ -218,8 +232,13 @@ class TerrainSystem {
     
     unloadChunk(chunkKey) {
         const chunk = this.chunks.get(chunkKey);
-        if (chunk) {
-            this.chunks.delete(chunkKey);
+        if (!chunk) return;
+
+        this.chunks.delete(chunkKey);
+
+        if (typeof this.onChunkUnloaded === 'function') {
+            const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+            this.onChunkUnloaded(chunkX, chunkZ);
         }
     }
     

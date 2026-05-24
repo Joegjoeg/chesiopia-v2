@@ -299,7 +299,7 @@ class MemoryProfiler {
             this._prevCounts[key] = curr;
         }
         if (changes.length) {
-            console.log(`[MemoryProfiler Δ] ${changes.join(' | ')}`);
+            // console.log(`[MemoryProfiler Δ] ${changes.join(' | ')}`);
         }
     }
 
@@ -462,7 +462,7 @@ class MemoryProfiler {
 
     _setupHotkey() {
         document.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'm' && !e.target.matches('input, textarea')) {
+            if (e.key && e.key.toLowerCase() === 'm' && !e.target.matches('input, textarea')) {
                 this.toggle();
             }
         });

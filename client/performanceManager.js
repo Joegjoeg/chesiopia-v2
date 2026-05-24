@@ -168,23 +168,19 @@ class PerformanceManager {
             console.log(`[PerformanceManager] Pixel ratio: ${settings.pixelRatio}`);
         }
         
-        // Fog distance (affects draw distance)
-        if (game.boardSystem && game.boardSystem.scene && game.boardSystem.scene.fog) {
-            game.boardSystem.scene.fog.far = settings.fogDistance;
+        // Distance scaling via DistanceManager (single source of truth)
+        const perfScale = [0.25, 0.45, 0.65, 0.85, 1.0][this.qualityLevel] || 1.0;
+        if (game.distanceManager) {
+            game.distanceManager.setPerformanceScale(perfScale);
         }
-        
-        // Tree distance
-        if (game.treeSystem) {
-            game.treeSystem.maxRenderDistance = settings.treeDistance;
-            // Update LOD
-            if (game.treeSystem.setLodLevel) {
-                game.treeSystem.setLodLevel(settings.treeLod);
+
+        // Tree quality knobs
+        const treeManager = game.hybridTreeManager;
+        if (treeManager) {
+            if (typeof treeManager.setLodLevel === 'function') {
+                treeManager.setLodLevel(settings.treeLod);
             }
-        }
-        
-        // Tree animation frequency
-        if (game.treeSystem) {
-            game.treeSystem.animationEnabled = settings.treeAnimation;
+            treeManager.animationEnabled = settings.treeAnimation;
         }
         
         // Particle limits
@@ -198,10 +194,7 @@ class PerformanceManager {
             game.decorativeVisuals.maxBirds = settings.birdCount;
         }
         
-        // Shadow quality
-        if (game.shadowSystem && game.shadowSystem.setQuality) {
-            game.shadowSystem.setQuality(settings.shadowQuality);
-        }
+        // Shadow quality (handled via directional lights; baked shadows disabled)
         
         this.appliedSettings = settings;
     }

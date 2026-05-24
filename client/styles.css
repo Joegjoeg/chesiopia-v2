@@ -39,7 +39,7 @@ body {
 .minimap-overlay {
     position: absolute;
     bottom: 24px;
-    right: 24px;
+    left: 24px;
     width: 220px;
     padding: 10px;
     border-radius: 14px;
@@ -95,6 +95,33 @@ body {
 
 .minimap-btn:active {
     transform: translateY(1px);
+}
+
+.minimap-weather-check {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+    cursor: pointer;
+    user-select: none;
+    margin-left: 2px;
+}
+
+.minimap-weather-check input[type="checkbox"] {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    accent-color: #e94560;
+    margin: 0;
+}
+
+.minimap-weather-check span {
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    min-width: 10px;
+    text-align: center;
 }
 
 .ui-panel {
@@ -346,6 +373,184 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+/* Navi cursor */
+body.navi-cursor-active,
+body.navi-cursor-active * {
+    cursor: none !important;
+}
+
+#naviCursor {
+    --cursor-x: -9999px;
+    --cursor-y: -9999px;
+    --cursor-scale: 1;
+    --cursor-drown-x: 0px;
+    --cursor-drown-y: 0px;
+    --cursor-drown-scale: 1;
+    --cursor-idle-x: 0px;
+    --cursor-idle-y: 0px;
+    --cursor-idle-scale: 1;
+    --cursor-idle-rotate: 0deg;
+    --cursor-trail-angle: 180deg;
+    --cursor-trail-scale-x: 0;
+    --cursor-trail-scale-y: 0;
+    --cursor-trail-opacity: 0;
+    --wing-angle: 30deg;
+    --cursor-wing-scale: 1;
+    --cursor-wing-opacity: 0.75;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 42px;
+    height: 42px;
+    margin-left: -21px;
+    margin-top: -21px;
+    pointer-events: none;
+    z-index: 100000;
+    opacity: 0;
+    transform: translate3d(calc(var(--cursor-x) + var(--cursor-drown-x) + var(--cursor-idle-x)), calc(var(--cursor-y) + var(--cursor-drown-y) + var(--cursor-idle-y)), 0) scale(calc(var(--cursor-scale) * var(--cursor-drown-scale) * var(--cursor-idle-scale))) rotateZ(var(--cursor-idle-rotate));
+    transition: opacity 180ms ease-out, filter 220ms ease-out;
+    filter: drop-shadow(0 0 8px rgba(120, 255, 255, 0.85)) drop-shadow(0 0 20px rgba(60, 146, 255, 0.6));
+    mix-blend-mode: screen;
+}
+
+body.navi-cursor-active #naviCursor.is-visible {
+    opacity: 1;
+}
+
+#naviCursor .navi-cursor-core {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    position: relative;
+    background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95) 0%, rgba(213, 255, 255, 0.95) 25%, rgba(146, 224, 255, 0.8) 55%, rgba(94, 178, 255, 0.45) 80%, rgba(94, 178, 255, 0) 100%);
+    box-shadow: 0 0 18px rgba(146, 224, 255, 0.85);
+    animation: naviCorePulse 2s ease-in-out infinite;
+}
+
+#naviCursor .navi-cursor-core::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
+    filter: blur(2px);
+    animation: naviSparkle 1.3s ease-in-out infinite;
+}
+
+#naviCursor .navi-cursor-wing {
+    position: absolute;
+    width: 14px;
+    height: 32px;
+    top: -6px;
+    background: radial-gradient(ellipse at 50% 15%, rgba(206, 248, 255, 0.95), rgba(206, 248, 255, 0));
+    opacity: var(--cursor-wing-opacity, 0.75);
+    filter: blur(0.4px);
+    border-radius: 50% 50% 55% 55% / 70% 70% 40% 40%;
+}
+
+#naviCursor .navi-cursor-wing.is-left {
+    left: -6px;
+    transform-origin: 90% 100%;
+    transform: rotate(calc(-1 * var(--wing-angle, 30deg))) scale(var(--cursor-wing-scale, 1));
+}
+
+#naviCursor .navi-cursor-wing.is-right {
+    right: -6px;
+    transform-origin: 10% 100%;
+    transform: rotate(var(--wing-angle, 30deg)) scale(var(--cursor-wing-scale, 1));
+}
+
+#naviCursor .navi-cursor-trail {
+    position: absolute;
+    width: 140px;
+    height: 54px;
+    top: 50%;
+    left: 50%;
+    transform: translate(0, -50%) rotate(var(--cursor-trail-angle)) scale(var(--cursor-trail-scale-x), var(--cursor-trail-scale-y));
+    transform-origin: 0% 50%;
+    background: radial-gradient(ellipse at 100% 50%, rgba(130, 225, 255, 0.55), rgba(130, 225, 255, 0));
+    filter: blur(12px);
+    opacity: var(--cursor-trail-opacity);
+    transition: opacity 140ms ease-out, transform 120ms ease-out;
+}
+
+
+#naviCursor.is-active .navi-cursor-core {
+    animation-duration: 1.4s;
+    box-shadow: 0 0 22px rgba(255, 255, 255, 0.9);
+}
+
+#naviCursor.is-interactive .navi-cursor-core {
+    animation-duration: 1.2s;
+    box-shadow: 0 0 26px rgba(173, 255, 255, 0.95);
+}
+
+#naviCursor.is-interactive .navi-cursor-wing {
+    opacity: 0.9;
+}
+
+#naviCursor.is-drowning .navi-cursor-core {
+    animation: naviCorePulse 0.6s ease-in-out infinite;
+    filter: brightness(0.6) saturate(1.4);
+}
+
+#naviCursor.is-drowning .navi-cursor-wing {
+    opacity: 0.4;
+    filter: blur(1.2px);
+}
+
+/* Force instant transition disable (used when surfacing to sync with splash) */
+#naviCursor.no-transition,
+#naviCursor.no-transition::before {
+    transition: none !important;
+}
+
+/* Submerged underwater state */
+#naviCursor.is-submerged {
+    opacity: var(--cursor-submerged-opacity, 0.5);
+    filter: drop-shadow(0 0 6px rgba(80, 180, 255, 0.4)) drop-shadow(0 0 12px rgba(40, 100, 200, 0.3)) brightness(var(--cursor-submerged-brightness, 0.55)) sepia(var(--cursor-submerged-sepia, 0.45)) hue-rotate(var(--cursor-submerged-hue, 155deg)) saturate(var(--cursor-submerged-sat, 1.7)) blur(var(--cursor-submerged-blur, 0.6px));
+}
+
+#naviCursor::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    right: -8px;
+    bottom: -8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, rgba(0, 120, 200, 0.25) 0%, rgba(0, 90, 170, 0.45) 50%, rgba(0, 60, 140, 0.55) 100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms ease-out;
+    z-index: 1;
+}
+
+#naviCursor.is-submerged::before {
+    opacity: var(--cursor-submerged-overlay, 1);
+}
+
+@keyframes naviCorePulse {
+    0%, 100% { transform: scale(0.96); }
+    50% { transform: scale(1.07); }
+}
+
+@keyframes naviSparkle {
+    0%, 100% { opacity: 0.9; }
+    50% { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #naviCursor {
+        transition: opacity 0.1s linear;
+    }
+    #naviCursor .navi-cursor-core,
+    #naviCursor .navi-cursor-core::after,
+    #naviCursor .navi-cursor-wing {
+        animation: none;
+    }
 }
 
 /* Responsive design */

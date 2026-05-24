@@ -11,6 +11,11 @@ const TerrainGenerator = require('./terrain');
 const AuthManager = require('./auth');
 const EmailService = require('./emailService');
 const { EnvironmentalSimulation } = require('./environmentalSimulation');
+const SettlementGenerator = require('./server/settlementGenerator');
+const SettlementTomeManager = require('./server/settlementTomeManager');
+const settlementData = require('./client/settlementData');
+const { SETTLEMENT_TYPES, generateSettlementName } = settlementData;
+const ClimateInference = require('./climateInference');
 
 class ChessopiaServer {
     constructor() {
@@ -28,6 +33,10 @@ class ChessopiaServer {
         this.terrainGenerator.generateTrees(50); // Generate trees for consistent blocking
         this.gameState = new GameState(this.terrainGenerator);
         this.moveValidator = new MoveValidator();
+
+        this.settlementGenerator = null;
+        this.tomeManager = null;
+        this._tomeTickInterval = null;
         
         // Auth system
         this.emailService = new EmailService();
@@ -42,8 +51,18 @@ class ChessopiaServer {
         // World storage
         this.worldDataPath = path.join(__dirname, 'world-data-v2.json');
         this.parameterDefaultsPath = path.join(__dirname, 'parameter-defaults.json');
+        this.terrainShaderPath = path.join(__dirname, 'terrain-shader-config.json');
+        this.materialsDir = path.join(__dirname, 'data', 'materials');
+        this.materialMappingsPath = path.join(__dirname, 'data', 'material-mappings.json');
         this.worldSeed = null;
-        this.terrainCache = new Map(); // Cache terrain chunks in memory
+        this.terrainCache = new Map(); // Cache terrain chunks in memory (fallback for clients without clientId)
+
+        // Per-client terrain generation: each client can have different orbit scales
+        // and therefore sees different terrain. Each client gets their own generator
+        // instance (sharing trees/rivers) and their own chunk cache.
+        this.clientTerrainGenerators = new Map(); // clientId -> TerrainGenerator
+        this.clientTerrainCaches = new Map();     // clientId -> Map(chunkKey -> chunkData)
+        this.clientOrbitScales = new Map();       // clientId -> {sunScale, moonScale}
         
         // Game time tracker (server-side authoritative time)
         // epoch: real-world timestamp representing game time = 0
@@ -64,51 +83,106 @@ class ChessopiaServer {
         // Error forwarding system
         this.setupErrorInterceptor();
         
-        // Initialize auth (async)
-        this.authManager.init().catch(err => console.error('[Server] Auth init error:', err));
-        
+        this.climateInference = new ClimateInference();
+        this.envSimulation = null;
+
         this.setupMiddleware();
         this.setupRoutes();
         this.setupSocketHandlers();
         this.initializeWorld();
-        this.envSimulation = null;
+    }
+
+    /**
+     * Get or create a per-client TerrainGenerator.
+     * Each client sees their own terrain based on their orbit scales,
+     * but shares trees, rivers, and settlement modifications with the base world.
+     */
+    getClientTerrainGenerator(clientId) {
+        if (!clientId) {
+            if (this.envSimulation && this.climateInference) {
+                this.terrainGenerator.setClimateMemory(this.envSimulation, this.climateInference);
+            }
+            return { generator: this.terrainGenerator, cache: this.terrainCache };
+        }
+
+        if (this.clientTerrainGenerators.has(clientId)) {
+            const generator = this.clientTerrainGenerators.get(clientId);
+            if (this.envSimulation && this.climateInference) {
+                generator.setClimateMemory(this.envSimulation, this.climateInference);
+            }
+            return { generator, cache: this.clientTerrainCaches.get(clientId) };
+        }
+
+        // Create a new generator for this client, sharing immutable world state
+        const gen = new TerrainGenerator();
+        gen.setSeed(this.worldSeed);
+        gen.trees = this.terrainGenerator.trees;
+        gen.rivers = this.terrainGenerator.rivers;
+        gen.heightModifications = this.terrainGenerator.heightModifications;
+        gen.planetMapping = this.terrainGenerator.planetMapping;
+
+        // Apply this client's orbit scales if they've set any
+        const scales = this.clientOrbitScales.get(clientId);
+        if (scales) {
+            gen.setOrbitHeightScales(scales.sunScale, scales.moonScale);
+        }
+
+        const cache = new Map();
+        this.clientTerrainGenerators.set(clientId, gen);
+        this.clientTerrainCaches.set(clientId, cache);
+
+        if (this.envSimulation && this.climateInference) {
+            gen.setClimateMemory(this.envSimulation, this.climateInference);
+        }
+
+        console.log(`[Server] Created per-client terrain generator for clientId=${clientId}`);
+        return { generator: gen, cache };
     }
     
     // Setup error interceptor to forward server errors to clients
     setupErrorInterceptor() {
         // Override console.error to catch and forward errors
-        const originalConsoleError = console.error;
-        const originalConsoleLog = console.log;
-        
+        this._originalConsoleError = console.error;
+        this._originalConsoleLog = console.log;
+
         console.error = (...args) => {
             // Call original console.error
-            originalConsoleError.apply(console, args);
-            
+            this._originalConsoleError.apply(console, args);
+
             // Forward error to clients
             const errorMessage = args.join(' ');
             this.forwardErrorToClient('error', errorMessage);
         };
-        
+
         // Also catch uncaught exceptions
         process.on('uncaughtException', (error) => {
-            originalConsoleError('Uncaught Exception:', error);
+            this._originalConsoleError('Uncaught Exception:', error);
             this.forwardErrorToClient('uncaught', error.message + '\n' + error.stack);
         });
-        
+
         process.on('unhandledRejection', (reason, promise) => {
-            originalConsoleError('Unhandled Rejection at:', promise, 'reason:', reason);
+            this._originalConsoleError('Unhandled Rejection at:', promise, 'reason:', reason);
             this.forwardErrorToClient('rejection', `Unhandled rejection: ${reason}`);
         });
     }
-    
+
     // Forward error to all connected clients
     forwardErrorToClient(type, message) {
-        console.log(`[Server] Forwarding ${type} error to clients:`, message);
-        this.io.emit('server-error', {
-            type: type,
-            message: message,
-            timestamp: new Date().toISOString()
-        });
+        if (this._originalConsoleLog) {
+            this._originalConsoleLog(`[Server] Forwarding ${type} error to clients:`, message);
+        }
+        if (!this.io) return;
+        try {
+            this.io.emit('server-error', {
+                type: type,
+                message: message,
+                timestamp: new Date().toISOString()
+            });
+        } catch (emitErr) {
+            if (this._originalConsoleError) {
+                this._originalConsoleError('[Server] Failed to emit server-error:', emitErr);
+            }
+        }
     }
     
     // General method to broadcast any game state change to all clients
@@ -178,6 +252,7 @@ class ChessopiaServer {
         this.app.use('/models', express.static(path.join(__dirname, 'models')));
         this.app.use('/Models', express.static(path.join(__dirname, 'Models')));
         this.app.use('/Images', express.static(path.join(__dirname, 'Images')));
+        this.app.use('/test-tools', express.static(path.join(__dirname, 'test-tools')));
 
         // Shared modules available to client
         this.app.get('/moveValidator.js', (req, res) => {
@@ -200,8 +275,10 @@ class ChessopiaServer {
         
         this.app.get('/api/terrain/:x/:y', (req, res) => {
             const { x, y } = req.params;
-            const height = this.terrainGenerator.getHeight(parseInt(x), parseInt(y));
-            const isBlocked = this.terrainGenerator.isTileBlocked(parseInt(x), parseInt(y));
+            const clientId = req.query.clientId || null;
+            const { generator } = this.getClientTerrainGenerator(clientId);
+            const height = generator.getHeight(parseInt(x), parseInt(y));
+            const isBlocked = generator.isTileBlocked(parseInt(x), parseInt(y));
             res.json({ height, isBlocked });
         });
         
@@ -238,56 +315,44 @@ class ChessopiaServer {
         this.app.get('/api/terrain/chunk/:chunkX/:chunkZ', (req, res) => {
             const { chunkX, chunkZ } = req.params;
             const chunkKey = `${chunkX},${chunkZ}`;
-            console.log(`[Server] Chunk request received: (${chunkX}, ${chunkZ})`);
+            const clientId = req.query.clientId || null;
+            const { generator, cache } = this.getClientTerrainGenerator(clientId);
+            console.log(`[Server] Chunk request received: (${chunkX}, ${chunkZ}) clientId=${clientId || 'default'}`);
             
-            // Check cache first
-            if (this.terrainCache.has(chunkKey)) {
-                console.log(`[Server] Chunk ${chunkKey} found in cache`);
-                return res.json(this.terrainCache.get(chunkKey));
+            // Check cache first (per-client cache)
+            if (cache.has(chunkKey)) {
+                console.log(`[Server] Chunk ${chunkKey} found in cache for clientId=${clientId || 'default'}`);
+                return res.json(cache.get(chunkKey));
             }
             
-            // Update celestial angles before generation (snapshot current time)
-            const elapsed = Date.now() - this.epoch;
-            const dayLength = this.dayLength || 60000;
-            const sunAngle = (elapsed / dayLength) * 2 * Math.PI - Math.PI / 2;
-            const moonPeriod = 28 * dayLength;
-            const moonAngle = ((elapsed % moonPeriod) / moonPeriod) * 2 * Math.PI - Math.PI / 2;
-            this.terrainGenerator.setCelestialAngles(sunAngle, moonAngle);
-
             // Generate chunk on-demand
             const cX = parseInt(chunkX);
             const cZ = parseInt(chunkZ);
-            const chunkData = this.terrainGenerator.getChunkData(cX, cZ);
+
+            if (this.envSimulation) {
+                const centerX = cX * 16 + 8;
+                const centerZ = cZ * 16 + 8;
+                this.envSimulation.updateFocalPoint(centerX, centerZ, clientId || `chunk:${chunkKey}`);
+            }
+            const chunkData = generator.getChunkData(cX, cZ);
             
             // Blend edges with adjacent cached chunks for smooth boundaries
             const chunkSize = 16;
             const neighbors = {
-                north: this.terrainCache.get(`${cX},${cZ - 1}`) || null,
-                south: this.terrainCache.get(`${cX},${cZ + 1}`) || null,
-                west:  this.terrainCache.get(`${cX - 1},${cZ}`) || null,
-                east:  this.terrainCache.get(`${cX + 1},${cZ}`) || null,
+                north: cache.get(`${cX},${cZ - 1}`) || null,
+                south: cache.get(`${cX},${cZ + 1}`) || null,
+                west:  cache.get(`${cX - 1},${cZ}`) || null,
+                east:  cache.get(`${cX + 1},${cZ}`) || null,
             };
             if (neighbors.north || neighbors.south || neighbors.west || neighbors.east) {
-                this.terrainGenerator.blendChunkEdges(chunkData, cX, cZ, chunkSize, neighbors);
+                generator.blendChunkEdges(chunkData, cX, cZ, chunkSize, neighbors);
                 console.log(`[Server] Blended chunk edges for (${cX}, ${cZ}) with cached neighbors`);
             }
             
-            // Inject environmental simulation fields into chunk tiles
-            if (this.envSimulation) {
-                for (const tile of chunkData) {
-                    const field = this.envSimulation.envFields.get(`${tile.x},${tile.z}`);
-                    if (field) {
-                        tile.pressure = field.pressure;
-                        tile.moisture = field.humidity;
-                        tile.temperature = field.temperature;
-                    }
-                }
-            }
+            console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${cX}, ${cZ}) clientId=${clientId || 'default'}`);
 
-            console.log(`[Server] Generated chunk data with ${chunkData.length} tiles for (${cX}, ${cZ})`);
-
-            // Cache the chunk
-            this.terrainCache.set(chunkKey, chunkData);
+            // Cache the chunk (per-client cache)
+            cache.set(chunkKey, chunkData);
 
             res.json(chunkData);
         });
@@ -298,24 +363,127 @@ class ChessopiaServer {
             const z = parseFloat(req.query.z);
             const radius = parseFloat(req.query.radius) || 48;
             const profile = req.query.profile || 'smooth';
-
+            const clientId = req.query.clientId || null;
+            
             if (isNaN(x) || isNaN(z)) {
                 return res.status(400).json({ error: 'x and z query params required' });
             }
 
-            // Update celestial angles before probe generation
-            const elapsed = Date.now() - this.epoch;
-            const dayLength = this.dayLength || 60000;
-            const sunAngle = (elapsed / dayLength) * 2 * Math.PI - Math.PI / 2;
-            const moonPeriod = 28 * dayLength;
-            const moonAngle = ((elapsed % moonPeriod) / moonPeriod) * 2 * Math.PI - Math.PI / 2;
-            this.terrainGenerator.setCelestialAngles(sunAngle, moonAngle);
+            const { generator } = this.getClientTerrainGenerator(clientId);
+            if (this.envSimulation) {
+                this.envSimulation.updateFocalPoint(x, z, clientId || 'probe');
+            }
 
-            const height = this.terrainGenerator.registerProbe(x, z, { radius, profile });
-            console.log(`[Server] Probe registered at (${x}, ${z}) height=${height.toFixed(2)} radius=${radius} profile=${profile}`);
+            const height = generator.registerProbe(x, z, { radius, profile });
+            console.log(`[Server] Probe registered at (${x}, ${z}) height=${height.toFixed(2)} radius=${radius} profile=${profile} clientId=${clientId || 'default'}`);
             res.json({ x, z, height, radius, profile });
         });
-        
+
+        // Endpoint for adjusting orbit height influence (dev control)
+        this.app.post('/api/terrain/orbit-height-scale', (req, res) => {
+            console.warn('[Server] /api/terrain/orbit-height-scale is deprecated under climate-driven terrain');
+            const clampScale = (value) => {
+                if (value === undefined || value === null) return undefined;
+                const num = Number(value);
+                if (!Number.isFinite(num)) return undefined;
+                return Math.max(0, Math.min(4, num));
+            };
+
+            const sunScale = clampScale(req.body?.sunScale);
+            const moonScale = clampScale(req.body?.moonScale);
+            const clientId = req.body?.clientId || null;
+
+            if (sunScale === undefined && moonScale === undefined) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'sunScale or moonScale must be provided'
+                });
+            }
+
+            // Determine target: per-client or global fallback
+            let nextSun, nextMoon;
+            if (clientId) {
+                // Per-client: store scales and update client's generator
+                const current = this.clientOrbitScales.get(clientId);
+                nextSun = sunScale ?? current?.sunScale ?? 1;
+                nextMoon = moonScale ?? current?.moonScale ?? 1;
+                this.clientOrbitScales.set(clientId, { sunScale: nextSun, moonScale: nextMoon });
+
+                // Update the client's generator if it already exists
+                if (this.clientTerrainGenerators.has(clientId)) {
+                    this.clientTerrainGenerators.get(clientId).setOrbitHeightScales(nextSun, nextMoon);
+                }
+
+                console.log(`[Server] Orbit height scales updated for clientId=${clientId}: sun=${nextSun}, moon=${nextMoon}`);
+            } else {
+                // Global fallback: update base generator (for clients without clientId)
+                const current = this.terrainGenerator.celestialPendulum;
+                nextSun = sunScale ?? current.sunHeightScale ?? 1;
+                nextMoon = moonScale ?? current.moonHeightScale ?? 1;
+                this.terrainGenerator.setOrbitHeightScales(nextSun, nextMoon);
+                console.log(`[Server] Global orbit height scales updated: sun=${nextSun}, moon=${nextMoon}`);
+            }
+
+            // NOTE: We intentionally do NOT clear any caches here.
+            // The user wants already-explored terrain to remain as-is;
+            // only newly-generated chunks should use the updated scales.
+
+            res.json({
+                success: true,
+                sunScale: nextSun,
+                moonScale: nextMoon,
+                clientId: clientId || 'default'
+            });
+        });
+
+        this.app.post('/api/environment/radius', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            const radius = Number(req.body?.radius);
+            if (!Number.isFinite(radius) || radius < 32 || radius > 512) {
+                return res.status(400).json({ error: 'radius must be between 32 and 512' });
+            }
+            this.envSimulation.setActiveRadius(radius);
+            res.json({ success: true, radius });
+        });
+
+        this.app.post('/api/environment/agent-count', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            const count = Number(req.body?.count);
+            if (!Number.isFinite(count) || count < 20 || count > 500) {
+                return res.status(400).json({ error: 'count must be between 20 and 500' });
+            }
+            this.envSimulation.setAgentCount(count);
+            res.json({ success: true, target: this.envSimulation.agentCount, active: this.envSimulation.agents.length });
+        });
+
+        this.app.post('/api/environment/move-scale', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            const scale = Number(req.body?.scale);
+            if (!Number.isFinite(scale) || scale < 0.25 || scale > 4.0) {
+                return res.status(400).json({ error: 'scale must be between 0.25 and 4.0' });
+            }
+            this.envSimulation.setMoveScale(scale);
+            res.json({ success: true, scale: this.envSimulation.moveScale });
+        });
+
+        this.app.post('/api/environment/sample-count', (req, res) => {
+            if (!this.envSimulation) {
+                return res.status(503).json({ error: 'Environmental simulation not ready' });
+            }
+            const count = Number(req.body?.count);
+            if (!Number.isFinite(count) || count < 2 || count > 12) {
+                return res.status(400).json({ error: 'count must be between 2 and 12' });
+            }
+            this.envSimulation.setSampleCount(count);
+            res.json({ success: true, sampleCount: this.envSimulation.globalSampleCount });
+        });
+
         // Endpoint for recreating the world (dev tool)
         this.app.post('/api/world/recreate', async (req, res) => {
             console.log('[Server] World recreation requested via API');
@@ -460,6 +628,149 @@ class ChessopiaServer {
                 }
             }
         });
+
+        // Terrain shader config: save from node wrangler test tool
+        this.app.post('/api/terrain-shader', async (req, res) => {
+            console.log(`[Server] POST /api/terrain-shader from ${req.ip}`);
+            try {
+                const config = req.body;
+                await fs.writeFile(this.terrainShaderPath, JSON.stringify(config, null, 2), 'utf8');
+                console.log('[Server] Terrain shader config saved');
+                res.json({ success: true, message: 'Terrain shader config saved' });
+            } catch (error) {
+                console.error('[Server] Error saving terrain shader config:', error);
+                res.status(500).json({ error: 'Failed to save terrain shader config' });
+            }
+        });
+
+        // Terrain shader config: load in game client
+        this.app.get('/api/terrain-shader', async (req, res) => {
+            console.log(`[Server] GET /api/terrain-shader from ${req.ip}`);
+            try {
+                const data = await fs.readFile(this.terrainShaderPath, 'utf8');
+                const config = JSON.parse(data);
+                res.json(config);
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    res.status(404).json({ error: 'No terrain shader config saved yet' });
+                } else {
+                    console.error('[Server] Error loading terrain shader config:', error);
+                    res.status(500).json({ error: 'Failed to load terrain shader config' });
+                }
+            }
+        });
+
+        // ─── Material Library (Shader Node Wrangler) ─────────────────────────
+
+        // Ensure materials directory exists
+        this._ensureMaterialsDir();
+
+        // List all materials
+        this.app.get('/api/materials', async (req, res) => {
+            try {
+                const files = await fs.readdir(this.materialsDir);
+                const materials = [];
+                for (const file of files) {
+                    if (!file.endsWith('.json')) continue;
+                    const data = await fs.readFile(path.join(this.materialsDir, file), 'utf8');
+                    const mat = JSON.parse(data);
+                    materials.push({ name: mat.name, target: mat.target, modifiedAt: mat.modifiedAt });
+                }
+                res.json(materials);
+            } catch (error) {
+                console.error('[Server] Error listing materials:', error);
+                res.status(500).json({ error: 'Failed to list materials' });
+            }
+        });
+
+        // Get a specific material
+        this.app.get('/api/materials/:name', async (req, res) => {
+            const filePath = path.join(this.materialsDir, `${req.params.name}.json`);
+            try {
+                const data = await fs.readFile(filePath, 'utf8');
+                res.json(JSON.parse(data));
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    res.status(404).json({ error: 'Material not found' });
+                } else {
+                    res.status(500).json({ error: 'Failed to load material' });
+                }
+            }
+        });
+
+        // Save a material
+        this.app.post('/api/materials/:name', async (req, res) => {
+            const filePath = path.join(this.materialsDir, `${req.params.name}.json`);
+            try {
+                const config = req.body;
+                config.name = req.params.name;
+                config.modifiedAt = new Date().toISOString();
+                await fs.writeFile(filePath, JSON.stringify(config, null, 2), 'utf8');
+                console.log(`[Server] Material saved: ${req.params.name}`);
+                res.json({ success: true, message: `Material '${req.params.name}' saved` });
+            } catch (error) {
+                console.error('[Server] Error saving material:', error);
+                res.status(500).json({ error: 'Failed to save material' });
+            }
+        });
+
+        // Delete a material
+        this.app.delete('/api/materials/:name', async (req, res) => {
+            const filePath = path.join(this.materialsDir, `${req.params.name}.json`);
+            try {
+                await fs.unlink(filePath);
+                console.log(`[Server] Material deleted: ${req.params.name}`);
+                res.json({ success: true, message: `Material '${req.params.name}' deleted` });
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    res.status(404).json({ error: 'Material not found' });
+                } else {
+                    res.status(500).json({ error: 'Failed to delete material' });
+                }
+            }
+        });
+
+        // Apply material to a model
+        this.app.post('/api/materials/:name/apply', async (req, res) => {
+            const { modelId, modelType } = req.body;
+            try {
+                let mappings = {};
+                try {
+                    const data = await fs.readFile(this.materialMappingsPath, 'utf8');
+                    mappings = JSON.parse(data);
+                } catch (e) { /* no mappings yet */ }
+
+                mappings[modelId] = { material: req.params.name, modelType: modelType || 'generic' };
+                await fs.writeFile(this.materialMappingsPath, JSON.stringify(mappings, null, 2), 'utf8');
+                console.log(`[Server] Material '${req.params.name}' applied to model '${modelId}'`);
+                res.json({ success: true, message: `Material applied to ${modelId}` });
+            } catch (error) {
+                console.error('[Server] Error applying material:', error);
+                res.status(500).json({ error: 'Failed to apply material' });
+            }
+        });
+
+        // Get all model-material mappings
+        this.app.get('/api/material-mappings', async (req, res) => {
+            try {
+                const data = await fs.readFile(this.materialMappingsPath, 'utf8');
+                res.json(JSON.parse(data));
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    res.json({});
+                } else {
+                    res.status(500).json({ error: 'Failed to load mappings' });
+                }
+            }
+        });
+    }
+
+    async _ensureMaterialsDir() {
+        try {
+            await fs.mkdir(this.materialsDir, { recursive: true });
+        } catch (e) {
+            if (e.code !== 'EEXIST') console.error('[Server] Failed to create materials dir:', e);
+        }
     }
     
     setupAuthRoutes() {
@@ -494,16 +805,21 @@ class ChessopiaServer {
         
         // Login
         app.post('/api/auth/login', async (req, res) => {
-            const { email, username, identifier, password } = req.body;
-            const loginIdentifier = identifier || email || username;
-            console.log(`[Auth] Login request for ${loginIdentifier}`);
-            
-            if (!loginIdentifier || !password) {
-                return res.status(400).json({ success: false, error: 'Email/username and password required.' });
+            try {
+                const { email, username, identifier, password } = req.body;
+                const loginIdentifier = identifier || email || username;
+                console.log(`[Auth] Login request for ${loginIdentifier}`);
+
+                if (!loginIdentifier || !password) {
+                    return res.status(400).json({ success: false, error: 'Email/username and password required.' });
+                }
+
+                const result = await auth.login(loginIdentifier, password);
+                res.status(result.success ? 200 : 401).json(result);
+            } catch (error) {
+                console.error('[Auth] Login error:', error);
+                res.status(500).json({ success: false, error: 'Server error. Please try again.' });
             }
-            
-            const result = await auth.login(loginIdentifier, password);
-            res.status(result.success ? 200 : 401).json(result);
         });
         
         // Get current user
@@ -580,7 +896,16 @@ class ChessopiaServer {
                 next();
             } catch (error) {
                 console.error('[Auth] Socket auth error:', error);
-                next(new Error('Authentication error'));
+                // Fall back to guest connection on any error
+                const guestId = 'guest_' + Math.random().toString(36).substr(2, 9);
+                socket.data.user = {
+                    id: guestId,
+                    username: 'Guest',
+                    email: 'guest@local',
+                    role: 'guest'
+                };
+                console.log(`[Auth] Socket ${socket.id} auth error, connected as guest`);
+                next();
             }
         });
         
@@ -1109,6 +1434,142 @@ class ChessopiaServer {
                 console.log(`=== END CONSOLE LOGS FROM ${socket.id} ===\n`);
             });
             
+            socket.on('requestSettlements', (data) => {
+                const { x, z, radius } = data || {};
+                const cx = x || 0;
+                const cz = z || 0;
+                const r = radius || 400;
+                if (!this.settlementGenerator) {
+                    socket.emit('settlementsReceived', { villages: [] });
+                    return;
+                }
+                const villages = this.settlementGenerator.getVillagesInRadius(cx, cz, r);
+                socket.emit('settlementsReceived', { villages });
+                console.log(`[Server] Sent ${villages.length} villages to ${socket.id} in radius ${r} around (${cx}, ${cz})`);
+            });
+
+            socket.on('spawnDebugVillage', (data) => {
+                console.log(`[Server] spawnDebugVillage received from ${socket.id}:`, data);
+                try {
+                    if (!this.settlementGenerator || !this.tomeManager) {
+                        console.warn('[Server] spawnDebugVillage: settlementGenerator or tomeManager not ready');
+                        return;
+                    }
+                    const { x, z } = data || {};
+                    if (x === undefined || z === undefined) {
+                        console.warn('[Server] spawnDebugVillage: missing x or z');
+                        return;
+                    }
+
+                    console.log('[Server] Debug spawn prerequisites', {
+                        hasTerrain: !!this.terrainGenerator,
+                        hasSettlementGenerator: !!this.settlementGenerator,
+                        hasTomeManager: !!this.tomeManager,
+                        settlementCount: this.settlementGenerator.generatedVillages?.length || 0
+                    });
+
+                    const typeKey = 'village';
+                    const typeDef = SETTLEMENT_TYPES[typeKey];
+                    if (!typeDef) {
+                        console.error('[Server] spawnDebugVillage: missing typeDef for', typeKey, 'SETTLEMENT_TYPES keys:', Object.keys(SETTLEMENT_TYPES || {}));
+                        return;
+                    }
+                    const id = `settlement_debug_${Date.now()}`;
+                    const name = `Debug_${generateSettlementName()}`;
+                    const height = this.terrainGenerator.getHeight(x, z);
+
+                    const village = {
+                        id,
+                        name,
+                        type: typeKey,
+                        typeDef,
+                        x, z,
+                        height,
+                        population: 2,
+                        maxPopulation: typeDef.maxPop,
+                        foodCapacity: 4,
+                        faithCapacity: 0,
+                        buildings: [],
+                        nodes: [],
+                        villagers: [],
+                        roads: [],
+                        knight: null,
+                        age: 0,
+                        state: 'founding',
+                        constructionQueue: [],
+                        completedBuildings: [],
+                        firstHouseBuilt: false,
+                        greenBuilt: false,
+                        _seedOffset: Date.now() % 100000
+                    };
+
+                    this.settlementGenerator.generatedVillages.push(village);
+                    this.tomeManager.initializeTome(village);
+
+                    // Broadcast the new village to all connected clients
+                    console.log('[Server] Broadcasting settlementsReceived for new debug village');
+                    this.io.emit('settlementsReceived', { villages: [village] });
+                    console.log(`[Server] Debug village "${name}" spawned at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+                } catch (err) {
+                    console.error('[Server] spawnDebugVillage ERROR:', err);
+                }
+            });
+
+            socket.on('terrainModified', (data) => {
+                if (!data || !data.chunks) return;
+                for (const chunk of data.chunks) {
+                    this.terrainGenerator.applyHeightDeltas(chunk.key, chunk.deltas);
+                }
+                socket.broadcast.emit('terrainModified', data);
+            });
+
+            socket.on('tomeMutation', (data) => {
+                const { villageId, villagerId, slotIndex, newActivity } = data || {};
+                if (!this.tomeManager || !villageId || !villagerId || slotIndex === undefined || !newActivity) return;
+                const userId = socket.data.user?.id || socket.id;
+                this.tomeManager.queueMutation(villageId, villagerId, slotIndex, newActivity, userId);
+            });
+
+            socket.on('spawnWeatherAgents', (data) => {
+                if (!this.envSimulation) return;
+                const { x = 0, z = 0, radius = 80, count = 8 } = data || {};
+                console.log(`[Server] spawnWeatherAgents called at (${x},${z}) radius=${radius} count=${count} currentAgents=${this.envSimulation.agents.length} focal=(${this.envSimulation.focalX},${this.envSimulation.focalZ})`);
+                // Update focal point so spawned agents aren't immediately culled
+                this.envSimulation.updateFocalPoint(x, z, socket.id);
+                console.log(`[Server] After focal update: focal=(${this.envSimulation.focalX},${this.envSimulation.focalZ}) focals=${this.envSimulation._clientFocals.size}`);
+                const { PressureAgent, AGENT_TYPE } = require('./environmentalSimulation.js');
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * radius;
+                    const ax = x + Math.cos(angle) * dist;
+                    const az = z + Math.sin(angle) * dist;
+                    const type = i % 2 === 0 ? AGENT_TYPE.PRESSURE : AGENT_TYPE.MOISTURE;
+                    const seed = Math.floor(Math.random() * 1000000);
+                    const agent = new PressureAgent(ax, az, type, seed);
+                    agent.state.pressure = i % 2 === 0 ? 0.8 : 0.2;
+                    agent.strength = 1.0;
+                    this.envSimulation.agents.push(agent);
+                }
+                console.log(`[Server] Spawned ${count} weather agents near (${x},${z}), total: ${this.envSimulation.agents.length}`);
+                this.io.emit('envAgents', this.envSimulation.getAgentPositions());
+            });
+
+            socket.on('clearWeatherAgents', () => {
+                if (!this.envSimulation) return;
+                this.envSimulation.agents = [];
+                console.log('[Server] Cleared all weather agents');
+                this.io.emit('envAgents', []);
+            });
+
+            socket.on('requestTomeUpdate', (data) => {
+                const { villageId } = data || {};
+                if (!this.tomeManager || !villageId) return;
+                const delta = this.tomeManager.getTomeDelta(villageId, -1);
+                if (delta) {
+                    socket.emit('tomeUpdate', delta);
+                }
+            });
+
             // Handle disconnection
             socket.on('disconnect', () => {
                 const user = socket.data.user;
@@ -1139,9 +1600,24 @@ class ChessopiaServer {
             
             // Initialize terrain generator with seed
             this.terrainGenerator.setSeed(this.worldSeed);
+        if (this.envSimulation && this.climateInference) {
+            this.terrainGenerator.setClimateMemory(this.envSimulation, this.climateInference);
+        }
             
             // Generate rivers (carve channels into terrain)
             this.terrainGenerator.generateRivers(80);
+
+            // Generate settlements deterministically from seed
+            this.settlementGenerator = new SettlementGenerator(this.terrainGenerator, this.worldSeed);
+            // Auto-generation disabled: villages are only spawned manually via spawnDebugVillage
+            // this.settlementGenerator.generateAllVillages();
+
+            // Initialize tome manager with generated villages
+            this.tomeManager = new SettlementTomeManager(this.settlementGenerator, this);
+            this.tomeManager.init();
+
+            // Start the 03:00 daily tome resolution tick
+            this.startTomeTick();
             
             // Initialize empty world data structure
             this.worldData = {
@@ -1176,7 +1652,52 @@ class ChessopiaServer {
                 }
             };
             this.chunkCache = new Map();
+
+            this.settlementGenerator = new SettlementGenerator(this.terrainGenerator, this.worldSeed);
+            // Auto-generation disabled: villages are only spawned manually via spawnDebugVillage
+            // this.settlementGenerator.generateAllVillages();
+            this.tomeManager = new SettlementTomeManager(this.settlementGenerator, this);
+            this.tomeManager.init();
+            this.startTomeTick();
         }
+    }
+
+    startTomeTick() {
+        if (this._tomeTickInterval) return;
+        const dayLength = this.dayLength || 60000;
+        const tickOffsetMs = dayLength * (3 / 24);
+        const checkIntervalMs = 1000;
+
+        this._tomeTickInterval = setInterval(() => {
+            if (!this.tomeManager) return;
+            const now = Date.now();
+            const elapsed = now - this.epoch;
+            const dayProgress = (elapsed % dayLength) / dayLength;
+            if (dayProgress >= (3 / 24) && dayProgress < (3 / 24) + (checkIntervalMs / dayLength)) {
+                const currentDay = Math.floor(elapsed / dayLength);
+                if (this._lastTomeBroadcastDay === currentDay) return;
+                this._lastTomeBroadcastDay = currentDay;
+                this.tomeManager.resolveDailyTick();
+                const tomeState = this.tomeManager.getFullTomeState(
+                    this.settlementGenerator.generatedVillages.map(v => v.id)
+                );
+                for (const [villageId, delta] of Object.entries(tomeState)) {
+                    this.io.emit('tomeUpdate', delta);
+                }
+                // Also broadcast updated blueprints so clients see new buildings immediately
+                this.io.emit('settlementsReceived', { villages: this.settlementGenerator.generatedVillages });
+            }
+        }, checkIntervalMs);
+
+        console.log(`[Server] Tome tick started (03:00 game-time, every ${dayLength}ms real)`);
+    }
+
+    stopTomeTick() {
+        if (this._tomeTickInterval) {
+            clearInterval(this._tomeTickInterval);
+            this._tomeTickInterval = null;
+        }
+        this._lastTomeBroadcastDay = -1;
     }
     
     async loadWorldData() {
@@ -1241,6 +1762,13 @@ class ChessopiaServer {
         this.terrainGenerator.probes.clear();
         this.terrainGenerator.trees.clear();
 
+        // Also clear all per-client generators and caches since the world seed changed
+        const clientGenCount = this.clientTerrainGenerators.size;
+        this.clientTerrainGenerators.clear();
+        this.clientTerrainCaches.clear();
+        // Keep clientOrbitScales so clients retain their preferences across world regens
+        console.log(`[Server] Cleared ${clientGenCount} per-client terrain generators due to world regeneration`);
+
         // Regenerate biome-aware trees for the new seed
         this.terrainGenerator.generateTrees(50);
         
@@ -1256,6 +1784,14 @@ class ChessopiaServer {
             }
         };
         
+        // Generate settlements for the new world
+        this.settlementGenerator = new SettlementGenerator(this.terrainGenerator, this.worldSeed);
+        // Auto-generation disabled: villages are only spawned manually via spawnDebugVillage
+        // this.settlementGenerator.generateAllVillages();
+        this.tomeManager = new SettlementTomeManager(this.settlementGenerator, this);
+        this.tomeManager.init();
+        this.startTomeTick();
+
         // Save the seed for persistence
         await this.saveWorldData();
         
@@ -1415,8 +1951,16 @@ class ChessopiaServer {
         console.log('  Press Ctrl+C to quit');
     }
 
-    start(port = 3000) {
+    async start(port = 3000) {
         console.log(`[Server] Chessopia server starting on port ${port}`);
+
+        // Wait for auth manager to initialize before accepting connections
+        await this.authManager.init();
+
+        this.server.on('error', (err) => {
+            console.error(`[Server] Failed to start: ${err.message}`);
+            process.exit(1);
+        });
         this.server.listen(port, () => {
             console.log(`[Server] Server listening on port ${port}`);
             // Enable console debugging commands
@@ -1426,7 +1970,9 @@ class ChessopiaServer {
             this.startTimeSync();
 
             // Start environmental simulation
-            this.startEnvSimulation();
+            this.startEnvSimulation().catch(err => {
+                console.error('[Server] Failed to start environmental simulation:', err);
+            });
             
             // Test console forwarding after 5 seconds
             setTimeout(() => {
@@ -1495,27 +2041,56 @@ class ChessopiaServer {
         }, 5000);
     }
 
-    startEnvSimulation() {
+    async _getInitialAgentCount() {
+        try {
+            const data = await fs.readFile(this.parameterDefaultsPath, 'utf8');
+            const defaults = JSON.parse(data);
+            const count = Number(defaults?.climateAgentCount);
+            if (Number.isFinite(count)) {
+                return Math.max(0, Math.min(500, Math.round(count)));
+            }
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.warn('[Server] Failed to read parameter defaults for agent count:', error.message || error);
+            }
+        }
+        return null;
+    }
+
+    async startEnvSimulation() {
         console.log('[Server] Starting environmental simulation...');
+        const savedAgentCount = await this._getInitialAgentCount();
+        const initialAgentCount = savedAgentCount ?? 200;
+        if (savedAgentCount !== null) {
+            console.log(`[Server] Using saved climateAgentCount=${initialAgentCount}`);
+        }
         this.envSimulation = new EnvironmentalSimulation(this.terrainGenerator, {
-            agentCount: 30,
+            agentCount: initialAgentCount,
             tickIntervalMs: 2000,
-            bounds: { minX: -100, maxX: 100, minZ: -100, maxZ: 100 },
+            activeRadius: 128,
             seed: this.worldSeed || 42
         });
         this.envSimulation.init();
         this.envSimulation.start();
 
+        // Ensure terrain generators read climate memory
+        this.terrainGenerator.setClimateMemory(this.envSimulation, this.climateInference);
+        for (const gen of this.clientTerrainGenerators.values()) {
+            gen.setClimateMemory(this.envSimulation, this.climateInference);
+        }
+
         // Tick loop
         this.envSimInterval = setInterval(() => {
             this.envSimulation.tick();
+            this.io.emit('envAgents', this.envSimulation.getAgentPositions());
         }, this.envSimulation.tickIntervalMs);
 
-        // Broadcast env fields to all clients every 3 seconds
-        this.envBroadcastInterval = setInterval(() => {
-            const avg = this.envSimulation.getAverageFieldInRegion(-50, -50, 50, 50);
-            this.io.emit('envFields', avg);
-        }, 3000);
+        // Broadcast agent positions every 5 seconds for minimap weather overlay
+        this.envAgentBroadcastInterval = setInterval(() => {
+            if (this.envSimulation) {
+                this.io.emit('envAgents', this.envSimulation.getAgentPositions());
+            }
+        }, 5000);
 
         console.log('[Server] Environmental simulation started');
     }
@@ -1523,4 +2098,7 @@ class ChessopiaServer {
 
     // ... (rest of the code remains the same)
 const server = new ChessopiaServer();
-server.start();
+server.start().catch(err => {
+    console.error('[Server] Failed to start:', err);
+    process.exit(1);
+});

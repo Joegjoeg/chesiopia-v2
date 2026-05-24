@@ -22,6 +22,9 @@ class ParameterSystem {
         this.installed = new Set();
         this.listeners = new Set();
         this._taaWarningShown = false;
+        this._orbitScaleSyncHandle = null;
+        this._debug = false;  // Set true for verbose parameter logging
+        this._warnedUnknowns = new Set(); // One-time unknown param warnings
 
         this._registerAll();
         console.log(`[ParameterSystem] Registered ${this.params.size} parameters`);
@@ -39,7 +42,7 @@ class ParameterSystem {
     // ---------- Public API ----------
 
     setParameter(name, value, source = 'user', options = {}) {
-        console.log(`[ParameterSystem] setParameter("${name}",`, value, `, src=${source})`);
+        if (this._debug) console.log(`[ParameterSystem] setParameter("${name}",`, value, `, src=${source})`);
         const p = this.params.get(name);
         if (!p) {
             console.warn(`[ParameterSystem] Unknown parameter: ${name}`);
@@ -47,7 +50,7 @@ class ParameterSystem {
         }
 
         const coerced = this._coerce(p, value, options.clamp !== false);
-        console.log(`[ParameterSystem] "${name}" coerced:`, value, '->', coerced);
+        if (this._debug) console.log(`[ParameterSystem] "${name}" coerced:`, value, '->', coerced);
         if (coerced === undefined) {
             console.warn(`[ParameterSystem] "${name}" coercion returned undefined`);
             return false;
@@ -62,12 +65,12 @@ class ParameterSystem {
         }
 
         const sys = this._getSystem();
-        console.log(`[ParameterSystem] "${name}" applying to sys=`, !!sys);
+        if (this._debug) console.log(`[ParameterSystem] "${name}" applying to sys=`, !!sys);
         this._apply(name, p, sys, /*forceThroughGate=*/true);
         this._updateUI(name, value);
         this._emit(name, value, p);
 
-        console.log(`[ParameterSystem] ${name} = ${value} (src=${source}, override=${p.userOverridden})`);
+        if (this._debug) console.log(`[ParameterSystem] ${name} = ${value} (src=${source}, override=${p.userOverridden})`);
         return true;
     }
 
@@ -143,17 +146,16 @@ class ParameterSystem {
         reg('waterLevel', {
             category: 'terrain', type: 'number', default: -1.5, min: -10, max: 10, step: 0.1,
             description: 'Water surface Y position',
-            gate: { targetOf: sys => sys, prop: 'waterLevel' }
-        });
-        reg('waveHeight', {
-            category: 'terrain', type: 'number', default: 1.0, min: 0.0, max: 5.0, step: 0.05,
-            description: 'Master wave height multiplier',
-            shortLabel: 'Wave Height',
-            apply: (v, sys) => {
-                const tbs = sys.textureBlendingSystem;
-                if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uWaveHeight) {
-                    tbs.shaderMaterial.uniforms.uWaveHeight.value = v;
+            gate: { targetOf: sys => sys, prop: 'waterLevel' },
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (!rt || !rt.waterMesh) return;
+                const waterY = v + rt.waterOffset;
+                const waterPos = rt.waterMesh.geometry.attributes.position.array;
+                for (let i = 1; i < waterPos.length; i += 3) {
+                    waterPos[i] = waterY;
                 }
+                rt.waterMesh.geometry.attributes.position.needsUpdate = true;
             }
         });
         reg('tideAmplitude', {
@@ -174,9 +176,18 @@ class ParameterSystem {
             gate: { targetOf: sys => sys, prop: 'beachWidth' }
         });
         reg('chunkSize', {
-            category: 'terrain', type: 'number', default: 16, min: 4, max: 32, step: 1,
-            description: 'Chunk size (regen)',
-            gate: { targetOf: sys => sys, prop: 'chunkSize' }
+            category: 'terrain', type: 'number', default: 32, min: 8, max: 64, step: 1,
+            description: 'Terrain chunk size (affects streaming cadence)',
+            apply: (value) => {
+                const game = window.game;
+                if (game && game.terrainSystem && typeof game.terrainSystem.setChunkSize === 'function') {
+                    game.terrainSystem.setChunkSize(value);
+                }
+                const board = window.boardSystem;
+                if (board) {
+                    board.chunkSize = value;
+                }
+            }
         });
         reg('meshMultiplier', {
             category: 'terrain', type: 'number', default: 24, min: 4, max: 72, step: 1,
@@ -217,6 +228,371 @@ class ParameterSystem {
                 }
             }
         });
+        reg('terrainSunOrbitScale', {
+            category: 'terrain', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.05,
+            description: 'Multiplier for the primary orbit height influence (sun) when generating terrain',
+            shortLabel: 'Sun Orbit',
+            apply: () => {
+                this._queueOrbitHeightScaleSync();
+            }
+        });
+        reg('terrainMoonOrbitScale', {
+            category: 'terrain', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.05,
+            description: 'Multiplier for the secondary orbit height influence (moon) when generating terrain',
+            shortLabel: 'Moon Orbit',
+            apply: () => {
+                this._queueOrbitHeightScaleSync();
+            }
+        });
+
+        // --- Water plane ---
+        const _getWaterMesh = () => {
+            const bs = window.boardSystem;
+            return bs && bs.rollingTerrain ? bs.rollingTerrain.waterMesh : null;
+        };
+        const _getRollingTerrain = () => {
+            const bs = window.boardSystem;
+            return bs ? bs.rollingTerrain : null;
+        };
+        reg('waterVisible', {
+            category: 'water', type: 'boolean', default: true,
+            description: 'Show terrain-following water plane',
+            shortLabel: 'Visible',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm) wm.visible = v;
+            }
+        });
+        reg('waterOpacity', {
+            category: 'water', type: 'number', default: 0.45, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Water plane opacity',
+            shortLabel: 'Opacity',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uOpacity.value = v;
+            }
+        });
+        reg('waterOffset', {
+            category: 'water', type: 'number', default: 0.03, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Height offset above terrain surface',
+            shortLabel: 'Offset',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (!rt) return;
+                rt.waterOffset = v;
+                const waterPos = rt.waterMesh.geometry.attributes.position.array;
+                const pos = rt.geometry.attributes.position.array;
+                waterPos.set(pos); // copy X/Z from terrain
+                const waterLevel = rt.board.tidalWaterLevel ?? rt.board.waterLevel ?? -1.5;
+                const waterY = waterLevel + v;
+                for (let i = 1; i < waterPos.length; i += 3) {
+                    waterPos[i] = waterY;
+                }
+                rt.waterMesh.geometry.attributes.position.needsUpdate = true;
+            }
+        });
+        reg('waterRoughness', {
+            category: 'water', type: 'number', default: 0.05, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Water surface roughness',
+            shortLabel: 'Roughness',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uRoughness.value = v;
+            }
+        });
+        reg('waterMetalness', {
+            category: 'water', type: 'number', default: 0.7, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Water surface metalness',
+            shortLabel: 'Metalness',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uMetalness.value = v;
+            }
+        });
+        reg('waveEnabled', {
+            category: 'water', type: 'boolean', default: true,
+            description: 'Enable toroidal Gerstner wave animation',
+            shortLabel: 'Waves',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt) rt.waveConfig.enabled = v;
+            }
+        });
+        reg('waveAmplitude', {
+            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.05,
+            description: 'Wave height multiplier',
+            shortLabel: 'Wave Amp',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt) rt.waveConfig.amplitudeScale = v;
+            }
+        });
+        reg('waveSpeed', {
+            category: 'water', type: 'number', default: 1.5, min: 0.0, max: 3.0, step: 0.1,
+            description: 'Wave animation speed',
+            shortLabel: 'Wave Speed',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt) rt.waveConfig.speed = v;
+            }
+        });
+        reg('waveSteepness', {
+            category: 'water', type: 'number', default: 0.3, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Wave crest sharpness (0 = smooth, 1 = sharp)',
+            shortLabel: 'Steepness',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt) rt.waveConfig.steepness = v;
+            }
+        });
+        reg('waveTexScale', {
+            category: 'water', type: 'number', default: 1.0, min: 0.1, max: 3.0, step: 0.1,
+            description: 'Wave texture spatial frequency multiplier',
+            shortLabel: 'Freq Scale',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (rt && rt.waveConfig) rt.waveConfig.freqScale = v;
+                if (rt && rt.waterUniforms) rt.waterUniforms.uWaveTexScale.value = v;
+            }
+        });
+        reg('waveTexSpeed', {
+            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
+            description: 'Wave texture animation speed multiplier',
+            shortLabel: 'Speed Scale',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (rt && rt.waveConfig) rt.waveConfig.speedScale = v;
+                if (rt && rt.waterUniforms) rt.waterUniforms.uWaveTexSpeed.value = v;
+            }
+        });
+        reg('waveTexNormal', {
+            category: 'water', type: 'number', default: 0.35, min: 0.0, max: 1.0, step: 0.05,
+            description: 'How much the procedural waves perturb surface normals',
+            shortLabel: 'Tex Normal',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveNormalStr.value = v;
+            }
+        });
+        reg('waveWindFactor', {
+            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.1,
+            description: 'How much wind affects both geometry and texture wave speed',
+            shortLabel: 'Wind Factor',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt) rt.windSpeed = v;
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWindSpeed.value = v;
+            }
+        });
+        reg('waterWindDirX', {
+            category: 'water', type: 'number', default: 1.0, min: -1.0, max: 1.0, step: 0.05,
+            description: 'Wind direction X component (affects procedural wave flow)',
+            shortLabel: 'Wind Dir X',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt && rt.windDir) rt.windDir.x = v;
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms && wm.material.uniforms.uWindDir) wm.material.uniforms.uWindDir.value.x = v;
+            }
+        });
+        reg('waterWindDirZ', {
+            category: 'water', type: 'number', default: 0.0, min: -1.0, max: 1.0, step: 0.05,
+            description: 'Wind direction Z component (affects procedural wave flow)',
+            shortLabel: 'Wind Dir Z',
+            apply: (v) => {
+                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                if (rt && rt.windDir) rt.windDir.y = v;
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms && wm.material.uniforms.uWindDir) wm.material.uniforms.uWindDir.value.y = v;
+            }
+        });
+        reg('waterColor', {
+            category: 'water', type: 'color', default: '#3388cc',
+            description: 'Base water colour',
+            shortLabel: 'Water Colour',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms && wm.material.uniforms.uWaterColor) {
+                    wm.material.uniforms.uWaterColor.value.set(v);
+                }
+            }
+        });
+        reg('shoreLagTime', {
+            category: 'water', type: 'number', default: 8.0, min: 0.5, max: 30.0, step: 0.5,
+            description: 'Seconds for shore wet line to catch up to changing water level (higher = slower)',
+            shortLabel: 'Shore Lag',
+            apply: (v) => {
+                const board = window.boardSystem;
+                if (board) board.shoreLagTimeConstant = v;
+            }
+        });
+        reg('waterFalloffEnabled', {
+            category: 'water', type: 'boolean', default: false,
+            description: 'Enable distance-based transparency falloff',
+            shortLabel: 'Falloff',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uFalloffEnabled.value = v ? 1.0 : 0.0;
+            }
+        });
+        reg('waterFalloffDistance', {
+            category: 'water', type: 'number', default: 50.0, min: 10.0, max: 200.0, step: 5.0,
+            description: 'Distance over which water fades out',
+            shortLabel: 'Falloff Distance',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uFalloffDistance.value = v;
+            }
+        });
+        reg('waterRadius', {
+            category: 'water', type: 'number', default: 25.0, min: 5.0, max: 60.0, step: 1.0,
+            description: 'Radius of geometric water mesh around camera',
+            shortLabel: 'Radius',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (!rt) return;
+                rt.waterRadius = v;
+                // Rebuild mesh geometry with new radius
+                if (rt.waterMesh && rt.waterMesh.geometry) {
+                    const newGeo = rt._createSquareWaterMesh(rt.waterRadius, rt.waterResolution);
+                    rt.waterMesh.geometry.dispose();
+                    rt.waterMesh.geometry = newGeo;
+                    rt._waterDepths = newGeo.attributes.terrainDepth.array;
+                }
+            }
+        });
+        reg('waterFadeRadius', {
+            category: 'water', type: 'number', default: 25.0, min: 5.0, max: 60.0, step: 1.0,
+            description: 'Distance from camera where wave displacement starts fading (default matches mesh radius)',
+            shortLabel: 'Fade Radius',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (rt && rt.waterUniforms) rt.waterUniforms.uGeoRadius.value = v;
+            }
+        });
+        reg('waterGeoFadeWidth', {
+            category: 'water', type: 'number', default: 5.0, min: 0.0, max: 20.0, step: 0.5,
+            description: 'Width of geometric-to-shader water fade band',
+            shortLabel: 'Fade Width',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (rt) rt.waterGeoFadeWidth = v;
+                if (rt && rt.waterUniforms) rt.waterUniforms.uGeoFadeWidth.value = v;
+            }
+        });
+        reg('waterResolution', {
+            category: 'water', type: 'number', default: 32, min: 8, max: 64, step: 1,
+            description: 'Square water mesh resolution (verts per axis)',
+            shortLabel: 'Resolution',
+            apply: (v) => {
+                const rt = _getRollingTerrain();
+                if (!rt) return;
+                rt.waterResolution = Math.max(8, Math.min(64, v));
+                // Changing resolution requires rebuilding the water mesh geometry
+                if (rt.waterMesh && rt.waterMesh.geometry) {
+                    const newGeo = rt._createSquareWaterMesh(rt.waterRadius, rt.waterResolution);
+                    rt.waterMesh.geometry.dispose();
+                    rt.waterMesh.geometry = newGeo;
+                    rt._waterDepths = newGeo.attributes.terrainDepth.array;
+                }
+            }
+        });
+        reg('waveCrestTint', {
+            category: 'water', type: 'number', default: 1.15, min: 0.5, max: 2.0, step: 0.05,
+            description: 'Brightness multiplier for wave crests',
+            shortLabel: 'Crest Tint',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveCrestTint.value = v;
+            }
+        });
+        reg('waveTroughTint', {
+            category: 'water', type: 'number', default: 0.85, min: 0.2, max: 1.5, step: 0.05,
+            description: 'Darkness multiplier for wave troughs',
+            shortLabel: 'Trough Tint',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveTroughTint.value = v;
+            }
+        });
+        reg('waveSparkle', {
+            category: 'water', type: 'number', default: 0.3, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Intensity of moving sparkle highlights on wave peaks',
+            shortLabel: 'Sparkle',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveSparkle.value = v;
+            }
+        });
+        reg('waveSpecularPower', {
+            category: 'water', type: 'number', default: 32.0, min: 1.0, max: 128.0, step: 1.0,
+            description: 'Specular highlight sharpness (Blinn-Phong exponent)',
+            shortLabel: 'Spec Power',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveSpecularPower.value = v;
+            }
+        });
+        reg('waveFresnelPower', {
+            category: 'water', type: 'number', default: 2.0, min: 0.5, max: 5.0, step: 0.1,
+            description: 'Reflection edge falloff sharpness (higher = sharper edges)',
+            shortLabel: 'Fresnel Power',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveFresnelPower.value = v;
+            }
+        });
+        reg('waveNormalEps', {
+            category: 'water', type: 'number', default: 0.05, min: 0.01, max: 0.2, step: 0.01,
+            description: 'Normal computation step size (lower = sharper, bumpier normals)',
+            shortLabel: 'Normal Eps',
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveNormalEps.value = v;
+            }
+        });
+
+        // --- Reflection ---
+        reg('reflectionEnabled', {
+            category: 'reflection', type: 'boolean', default: true,
+            description: 'Enable planar water reflections',
+            shortLabel: 'Enabled',
+            rebuildCategory: true,
+            apply: (v) => {
+                const wm = _getWaterMesh();
+                if (wm && wm.material && wm.material.uniforms) {
+                    wm.material.uniforms.uReflectionEnabled.value = v ? 1.0 : 0.0;
+                }
+            }
+        });
+        reg('reflectionResolution', {
+            category: 'reflection', type: 'number', default: 512, min: 128, max: 2048, step: 128,
+            description: 'Reflection texture resolution',
+            shortLabel: 'Resolution',
+            showIf: { param: 'reflectionEnabled', value: true }
+        });
+        reg('reflectionFresnel', {
+            category: 'reflection', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.1,
+            description: 'Fresnel blend strength',
+            shortLabel: 'Fresnel',
+            showIf: { param: 'reflectionEnabled', value: true },
+            apply: (v) => {
+                // Handled in shader uniform if we add one; placeholder for now
+            }
+        });
+        reg('reflectionDebug', {
+            category: 'reflection', type: 'boolean', default: true,
+            description: 'Show reflection debug preview canvas',
+            shortLabel: 'Debug preview',
+            showIf: { param: 'reflectionEnabled', value: true },
+            apply: (v) => {
+                const game = window.game;
+                if (game && game.waterReflectionManager) {
+                    game.waterReflectionManager.setDebugVisible(v);
+                }
+            }
+        });
 
         // --- LOD ---
         const lodApply = (idx) => (v, sys) => {
@@ -228,6 +604,35 @@ class ParameterSystem {
         reg('lodMediumDistance',  { category: 'lod', type: 'number', default: 30, min: 15, max: 45,  step: 1, description: 'Medium LOD distance',  apply: lodApply(1) });
         reg('lodLowDistance',     { category: 'lod', type: 'number', default: 45, min: 30, max: 60,  step: 1, description: 'Low LOD distance',     apply: lodApply(2) });
         reg('lodVeryLowDistance', { category: 'lod', type: 'number', default: 60, min: 45, max: 100, step: 1, description: 'Very-low LOD distance', apply: lodApply(3) });
+
+        // --- Distances (relative multipliers) ---
+        reg('distanceFogScale', {
+            category: 'distances', type: 'number', default: 1.0, min: 0.5, max: 2.0, step: 0.05,
+            description: 'Fog distance multiplier',
+            shortLabel: 'Fog Scale',
+            apply: (v) => {
+                const dm = window.game && window.game.distanceManager;
+                if (dm) dm.setUserMultiplier('fog', v);
+            }
+        });
+        reg('distanceTreeScale', {
+            category: 'distances', type: 'number', default: 1.0, min: 0.5, max: 2.0, step: 0.05,
+            description: 'Tree draw distance multiplier',
+            shortLabel: 'Tree Scale',
+            apply: (v) => {
+                const dm = window.game && window.game.distanceManager;
+                if (dm) dm.setUserMultiplier('tree', v);
+            }
+        });
+        reg('distanceLODScale', {
+            category: 'distances', type: 'number', default: 1.0, min: 0.5, max: 2.0, step: 0.05,
+            description: 'Terrain LOD distance multiplier',
+            shortLabel: 'LOD Scale',
+            apply: (v) => {
+                const dm = window.game && window.game.distanceManager;
+                if (dm) dm.setUserMultiplier('lod', v);
+            }
+        });
 
         // --- Planet ---
         reg('planetSphereRadius', {
@@ -260,12 +665,11 @@ class ParameterSystem {
             apply: (v, sys) => {
                 const tbs = sys.textureBlendingSystem;
                 if (!tbs) return;
+                tbs.deformStartHeight = v;
                 if (typeof tbs.setDeformStartHeight === 'function') {
                     tbs.setDeformStartHeight(v);
                 } else if (tbs.shaderMaterial?.uniforms?.uDeformStartHeight) {
                     tbs.shaderMaterial.uniforms.uDeformStartHeight.value = v;
-                } else {
-                    tbs.deformStartHeight = v;
                 }
             }
         });
@@ -276,12 +680,11 @@ class ParameterSystem {
             apply: (v, sys) => {
                 const tbs = sys.textureBlendingSystem;
                 if (!tbs) return;
+                tbs.deformEndHeight = v;
                 if (typeof tbs.setDeformEndHeight === 'function') {
                     tbs.setDeformEndHeight(v);
                 } else if (tbs.shaderMaterial?.uniforms?.uDeformEndHeight) {
                     tbs.shaderMaterial.uniforms.uDeformEndHeight.value = v;
-                } else {
-                    tbs.deformEndHeight = v;
                 }
             }
         });
@@ -307,8 +710,11 @@ class ParameterSystem {
             category: 'planet', type: 'boolean', default: false,
             description: 'Force spherical',
             apply: (v, sys) => {
-                if (sys.textureBlendingSystem && sys.textureBlendingSystem.shaderMaterial) {
-                    sys.textureBlendingSystem.shaderMaterial.uniforms.uDebugForceSpherical.value = v ? 1.0 : 0.0;
+                if (sys.textureBlendingSystem) {
+                    sys.textureBlendingSystem.debugForceSpherical = v;
+                    if (sys.textureBlendingSystem.shaderMaterial) {
+                        sys.textureBlendingSystem.shaderMaterial.uniforms.uDebugForceSpherical.value = v ? 1.0 : 0.0;
+                    }
                 }
             }
         });
@@ -365,6 +771,49 @@ class ParameterSystem {
             description: 'Ambient color',
             apply: (v, sys) => { if (sys.ambientLight) sys.ambientLight.color.set(v); },
             colorGate: sys => sys.ambientLight && sys.ambientLight.color
+        });
+        // --- Spotlight ---
+        reg('spotlightEnabled', {
+            category: 'spotlight', type: 'boolean', default: true,
+            description: 'Enable mouse spotlight',
+            shortLabel: 'Enabled',
+            apply: (v) => { const g = window.game; if (g && g.spotLight) g.spotLight.visible = v; }
+        });
+        reg('spotlightType', {
+            category: 'spotlight', type: 'select', default: 'SpotLight',
+            description: 'Mouse light type',
+            options: [
+                { value: 'SpotLight', label: 'Spot' },
+                { value: 'PointLight', label: 'Point' },
+                { value: 'DirectionalLight', label: 'Directional' }
+            ],
+            apply: (v) => { const g = window.game; if (g && g.recreateMouseLight) g.recreateMouseLight(v); }
+        });
+        reg('spotlightHeight', {
+            category: 'spotlight', type: 'number', default: 25, min: 5, max: 100, step: 1,
+            description: 'Height above mouse position',
+            apply: (v) => { const g = window.game; if (g && g.spotLight) g.spotLight.position.y = v; }
+        });
+        reg('spotlightIntensity', {
+            category: 'spotlight', type: 'number', default: 0.4, min: 0, max: 5, step: 0.05,
+            description: 'Mouse light brightness',
+            apply: (v) => { const g = window.game; if (g && g.spotLight) g.spotLight.intensity = v; }
+        });
+        reg('spotlightAngle', {
+            category: 'spotlight', type: 'number', default: 0.19635, min: 0.05, max: 1.5708, step: 0.05,
+            description: 'Spotlight cone angle (radians)',
+            apply: (v) => { const g = window.game; if (g && g.spotLight && g.spotLight.angle !== undefined) g.spotLight.angle = v; }
+        });
+        reg('spotlightColor', {
+            category: 'spotlight', type: 'color', default: '#ffffff',
+            description: 'Mouse light color',
+            apply: (v) => { const g = window.game; if (g && g.spotLight) g.spotLight.color.set(v); },
+            colorGate: () => { const g = window.game; return g && g.spotLight && g.spotLight.color; }
+        });
+        reg('spotlightHelper', {
+            category: 'spotlight', type: 'boolean', default: false,
+            description: 'Show light cone helper',
+            apply: (v) => { const g = window.game; if (g && g.spotLightHelper) g.spotLightHelper.visible = v; }
         });
 
         // --- Time ---
@@ -593,6 +1042,117 @@ class ParameterSystem {
             description: 'Fog end distance',
             gate: { targetOf: sys => sys.scene && sys.scene.fog, prop: 'far' }
         });
+        reg('fogGradientEnabled', {
+            category: 'environment', type: 'boolean', default: false,
+            description: 'Enable enhanced fog gradient (custom falloff curve)',
+            shortLabel: 'Fog Gradient',
+            rebuildCategory: true
+        });
+        reg('fogGradientExponent', {
+            category: 'environment', type: 'number', default: 2.0, min: 0.5, max: 5.0, step: 0.1,
+            description: 'Fog falloff curve exponent (1=linear, >1=exponential)',
+            shortLabel: 'Fog Exp',
+            showIf: { param: 'fogGradientEnabled', value: true }
+        });
+        reg('fogGradientBias', {
+            category: 'environment', type: 'number', default: 0.0, min: -0.5, max: 0.5, step: 0.05,
+            description: 'Fog distance bias (-0.5=nearer, 0.5=farther)',
+            shortLabel: 'Fog Bias',
+            showIf: { param: 'fogGradientEnabled', value: true }
+        });
+        reg('fogDensity', {
+            category: 'environment', type: 'number', default: 1.0, min: 0.1, max: 3.0, step: 0.1,
+            description: 'Global fog density multiplier',
+            shortLabel: 'Fog Density'
+        });
+        reg('fogColorBandCount', {
+            category: 'environment', type: 'number', default: 2, min: 2, max: 5, step: 1,
+            description: 'Number of fog gradient color bands',
+            shortLabel: 'Color Bands',
+            showIf: { param: 'fogGradientEnabled', value: true }
+        });
+        const fogColorApply = (index) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs?.shaderMaterial?.uniforms?.uFogColors?.value?.[index]) {
+                tbs.shaderMaterial.uniforms.uFogColors.value[index].set(v);
+            }
+        };
+        const fogStopApply = (index) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs?.shaderMaterial?.uniforms?.uFogStops?.value?.[index] !== undefined) {
+                tbs.shaderMaterial.uniforms.uFogStops.value[index] = v;
+            }
+        };
+        reg('fogColor1', {
+            category: 'environment', type: 'color', default: '#808080',
+            description: 'Fog color at near distance (band 1)',
+            shortLabel: 'Near Color',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogColorApply(0)
+        });
+        reg('fogColorStop1', {
+            category: 'environment', type: 'number', default: 0.0, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Normalized stop position for near color',
+            shortLabel: 'Near Stop',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogStopApply(0)
+        });
+        reg('fogColor2', {
+            category: 'environment', type: 'color', default: '#606060',
+            description: 'Fog color band 2',
+            shortLabel: 'Color 2',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogColorApply(1)
+        });
+        reg('fogColorStop2', {
+            category: 'environment', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Normalized stop position for color band 2',
+            shortLabel: 'Stop 2',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogStopApply(1)
+        });
+        reg('fogColor3', {
+            category: 'environment', type: 'color', default: '#404040',
+            description: 'Fog color band 3',
+            shortLabel: 'Color 3',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogColorApply(2)
+        });
+        reg('fogColorStop3', {
+            category: 'environment', type: 'number', default: 0.66, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Normalized stop position for color band 3',
+            shortLabel: 'Stop 3',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogStopApply(2)
+        });
+        reg('fogColor4', {
+            category: 'environment', type: 'color', default: '#303030',
+            description: 'Fog color band 4',
+            shortLabel: 'Color 4',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogColorApply(3)
+        });
+        reg('fogColorStop4', {
+            category: 'environment', type: 'number', default: 0.83, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Normalized stop position for color band 4',
+            shortLabel: 'Stop 4',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogStopApply(3)
+        });
+        reg('fogColor5', {
+            category: 'environment', type: 'color', default: '#202020',
+            description: 'Fog color band 5 (far)',
+            shortLabel: 'Color 5',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogColorApply(4)
+        });
+        reg('fogColorStop5', {
+            category: 'environment', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.01,
+            description: 'Normalized stop position for far color',
+            shortLabel: 'Far Stop',
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: fogStopApply(4)
+        });
         reg('daisiesEnabled', {
             category: 'environment', type: 'boolean', default: false,
             description: 'Show daisies',
@@ -610,248 +1170,6 @@ class ParameterSystem {
                     }
                 }
             }
-        });
-
-        // --- Water Shader System ---
-        const waterUniformApply = (uniformName) => (v, sys) => {
-            const tbs = sys.textureBlendingSystem;
-            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
-                tbs.shaderMaterial.uniforms[uniformName].value = v;
-            }
-        };
-        reg('waterType', {
-            category: 'water', type: 'select', default: 'shaderOnly',
-            description: 'Water rendering mode',
-            shortLabel: 'Water Type',
-            rebuildCategory: true,
-            options: [
-                { value: 'shaderOnly', label: 'Shader Only' },
-                { value: 'flatBed', label: 'Flat Lake Bed' },
-                { value: 'lakeBed', label: 'Lake Bed Sim' }
-            ],
-            apply: (v, sys) => {
-                if (typeof sys.setFlatWaterEnabled === 'function') {
-                    sys.setFlatWaterEnabled(v === 'flatBed' || v === 'lakeBed');
-                }
-            }
-        });
-        reg('flatBedDepth', {
-            category: 'water', type: 'number', default: 0.5, min: 0.0, max: 3.0, step: 0.1,
-            description: 'How far below water level the flat bed sits',
-            shortLabel: 'Bed Depth',
-            showIf: { param: 'waterType', value: ['flatBed', 'lakeBed'] },
-            apply: waterUniformApply('uFlatBedDepth')
-        });
-        reg('lakeBedBlend', {
-            category: 'water', type: 'number', default: 0.5, min: 0.0, max: 1.0, step: 0.05,
-            description: 'How much the darkened lake bed shows through (0 = original terrain, 1 = full lake bed)',
-            shortLabel: 'Lake Bed',
-            showIf: { param: 'waterType', value: 'lakeBed' },
-            apply: waterUniformApply('uLakeBedBlend')
-        });
-        reg('lakeSurfaceOpacity', {
-            category: 'water', type: 'number', default: 0.8, min: 0.0, max: 1.0, step: 0.05,
-            description: 'How opaque the water surface is over the lake bed (0 = fully transparent, 1 = opaque water)',
-            shortLabel: 'Surface Opacity',
-            showIf: { param: 'waterType', value: 'lakeBed' },
-            apply: waterUniformApply('uLakeSurfaceOpacity')
-        });
-        reg('waterShaderEnabled', {
-            category: 'water', type: 'boolean', default: true,
-            description: 'Enable water rendering in terrain shader',
-            shortLabel: 'Water Shader',
-            apply: waterUniformApply('uWaterEnabled')
-        });
-        reg('debugWaterState', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Debug: show water state (land/shallow/deep)',
-            apply: waterUniformApply('uDebugWaterState')
-        });
-        reg('debugRadialUp', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Debug: show radial up vectors',
-            apply: waterUniformApply('uDebugRadialUp')
-        });
-        reg('debugWaveNormals', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Debug: show wave normal map',
-            apply: waterUniformApply('uDebugWaveNormals')
-        });
-        reg('debugFresnel', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Debug: show fresnel mask',
-            apply: waterUniformApply('uDebugFresnel')
-        });
-        reg('debugFoam', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Debug: show foam mask',
-            apply: waterUniformApply('uDebugFoam')
-        });
-        reg('shallowThreshold', {
-            category: 'water', type: 'number', default: 1.5, min: 0.1, max: 5.0, step: 0.1,
-            description: 'Shallow water depth threshold',
-            apply: waterUniformApply('uShallowThreshold')
-        });
-        reg('foamIntensity', {
-            category: 'water', type: 'number', default: 0.6, min: 0.0, max: 2.0, step: 0.05,
-            description: 'Shoreline foam intensity',
-            apply: waterUniformApply('uFoamIntensity')
-        });
-        reg('waveScale', {
-            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.05,
-            description: 'Master wave size multiplier',
-            shortLabel: 'Wave Scale',
-            apply: waterUniformApply('uWaveScale')
-        });
-        reg('waveAmplitudeSwell', {
-            category: 'water', type: 'number', default: 3.0, min: 0.0, max: 8.0, step: 0.1,
-            description: 'Large swell wave amplitude',
-            apply: waterUniformApply('uWaveAmplitudeSwell')
-        });
-        reg('waveAmplitudeWind', {
-            category: 'water', type: 'number', default: 1.5, min: 0.0, max: 5.0, step: 0.05,
-            description: 'Wind wave amplitude',
-            apply: waterUniformApply('uWaveAmplitudeWind')
-        });
-        reg('waveAmplitudeRipple', {
-            category: 'water', type: 'number', default: 0.6, min: 0.0, max: 2.0, step: 0.05,
-            description: 'Small ripple amplitude',
-            apply: waterUniformApply('uWaveAmplitudeRipple')
-        });
-        reg('waterDepthMax', {
-            category: 'water', type: 'number', default: 15.0, min: 1.0, max: 50.0, step: 0.5,
-            description: 'Maximum water depth for colour absorption',
-            apply: waterUniformApply('uWaterDepthMax')
-        });
-        reg('waveSwellSpeed', {
-            category: 'water', type: 'number', default: 1.5, min: 0.0, max: 5.0, step: 0.1,
-            description: 'Large swell wave animation speed',
-            shortLabel: 'Swell Speed',
-            apply: waterUniformApply('uWaveSwellSpeed')
-        });
-        reg('waterDetailScale', {
-            category: 'water', type: 'number', default: 1.0, min: 0.05, max: 20.0, step: 0.05,
-            description: 'Master water scale (lower = smaller condensed waves like a pond, higher = larger ocean waves)',
-            shortLabel: 'Detail Scale',
-            apply: waterUniformApply('uWaterDetailScale')
-        });
-        reg('waveWindSpeed', {
-            category: 'water', type: 'number', default: 3.5, min: 0.0, max: 10.0, step: 0.1,
-            description: 'Medium wind wave animation speed',
-            shortLabel: 'Wind Speed',
-            apply: waterUniformApply('uWaveWindSpeed')
-        });
-        reg('waveRippleSpeed', {
-            category: 'water', type: 'number', default: 8.0, min: 0.0, max: 20.0, step: 0.5,
-            description: 'Small ripple animation speed',
-            shortLabel: 'Ripple Speed',
-            apply: waterUniformApply('uWaveRippleSpeed')
-        });
-        reg('waveSwellFreq', {
-            category: 'water', type: 'number', default: 1.0, min: 0.1, max: 5.0, step: 0.1,
-            description: 'Swell wavelength scale (lower = wider waves, higher = tighter waves)',
-            shortLabel: 'Swell Freq',
-            apply: waterUniformApply('uWaveSwellFreq')
-        });
-        reg('waveWindFreq', {
-            category: 'water', type: 'number', default: 1.0, min: 0.1, max: 5.0, step: 0.1,
-            description: 'Wind wave wavelength scale (lower = wider waves, higher = tighter waves)',
-            shortLabel: 'Wind Freq',
-            apply: waterUniformApply('uWaveWindFreq')
-        });
-        reg('waveRippleFreq', {
-            category: 'water', type: 'number', default: 1.0, min: 0.1, max: 5.0, step: 0.1,
-            description: 'Ripple wavelength scale (lower = wider waves, higher = tighter waves)',
-            shortLabel: 'Ripple Freq',
-            apply: waterUniformApply('uWaveRippleFreq')
-        });
-        reg('foamSpeed', {
-            category: 'water', type: 'number', default: 1.5, min: 0.0, max: 5.0, step: 0.1,
-            description: 'Shoreline foam churn speed',
-            shortLabel: 'Foam Speed',
-            apply: waterUniformApply('uFoamSpeed')
-        });
-        reg('foamScale', {
-            category: 'water', type: 'number', default: 4.0, min: 0.5, max: 10.0, step: 0.5,
-            description: 'Foam patch size (smaller = bigger patches)',
-            shortLabel: 'Foam Scale',
-            apply: waterUniformApply('uFoamScale')
-        });
-        reg('foamDepth', {
-            category: 'water', type: 'number', default: 0.8, min: 0.1, max: 3.0, step: 0.1,
-            description: 'How far from shore foam reaches',
-            shortLabel: 'Foam Depth',
-            apply: waterUniformApply('uFoamDepth')
-        });
-        reg('foamWindSensitivity', {
-            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
-            description: 'How strongly shoreline foam drifts with the wind',
-            shortLabel: 'Foam Wind',
-            apply: waterUniformApply('uFoamWindSensitivity')
-        });
-        reg('fresnelPower', {
-            category: 'water', type: 'number', default: 5.0, min: 1.0, max: 10.0, step: 0.5,
-            description: 'Water reflectivity sharpness (lower = more mirror-like)',
-            shortLabel: 'Fresnel',
-            apply: waterUniformApply('uFresnelPower')
-        });
-        reg('deepWaterColor', {
-            category: 'water', type: 'color', default: '#1a4080',
-            description: 'Deep water colour',
-            shortLabel: 'Deep Color',
-            apply: (v, sys) => {
-                const tbs = sys.textureBlendingSystem;
-                if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uDeepWaterColor) {
-                    tbs.shaderMaterial.uniforms.uDeepWaterColor.value.set(v);
-                }
-            }
-        });
-        reg('shallowWaterColor', {
-            category: 'water', type: 'color', default: '#6699e6',
-            description: 'Shallow water colour',
-            shortLabel: 'Shallow Color',
-            apply: (v, sys) => {
-                const tbs = sys.textureBlendingSystem;
-                if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms.uShallowWaterColor) {
-                    tbs.shaderMaterial.uniforms.uShallowWaterColor.value.set(v);
-                }
-            }
-        });
-        reg('waterOpacity', {
-            category: 'water', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.05,
-            description: 'Water transparency (0 = invisible, 1 = fully opaque)',
-            shortLabel: 'Water Opacity',
-            apply: waterUniformApply('uWaterOpacity')
-        });
-        reg('skyReflection', {
-            category: 'water', type: 'number', default: 0.4, min: 0.0, max: 1.0, step: 0.05,
-            description: 'Fresnel sky reflection strength on water',
-            shortLabel: 'Sky Reflection',
-            apply: waterUniformApply('uSkyReflection')
-        });
-        reg('specularIntensity', {
-            category: 'water', type: 'number', default: 0.8, min: 0.0, max: 2.0, step: 0.05,
-            description: 'Water specular highlight intensity',
-            shortLabel: 'Specular',
-            apply: waterUniformApply('uSpecularIntensity')
-        });
-        reg('sparkleIntensity', {
-            category: 'water', type: 'number', default: 0.6, min: 0.0, max: 2.0, step: 0.05,
-            description: 'Micro-glitter sparkle brightness on water',
-            shortLabel: 'Sparkle',
-            apply: waterUniformApply('uSparkleIntensity')
-        });
-        reg('sparkleScale', {
-            category: 'water', type: 'number', default: 8.0, min: 1.0, max: 64.0, step: 1.0,
-            description: 'Sparkle point density (higher = more dense glitter)',
-            shortLabel: 'Sparkle Scale',
-            apply: waterUniformApply('uSparkleScale')
-        });
-        reg('sparkleSpeed', {
-            category: 'water', type: 'number', default: 3.0, min: 0.0, max: 10.0, step: 0.5,
-            description: 'Shimmer animation speed of sparkles',
-            shortLabel: 'Sparkle Speed',
-            apply: waterUniformApply('uSparkleSpeed')
         });
 
         // --- Grass ---
@@ -1084,7 +1402,7 @@ class ParameterSystem {
             apply: beachUniformApply('uWetFadeDelay')
         });
         reg('wetFadeSpeed', {
-            category: 'shoreline', type: 'number', default: 0.5, min: 0.0, max: 5.0, step: 0.1,
+            category: 'water', type: 'number', default: 0.5, min: 0.0, max: 5.0, step: 0.1,
             description: 'How quickly wet sand dries out above the plateau zone',
             shortLabel: 'Dry Speed',
             apply: beachUniformApply('uWetFadeSpeed')
@@ -1365,8 +1683,11 @@ class ParameterSystem {
         // --- Checkerboard ---
         const checkerboardUniformApply = (uniformName) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
-            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
-                tbs.shaderMaterial.uniforms[uniformName].value = v;
+            if (tbs) {
+                if (uniformName === 'uCheckerFadeStrength') tbs.checkerFadeStrength = v;
+                if (tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
+                    tbs.shaderMaterial.uniforms[uniformName].value = v;
+                }
             }
         };
         reg('checkerFadeStrength', {
@@ -1490,6 +1811,82 @@ class ParameterSystem {
             apply: updateTaaSetting('sharpenStrength', 'param:sharpen')
         });
 
+        // --- Flare / Lens Flare ---
+        reg('flareEnabled', {
+            category: 'flare', type: 'boolean', default: true,
+            description: 'Enable sun lens flares',
+            shortLabel: 'Enabled',
+            apply: (v, sys) => {
+                if (sys.sun && sys.sun.lensFlares) {
+                    sys.sun.lensFlares.forEach(flare => { flare.visible = v; });
+                }
+            }
+        });
+        reg('flareOpacity', {
+            category: 'flare', type: 'number', default: 0.5, min: 0.0, max: 2.0, step: 0.05,
+            description: 'Lens flare opacity multiplier',
+            shortLabel: 'Opacity',
+            apply: (v, sys) => {
+                if (sys.sun) sys.sun.flareOpacity = v;
+            }
+        });
+        reg('flareSize', {
+            category: 'flare', type: 'number', default: 1.0, min: 0.1, max: 3.0, step: 0.05,
+            description: 'Lens flare size multiplier',
+            shortLabel: 'Size',
+            apply: (v, sys) => {
+                if (sys.sun) {
+                    const base = sys.sun.baseFlareSize || (sys.sun.orbitRadius * 0.045) || 90;
+                    sys.sun.flareSize = base * v;
+                    if (sys.sun.sprite) {
+                        sys.sun.sprite.scale.set(sys.sun.flareSize * 2, sys.sun.flareSize * 2, 1);
+                    }
+                }
+            }
+        });
+        reg('flareSpread', {
+            category: 'flare', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
+            description: 'How far flares spread along the sun-camera axis',
+            shortLabel: 'Spread',
+        });
+
+        // --- Minimap ---
+        reg('minimapEdgeFade', {
+            category: 'minimap', type: 'boolean', default: true,
+            description: 'Fade minimap chunks at the edge of explored area',
+            shortLabel: 'Edge Fade',
+        });
+        reg('minimapFadeDepth', {
+            category: 'minimap', type: 'number', default: 3, min: 0, max: 8, step: 1,
+            description: 'How many chunk rings deep the edge fade goes (0 = no fade)',
+            shortLabel: 'Fade Depth',
+        });
+        reg('minimapCircularMask', {
+            category: 'minimap', type: 'boolean', default: true,
+            description: 'Apply circular soft-edge mask to the whole minimap',
+            shortLabel: 'Circular Mask',
+        });
+        reg('minimapMaskStart', {
+            category: 'minimap', type: 'number', default: 0.38, min: 0.0, max: 0.48, step: 0.01,
+            description: 'Where the circular mask fade begins (fraction of radius)',
+            shortLabel: 'Mask Start',
+        });
+        reg('minimapContourFade', {
+            category: 'minimap', type: 'boolean', default: false,
+            description: 'Fade only chunks at the actual boundary of explored area',
+            shortLabel: 'Contour Fade',
+        });
+        reg('minimapContourOpacity', {
+            category: 'minimap', type: 'number', default: 0.35, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Opacity of chunks on the very edge (interior is always 1.0)',
+            shortLabel: 'Edge Opacity',
+        });
+        reg('minimapUpdateInterval', {
+            category: 'minimap', type: 'number', default: 180, min: 16, max: 1000, step: 16,
+            description: 'Minimap redraw throttle interval in ms (lower = faster updates)',
+            shortLabel: 'Draw Speed',
+        });
+
         // --- Tree ---
         reg('treeType', {
             category: 'tree', type: 'select', default: 'none',
@@ -1531,14 +1928,13 @@ class ParameterSystem {
         });
         reg('treeSwayMult', {
             category: 'tree', type: 'number', default: 1.0, min: 0, max: 3, step: 0.1,
-            description: 'Poplar sway multiplier',
+            description: 'Tree sway multiplier',
             shortLabel: 'Sway',
             apply: (v) => {
                 const htm = window.game && window.game.hybridTreeManager;
-                console.log('[ParameterSystem.treeSwayMult] htm=', !!htm, 'poplar=', !!(htm && htm.poplarTreeSystem), 'value=', v);
                 if (!htm) return;
                 let setCount = 0;
-                const systems = [htm.poplarTreeSystem, htm.billboardTreeSystem];
+                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem];
                 systems.forEach(sys => {
                     if (!sys || !sys.parts) return;
                     sys.parts.forEach(part => {
@@ -1558,13 +1954,12 @@ class ParameterSystem {
             apply: (v) => {
                 const htm = window.game && window.game.hybridTreeManager;
                 if (!htm) return;
-                if (htm.billboardTreeSystem) {
-                    htm.billboardTreeSystem.parts.forEach(part => {
-                        if (part.mesh && part.mesh.material && part.mesh.material.uniforms && part.mesh.material.uniforms.uTreeSizeMult) {
-                            part.mesh.material.uniforms.uTreeSizeMult.value = v;
-                        }
-                    });
-                }
+                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem];
+                systems.forEach(sys => {
+                    if (sys && typeof sys.setGlobalTreeSizeMult === 'function') {
+                        sys.setGlobalTreeSizeMult(v);
+                    }
+                });
             }
         });
         reg('treeLODEnabled', {
@@ -1653,17 +2048,29 @@ class ParameterSystem {
             description: 'Mouse wheel zoom sensitivity multiplier',
             shortLabel: 'Wheel Sens'
         });
+        reg('maxCameraHeight', {
+            category: 'camera', type: 'number', default: 45, min: 20, max: 300, step: 1,
+            description: 'Maximum camera zoom distance (orbit radius)',
+            shortLabel: 'Max Height',
+            apply: (v) => {
+                const cc = window.game && window.game.cameraController;
+                if (cc) {
+                    cc.maxOrbitDistance = v;
+                    if (cc.orbitDistance > v) cc.orbitDistance = v;
+                }
+            }
+        });
         reg('isometricMode', {
             category: 'camera', type: 'boolean', default: false,
             description: 'Enable isometric camera mode',
             shortLabel: 'Isometric',
             apply: (v) => {
                 const game = window.game;
-                if (game && game.camera) {
+                if (game && game.cameraController) {
                     if (v) {
-                        game.camera.setMode('isometric');
+                        game.cameraController.setMode('isometric');
                     } else {
-                        game.camera.setMode('tactical');
+                        game.cameraController.setMode('tactical');
                     }
                 }
             }
@@ -1714,6 +2121,14 @@ class ParameterSystem {
             shortLabel: 'Fade End',
             apply: (v, sys) => {
                 if (sys.skyShaderSystem) sys.skyShaderSystem.setFadeEndHeight(v);
+            }
+        });
+        reg('skyTransparency', {
+            category: 'sky', type: 'number', default: 1.0, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Atmospheric sky transparency (0 = orbit/space, 1 = full atmosphere)',
+            shortLabel: 'Transparency',
+            apply: (v, sys) => {
+                if (sys.skyShaderSystem) sys.skyShaderSystem.setSkyTransparency(v);
             }
         });
         reg('skyStarDensity', {
@@ -1771,6 +2186,513 @@ class ParameterSystem {
                     }
                 }
             }
+        });
+
+        // --- Jesus Summon ---
+        reg('jesusLift', {
+            category: 'jesus', type: 'number', default: 4, min: 1, max: 20, step: 0.5,
+            description: 'Target lift height for Jesus summon hill',
+            shortLabel: 'Lift',
+            apply: (v) => {
+                if (window.jesusSummonSystem && typeof window.jesusSummonSystem.setTargetLift === 'function') {
+                    window.jesusSummonSystem.setTargetLift(v);
+                }
+            }
+        });
+
+        // --- Piece Model Overrides ---
+        reg('pieceModelOverrides', {
+            category: 'models', type: 'object', default: {}, persist: true,
+            description: 'GLB model overrides for chess pieces',
+            apply: (v) => {
+                if (window.game && window.game.piecesSystem) {
+                    window.game.piecesSystem.glbModelCache.clear();
+                }
+            }
+        });
+
+        // --- Navi Cursor ---
+        reg('cursorEnabled', {
+            category: 'cursor', type: 'boolean', default: true,
+            description: 'Enable custom Navi cursor',
+            shortLabel: 'Enabled',
+            apply: (v) => {
+                const cursorEl = document.getElementById('naviCursor');
+                const body = document.body;
+                if (cursorEl && body) {
+                    if (v) {
+                        body.classList.add('navi-cursor-active');
+                    } else {
+                        body.classList.remove('navi-cursor-active');
+                    }
+                }
+            }
+        });
+        reg('cursorSize', {
+            category: 'cursor', type: 'number', default: 42, min: 1, max: 80, step: 2,
+            description: 'Cursor overall size (pixels)',
+            shortLabel: 'Size',
+            apply: (v) => {
+                if (window.__naviCursor) {
+                    window.__naviCursor.baseSize = v;
+                }
+            }
+        });
+        reg('cursorWingWidth', {
+            category: 'cursor', type: 'number', default: 14, min: 5, max: 40, step: 1,
+            description: 'Wing width (pixels)',
+            shortLabel: 'Wing Width',
+            apply: (v) => {
+                const wings = document.querySelectorAll('.navi-cursor-wing');
+                wings.forEach(wing => {
+                    wing.style.width = `${v}px`;
+                });
+            }
+        });
+        reg('cursorWingHeight', {
+            category: 'cursor', type: 'number', default: 32, min: 15, max: 80, step: 2,
+            description: 'Wing height (pixels)',
+            shortLabel: 'Wing Height',
+            apply: (v) => {
+                const wings = document.querySelectorAll('.navi-cursor-wing');
+                wings.forEach(wing => {
+                    wing.style.height = `${v}px`;
+                });
+            }
+        });
+        reg('cursorWingOffset', {
+            category: 'cursor', type: 'number', default: -6, min: -20, max: 0, step: 1,
+            description: 'Wing vertical offset (pixels)',
+            shortLabel: 'Wing Offset',
+            apply: (v) => {
+                const wings = document.querySelectorAll('.navi-cursor-wing');
+                wings.forEach(wing => {
+                    wing.style.top = `${v}px`;
+                });
+            }
+        });
+        reg('cursorWingAngle', {
+            category: 'cursor', type: 'number', default: 30, min: 10, max: 60, step: 1,
+            description: 'Wing spread angle (degrees)',
+            shortLabel: 'Wing Angle',
+            apply: (v) => {
+                const leftWing = document.querySelector('.navi-cursor-wing.is-left');
+                const rightWing = document.querySelector('.navi-cursor-wing.is-right');
+                if (leftWing) leftWing.style.transform = `rotate(-${v}deg)`;
+                if (rightWing) rightWing.style.transform = `rotate(${v}deg)`;
+            }
+        });
+        reg('cursorCoreColorInner', {
+            category: 'cursor', type: 'color', default: '#ffffff',
+            description: 'Core inner color',
+            shortLabel: 'Core Inner',
+            apply: (v) => {
+                const core = document.querySelector('.navi-cursor-core');
+                if (core) {
+                    core.style.background = `radial-gradient(circle at 45% 40%, ${v} 0%, rgba(213, 255, 255, 0.95) 25%, rgba(146, 224, 255, 0.8) 55%, rgba(94, 178, 255, 0.45) 80%, rgba(94, 178, 255, 0) 100%)`;
+                }
+            }
+        });
+        reg('cursorCoreColorOuter', {
+            category: 'cursor', type: 'color', default: '#5eb2ff',
+            description: 'Core outer glow color',
+            shortLabel: 'Core Outer',
+            apply: (v) => {
+                const core = document.querySelector('.navi-cursor-core');
+                if (core) {
+                    core.style.boxShadow = `0 0 18px ${v}`;
+                }
+            }
+        });
+        reg('cursorWingColor', {
+            category: 'cursor', type: 'color', default: '#cef8ff',
+            description: 'Wing color',
+            shortLabel: 'Wing Color',
+            apply: (v) => {
+                const wings = document.querySelectorAll('.navi-cursor-wing');
+                wings.forEach(wing => {
+                    wing.style.background = `radial-gradient(ellipse at 50% 15%, ${v}, ${v}00)`;
+                });
+            }
+        });
+        reg('cursorTrailColor', {
+            category: 'cursor', type: 'color', default: '#82e1ff',
+            description: 'Trail color',
+            shortLabel: 'Trail Color',
+            apply: (v) => {
+                const trail = document.querySelector('.navi-cursor-trail');
+                if (trail) {
+                    trail.style.background = `radial-gradient(ellipse at 100% 50%, ${v}, ${v}00)`;
+                }
+            }
+        });
+        reg('cursorGlowColor', {
+            category: 'cursor', type: 'color', default: '#78ffff',
+            description: 'Cursor glow color',
+            shortLabel: 'Glow Color',
+            apply: (v) => {
+                const cursorEl = document.getElementById('naviCursor');
+                if (cursorEl) {
+                    cursorEl.style.filter = `drop-shadow(0 0 8px ${v}cc) drop-shadow(0 0 20px ${v}99)`;
+                }
+            }
+        });
+        reg('cursorPulseSpeed', {
+            category: 'cursor', type: 'number', default: 2, min: 0.5, max: 5, step: 0.1,
+            description: 'Pulse animation speed (seconds)',
+            shortLabel: 'Pulse Speed',
+            apply: (v) => {
+                const core = document.querySelector('.navi-cursor-core');
+                if (core) {
+                    core.style.animationDuration = `${v}s`;
+                }
+            }
+        });
+        reg('cursorDistanceScale', {
+            category: 'cursor', type: 'boolean', default: true,
+            description: 'Scale cursor size based on camera height',
+            shortLabel: 'Distance Scale'
+        });
+        reg('cursorDistanceNear', {
+            category: 'cursor', type: 'number', default: 12, min: 1, max: 100, step: 1,
+            description: 'Camera orbit distance where cursor stays full size',
+            shortLabel: 'Near Height'
+        });
+        reg('cursorDistanceFar', {
+            category: 'cursor', type: 'number', default: 100, min: 10, max: 500, step: 5,
+            description: 'Camera orbit distance where cursor reaches min scale',
+            shortLabel: 'Far Height'
+        });
+        reg('cursorDistanceMinScale', {
+            category: 'cursor', type: 'number', default: 0.3, min: 0.01, max: 1.0, step: 0.05,
+            description: 'Cursor scale multiplier at far distance',
+            shortLabel: 'Min Scale'
+        });
+        reg('cursorTrailScaleX', {
+            category: 'cursor', type: 'number', default: 1.25, min: 0, max: 3, step: 0.05,
+            description: 'Trail max X stretch multiplier',
+            shortLabel: 'Trail Scale X'
+        });
+        reg('cursorTrailScaleY', {
+            category: 'cursor', type: 'number', default: 0.7, min: 0, max: 3, step: 0.05,
+            description: 'Trail max Y stretch multiplier',
+            shortLabel: 'Trail Scale Y'
+        });
+        reg('cursorTrailOpacity', {
+            category: 'cursor', type: 'number', default: 1.0, min: 0, max: 2.0, step: 0.05,
+            description: 'Trail opacity multiplier',
+            shortLabel: 'Trail Opacity'
+        });
+        reg('cursorSpeedSize', {
+            category: 'cursor', type: 'number', default: 0.8, min: 0, max: 2.0, step: 0.05,
+            description: 'Cursor size boost from speed (0 = no boost)',
+            shortLabel: 'Size Over Speed'
+        });
+        reg('cursorWingSpeedScale', {
+            category: 'cursor', type: 'boolean', default: true,
+            description: 'Shrink wings when stationary and expand with speed',
+            shortLabel: 'Wing Speed Scale'
+        });
+        reg('cursorWingScaleMult', {
+            category: 'cursor', type: 'number', default: 1.5, min: 0, max: 3.0, step: 0.05,
+            description: 'Max wing scale at full speed',
+            shortLabel: 'Wing Scale'
+        });
+        reg('cursorWingOpacityMult', {
+            category: 'cursor', type: 'number', default: 1.0, min: 0, max: 2.0, step: 0.05,
+            description: 'Wing opacity multiplier',
+            shortLabel: 'Wing Opacity'
+        });
+        reg('cursorGrabDisableSpeedScale', {
+            category: 'cursor', type: 'boolean', default: true,
+            description: 'Disable cursor speed-scale growth while left-click dragging',
+            shortLabel: 'Grab: No Speed Scale'
+        });
+        reg('cursorGrabSlowFactor', {
+            category: 'cursor', type: 'number', default: 1.0, min: 0.1, max: 1.0, step: 0.05,
+            description: 'Camera pan speed multiplier while left-click dragging (lower = heavier feel)',
+            shortLabel: 'Grab: Pan Slowdown'
+        });
+        reg('cursorGrabBuzzIntensity', {
+            category: 'cursor', type: 'number', default: 1.6, min: 0.5, max: 3.0, step: 0.1,
+            description: 'Buzz volume/intensity multiplier while dragging (effort sound)',
+            shortLabel: 'Grab: Buzz Effort'
+        });
+        reg('cursorBuzzVolume', {
+            category: 'cursor', type: 'number', default: 0.12, min: 0, max: 1.0, step: 0.01,
+            description: 'Base volume of the cursor buzz sound',
+            shortLabel: 'Buzz Volume'
+        });
+        reg('cursorBuzzFadeNear', {
+            category: 'cursor', type: 'number', default: 10, min: 0, max: 50, step: 1,
+            description: 'Camera distance where buzz volume fade begins',
+            shortLabel: 'Buzz Fade Near'
+        });
+        reg('cursorBuzzFadeFar', {
+            category: 'cursor', type: 'number', default: 40, min: 10, max: 200, step: 5,
+            description: 'Camera distance where buzz reaches minimum volume',
+            shortLabel: 'Buzz Fade Far'
+        });
+        reg('cursorDragSpeedCap', {
+            category: 'cursor', type: 'number', default: 0.04, min: 0.01, max: 0.20, step: 0.01,
+            description: 'Maximum right-click drag pan speed (hard cap)',
+            shortLabel: 'Drag Speed Cap'
+        });
+        reg('cursorDragCutoffDistance', {
+            category: 'cursor', type: 'number', default: 60, min: 10, max: 300, step: 5,
+            description: 'Maximum world distance the camera can pan during a right-click drag',
+            shortLabel: 'Drag Cutoff'
+        });
+        reg('cursorIdleRadius', {
+            category: 'cursor', type: 'number', default: 18, min: 0, max: 60, step: 1,
+            description: 'Max orbit radius of idle local-space hover (px)',
+            shortLabel: 'Idle Radius'
+        });
+        reg('cursorIdleSpeed', {
+            category: 'cursor', type: 'number', default: 1.0, min: 0, max: 5, step: 0.1,
+            description: 'Speed multiplier for idle spherical flight',
+            shortLabel: 'Idle Speed'
+        });
+
+        // --- Drowning Animation Timers ---
+        reg('cursorDrownSubmergeMs', {
+            category: 'cursor', type: 'number', default: 400, min: 100, max: 2000, step: 50,
+            description: 'Drowning: time to dip under water (ms)',
+            shortLabel: 'Submerge (ms)'
+        });
+        reg('cursorDrownUnderwaterMs', {
+            category: 'cursor', type: 'number', default: 600, min: 100, max: 3000, step: 50,
+            description: 'Drowning: pause underwater before emerging (ms)',
+            shortLabel: 'Underwater (ms)'
+        });
+        reg('cursorDrownEmergeMs', {
+            category: 'cursor', type: 'number', default: 500, min: 100, max: 2000, step: 50,
+            description: 'Drowning: time to rise back to surface (ms)',
+            shortLabel: 'Emerge (ms)'
+        });
+        reg('cursorDrownFlyUpMs', {
+            category: 'cursor', type: 'number', default: 800, min: 100, max: 3000, step: 50,
+            description: 'Drowning: time to fly up above water (ms)',
+            shortLabel: 'Fly Up (ms)'
+        });
+        reg('cursorDrownShakeMs', {
+            category: 'cursor', type: 'number', default: 1200, min: 200, max: 4000, step: 100,
+            description: 'Drowning: wet-dog shake duration (ms)',
+            shortLabel: 'Shake (ms)'
+        });
+        reg('cursorDrownHarumphMs', {
+            category: 'cursor', type: 'number', default: 400, min: 100, max: 2000, step: 50,
+            description: 'Drowning: harumph TTS pause before ending (ms)',
+            shortLabel: 'Harumph (ms)'
+        });
+        reg('cursorDrownShakeAmplitude', {
+            category: 'cursor', type: 'number', default: 12, min: 2, max: 40, step: 1,
+            description: 'Drowning: max shake horizontal displacement (px)',
+            shortLabel: 'Shake Amp'
+        });
+        reg('cursorDrownShakeCycles', {
+            category: 'cursor', type: 'number', default: 4, min: 1, max: 12, step: 1,
+            description: 'Drowning: number of wet-dog shake cycles',
+            shortLabel: 'Shake Cycles'
+        });
+        reg('cursorDrownSubmergeDepth', {
+            category: 'cursor', type: 'number', default: 40, min: 10, max: 100, step: 5,
+            description: 'Drowning: how far the sprite dips (px)',
+            shortLabel: 'Dip Depth'
+        });
+        reg('cursorDrownFlyHeight', {
+            category: 'cursor', type: 'number', default: 25, min: 5, max: 80, step: 5,
+            description: 'Drowning: how high the sprite flies above water (px)',
+            shortLabel: 'Fly Height'
+        });
+
+        // --- Underwater State Visuals ---
+        reg('cursorSubmergedOpacity', {
+            category: 'cursor', type: 'number', default: 0.5, min: 0, max: 1, step: 0.05,
+            description: 'Underwater: cursor opacity while submerged',
+            shortLabel: 'Sub Opacity',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-opacity', v);
+            }
+        });
+        reg('cursorSubmergedBrightness', {
+            category: 'cursor', type: 'number', default: 0.55, min: 0.1, max: 1.5, step: 0.05,
+            description: 'Underwater: brightness filter while submerged',
+            shortLabel: 'Sub Brightness',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-brightness', v);
+            }
+        });
+        reg('cursorSubmergedSepia', {
+            category: 'cursor', type: 'number', default: 0.45, min: 0, max: 1, step: 0.05,
+            description: 'Underwater: sepia filter while submerged',
+            shortLabel: 'Sub Sepia',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-sepia', v);
+            }
+        });
+        reg('cursorSubmergedHue', {
+            category: 'cursor', type: 'number', default: 155, min: 0, max: 360, step: 5,
+            description: 'Underwater: hue-rotate angle while submerged (deg)',
+            shortLabel: 'Sub Hue',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-hue', v + 'deg');
+            }
+        });
+        reg('cursorSubmergedSat', {
+            category: 'cursor', type: 'number', default: 1.7, min: 0, max: 4, step: 0.1,
+            description: 'Underwater: saturation multiplier while submerged',
+            shortLabel: 'Sub Saturation',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-sat', v);
+            }
+        });
+        reg('cursorSubmergedBlur', {
+            category: 'cursor', type: 'number', default: 0.6, min: 0, max: 4, step: 0.1,
+            description: 'Underwater: blur amount while submerged (px)',
+            shortLabel: 'Sub Blur',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-blur', v + 'px');
+            }
+        });
+        reg('cursorSubmergedOverlay', {
+            category: 'cursor', type: 'number', default: 1, min: 0, max: 1, step: 0.05,
+            description: 'Underwater: blue water overlay opacity while submerged',
+            shortLabel: 'Sub Overlay',
+            apply: (v) => {
+                const el = document.getElementById('naviCursor');
+                if (el) el.style.setProperty('--cursor-submerged-overlay', v);
+            }
+        });
+        reg('cursorUnderwaterSpeed', {
+            category: 'cursor', type: 'number', default: 0.02, min: 0.005, max: 0.5, step: 0.005,
+            description: 'Underwater: cursor follow speed (lower = heavier feel)',
+            shortLabel: 'Underwater Speed'
+        });
+
+        // --- Weather (Minimap Overlay) ---
+        reg('weatherFrontThreshold', {
+            category: 'weather', type: 'number', default: 55, min: 20, max: 200, step: 5,
+            description: 'Distance (world units) at which opposite pressure agents deform rings and show front symbols',
+            shortLabel: 'Front Threshold'
+        });
+        reg('weatherSymbolCutoff', {
+            category: 'weather', type: 'number', default: 0.8, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Multiplier for symbol visibility gate (lower = symbols stay visible from further away)',
+            shortLabel: 'Symbol Cutoff'
+        });
+        reg('weatherRingScale', {
+            category: 'weather', type: 'number', default: 3.5, min: 1.0, max: 8.0, step: 0.5,
+            description: 'Visual scale multiplier for isobar ring radii on the minimap',
+            shortLabel: 'Ring Scale'
+        });
+        reg('weatherSpawnRadius', {
+            category: 'weather', type: 'number', default: 80, min: 10, max: 300, step: 5,
+            description: 'Radius (world units) for debug weather agent spawning around player',
+            shortLabel: 'Spawn Radius'
+        });
+        reg('weatherSpawnCount', {
+            category: 'weather', type: 'number', default: 8, min: 1, max: 30, step: 1,
+            description: 'Number of agents to spawn per debug spawn click',
+            shortLabel: 'Spawn Count'
+        });
+        reg('climateAgentCount', {
+            category: 'weather', type: 'number', default: 200, min: 0, max: 500, step: 10,
+            description: 'Target number of climate agents in the environmental simulation',
+            shortLabel: 'Agent Count',
+            apply: (value) => {
+                fetch('/api/environment/agent-count', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ count: value })
+                }).catch(() => {});
+            }
+        });
+        reg('weatherMoveScale', {
+            category: 'weather', type: 'number', default: 1.0, min: 0.25, max: 4.0, step: 0.25,
+            description: 'Multiplier for agent movement range. Higher = larger weather patterns',
+            shortLabel: 'Move Scale',
+            apply: (value) => {
+                fetch('/api/environment/move-scale', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scale: value })
+                }).catch(() => {});
+            }
+        });
+        reg('weatherSampleCount', {
+            category: 'weather', type: 'number', default: 6, min: 2, max: 12, step: 1,
+            description: 'Number of squares sampled per agent move. Lower = more directed movement',
+            shortLabel: 'Sample Count',
+            apply: (value) => {
+                fetch('/api/environment/sample-count', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ count: value })
+                }).catch(() => {});
+            }
+        });
+
+        // --- Distance Blur ---
+        const blurUniformApply = (uniformName) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
+                tbs.shaderMaterial.uniforms[uniformName].value = v;
+            }
+        };
+        reg('blurEnabled', {
+            category: 'blur', type: 'boolean', default: false,
+            description: 'Enable shader-based distance blur',
+            shortLabel: 'Blur',
+            apply: blurUniformApply('uBlurEnabled')
+        });
+        reg('blurStart', {
+            category: 'blur', type: 'number', default: 20, min: 5, max: 100, step: 1,
+            description: 'Distance where blur begins',
+            shortLabel: 'Blur Start',
+            apply: blurUniformApply('uBlurStart')
+        });
+        reg('blurEnd', {
+            category: 'blur', type: 'number', default: 60, min: 10, max: 200, step: 1,
+            description: 'Distance where blur is full strength',
+            shortLabel: 'Blur End',
+            apply: blurUniformApply('uBlurEnd')
+        });
+        reg('blurStrength', {
+            category: 'blur', type: 'number', default: 1.0, min: 0, max: 3, step: 0.1,
+            description: 'Blur desaturation / softening strength',
+            shortLabel: 'Blur Strength',
+            apply: blurUniformApply('uBlurStrength')
+        });
+        reg('mipBiasEnabled', {
+            category: 'blur', type: 'boolean', default: false,
+            description: 'Enable mipmap distance bias on textures',
+            shortLabel: 'Mip Bias',
+            apply: blurUniformApply('uMipBiasEnabled')
+        });
+        reg('mipBiasStart', {
+            category: 'blur', type: 'number', default: 15, min: 5, max: 80, step: 1,
+            description: 'Distance where mip bias begins',
+            shortLabel: 'Mip Start',
+            apply: blurUniformApply('uMipBiasStart')
+        });
+        reg('mipBiasEnd', {
+            category: 'blur', type: 'number', default: 50, min: 10, max: 150, step: 1,
+            description: 'Distance where mip bias is maximum',
+            shortLabel: 'Mip End',
+            apply: blurUniformApply('uMipBiasEnd')
+        });
+        reg('mipBiasStrength', {
+            category: 'blur', type: 'number', default: 2.0, min: 0, max: 4, step: 0.1,
+            description: 'Maximum mip level bias (higher = blurrier textures)',
+            shortLabel: 'Mip Strength',
+            apply: blurUniformApply('uMipBiasStrength')
         });
     }
 
@@ -1953,15 +2875,15 @@ class ParameterSystem {
 
         // Run user-defined apply
         if (p.apply) {
-            console.log(`[ParameterSystem] _apply("${name}") calling apply() with value=`, p.value);
+            if (this._debug) console.log(`[ParameterSystem] _apply("${name}") calling apply() with value=`, p.value);
             try {
                 p.apply(p.value, sys);
-                console.log(`[ParameterSystem] _apply("${name}") apply() succeeded`);
+                if (this._debug) console.log(`[ParameterSystem] _apply("${name}") apply() succeeded`);
             } catch (e) {
                 console.warn(`[ParameterSystem] apply ${name} failed:`, e);
             }
         } else {
-            console.log(`[ParameterSystem] _apply("${name}") has no apply callback`);
+            if (this._debug) console.log(`[ParameterSystem] _apply("${name}") has no apply callback`);
         }
 
         // For value-gated params, force the stored value to match (so reads outside the
@@ -2116,46 +3038,83 @@ class ParameterSystem {
         tryHook();
     }
 
+    _queueOrbitHeightScaleSync() {
+        if (this._orbitScaleSyncHandle) {
+            clearTimeout(this._orbitScaleSyncHandle);
+        }
+        this._orbitScaleSyncHandle = setTimeout(() => {
+            this._orbitScaleSyncHandle = null;
+            this._syncOrbitHeightScales();
+        }, 150);
+    }
+
+    _syncOrbitHeightScales() {
+        const sunScale = this.getParameter('terrainSunOrbitScale');
+        const moonScale = this.getParameter('terrainMoonOrbitScale');
+        if (sunScale === undefined && moonScale === undefined) {
+            return;
+        }
+
+        // Include the client's terrain ID so the server stores scales per-client
+        const game = window.game;
+        const clientId = (game && game.terrainSystem && game.terrainSystem.clientId) || null;
+
+        fetch('/api/terrain/orbit-height-scale', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ sunScale, moonScale, clientId })
+        }).then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        }).then(data => {
+            console.log('[ParameterSystem] Orbit height scales synced to server:', data);
+        }).catch(err => {
+            console.warn('[ParameterSystem] Failed to sync orbit height scales:', err);
+        });
+    }
+
     async _loadSavedDefaults() {
-        // 1. Try client-side default ENV first (set via DevInterface "Set Def")
+        // 1. Try server-side /api/defaults first (secure, shared across sessions)
+        if (this._debug) console.log('[ParameterSystem._loadSavedDefaults] Starting fetch of /api/defaults...');
+        try {
+            const response = await fetch('/api/defaults');
+            if (this._debug) console.log(`[ParameterSystem._loadSavedDefaults] response.ok=${response.ok}, status=${response.status}`);
+            if (response.ok) {
+                const defaults = await response.json();
+                const keys = Object.keys(defaults);
+                if (this._debug) console.log(`[ParameterSystem._loadSavedDefaults] received keys:`, keys);
+                if (keys.length > 0) {
+                    if (this._debug) console.log(`[ParameterSystem._loadSavedDefaults] Applying ${keys.length} saved default(s):`, keys.join(', '));
+                    await this._waitForSystems();
+                    this._applySavedDefaults(defaults, 'server-defaults');
+                    if (this._debug) console.log('[ParameterSystem._loadSavedDefaults] Saved defaults applied successfully');
+                    return;
+                }
+                if (this._debug) console.log('[ParameterSystem._loadSavedDefaults] empty payload — falling back');
+            } else {
+                console.warn(`[ParameterSystem._loadSavedDefaults] HTTP ${response.status} — falling back`);
+            }
+        } catch (err) {
+            console.warn('[ParameterSystem._loadSavedDefaults] Could not load server defaults:', err);
+        }
+
+        // 2. Fall back to client-side default ENV (legacy, set before server migration)
         const envRaw = localStorage.getItem('chesiopia-default-env');
         if (envRaw) {
             const envName = localStorage.getItem('chesiopia-default-env-name') || 'default-env';
-            console.log(`[ParameterSystem._loadSavedDefaults] Found localStorage default ENV: ${envName}`);
+            if (this._debug) console.log(`[ParameterSystem._loadSavedDefaults] Found localStorage default ENV: ${envName}`);
             try {
                 const envData = JSON.parse(envRaw);
                 await this._waitForSystems();
                 this._applySavedDefaults(envData, 'default-env');
-                console.log('[ParameterSystem._loadSavedDefaults] Default ENV applied successfully');
-                return;
+                if (this._debug) console.log('[ParameterSystem._loadSavedDefaults] Default ENV applied successfully');
             } catch (err) {
-                console.warn('[ParameterSystem._loadSavedDefaults] Failed to apply default ENV, falling back to server:', err);
+                console.warn('[ParameterSystem._loadSavedDefaults] Failed to apply default ENV:', err);
             }
-        }
-
-        // 2. Fall back to server-side /api/defaults
-        console.log('[ParameterSystem._loadSavedDefaults] Starting fetch of /api/defaults...');
-        try {
-            const response = await fetch('/api/defaults');
-            console.log(`[ParameterSystem._loadSavedDefaults] response.ok=${response.ok}, status=${response.status}`);
-            if (!response.ok) {
-                console.warn(`[ParameterSystem._loadSavedDefaults] HTTP ${response.status} — aborting load`);
-                return;
-            }
-            const defaults = await response.json();
-            const keys = Object.keys(defaults);
-            console.log(`[ParameterSystem._loadSavedDefaults] received keys:`, keys);
-            if (keys.length === 0) {
-                console.log('[ParameterSystem._loadSavedDefaults] empty payload — nothing to apply');
-                return;
-            }
-
-            console.log(`[ParameterSystem._loadSavedDefaults] Applying ${keys.length} saved default(s):`, keys.join(', '));
-            await this._waitForSystems();
-            this._applySavedDefaults(defaults, 'server-defaults');
-            console.log('[ParameterSystem._loadSavedDefaults] Saved defaults applied successfully');
-        } catch (err) {
-            console.warn('[ParameterSystem._loadSavedDefaults] Could not load saved defaults:', err);
         }
     }
 
@@ -2177,12 +3136,15 @@ class ParameterSystem {
             if (name === 'lightingRig') return; // handled above
             const p = this.params.get(name);
             if (!p) {
-                console.warn(`[ParameterSystem._applySavedDefaults] Saved default for unknown parameter: ${name}`);
+                if (!this._warnedUnknowns.has(name)) {
+                    this._warnedUnknowns.add(name);
+                    console.warn(`[ParameterSystem._applySavedDefaults] Saved default for unknown parameter: ${name}`);
+                }
                 return;
             }
 
             if (p.persist === false) {
-                console.log(`[ParameterSystem._applySavedDefaults] Skipping non-persistent parameter: ${name}`);
+                if (this._debug) console.log(`[ParameterSystem._applySavedDefaults] Skipping non-persistent parameter: ${name}`);
                 return;
             }
 
@@ -2190,7 +3152,7 @@ class ParameterSystem {
             // Server /api/defaults stores raw values
             let raw = defaults[name];
             let saved = (raw && typeof raw === 'object' && 'value' in raw) ? raw.value : raw;
-            console.log(`[ParameterSystem._applySavedDefaults] ${name}: stored=${saved}, type=${typeof saved}, paramType=${p.type}`);
+            if (this._debug) console.log(`[ParameterSystem._applySavedDefaults] ${name}: stored=${saved}, type=${typeof saved}, paramType=${p.type}`);
 
             // Validate type match
             if (p.type === 'number' && typeof saved !== 'number') {
@@ -2218,10 +3180,10 @@ class ParameterSystem {
             p.userOverridden = true;
             p.lastModified = Date.now();
             p.modifiedBy = sourceLabel;
-            console.log(`[ParameterSystem._applySavedDefaults] ${name}: applying value=${value}`);
+            if (this._debug) console.log(`[ParameterSystem._applySavedDefaults] ${name}: applying value=${value}`);
             this._apply(name, p, this._getSystem(), /*forceThroughGate=*/true);
             this._updateUI(name, value);
-            console.log(`[ParameterSystem._applySavedDefaults] ${name}: applied & UI updated`);
+            if (this._debug) console.log(`[ParameterSystem._applySavedDefaults] ${name}: applied & UI updated`);
         });
     }
 }
@@ -2255,16 +3217,31 @@ window.debugPersistence = () => {
     return { overrides, gated, all };
 };
 
-// Hook into game loop for wind direction gradual update
+// Wind update loop — variable rate, default ~250ms, adjustable later
+let _windUpdateIntervalMs = 250;
+let _windTimeoutId = null;
+
 const _windHook = () => {
     const ps = window.parameterSystem;
     if (ps && ps.updateWindDirection) {
-        // Approximate delta time - systems can also call directly with precise dt
-        ps.updateWindDirection(0.016);
+        ps.updateWindDirection(_windUpdateIntervalMs / 1000);
     }
-    requestAnimationFrame(_windHook);
+    _windTimeoutId = setTimeout(_windHook, _windUpdateIntervalMs);
 };
-requestAnimationFrame(_windHook);
+
+// Defer start until parameterSystem exists; don't spin at 60fps unconditionally
+const _waitForPs = () => {
+    if (window.parameterSystem) {
+        _windTimeoutId = setTimeout(_windHook, _windUpdateIntervalMs);
+    } else {
+        setTimeout(_waitForPs, 500);
+    }
+};
+_waitForPs();
+
+// Expose rate control for timed effects later
+window.setWindUpdateRate = (ms) => { _windUpdateIntervalMs = ms; };
+window.stopWindLoop = () => { if (_windTimeoutId) clearTimeout(_windTimeoutId); };
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ParameterSystem;

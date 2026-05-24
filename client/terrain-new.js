@@ -9,11 +9,17 @@ class TerrainSystem {
         this.treeSystem = treeSystem;
         this.chunks = new Map();
         this.loadingChunks = new Set(); // Track chunks currently being loaded
-        this.chunkSize = 16;
-        this.loadDistance = 6; // Expanded for wider camera cone (96 units / 16 chunk size)
+        this.chunkSize = 32;
+        this.loadDistance = 4; // Roughly equivalent to previous 96u coverage
         this.lastCameraChunk = { x: 0, z: 0 };
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
         this.onChunkLoaded = null; // Callback when a chunk is loaded
+        this._pendingChunkDeltas = new Map();
+
+        // Persistent client ID so the server can maintain per-client terrain caches and orbit scales
+        this.clientId = localStorage.getItem('chessopiaClientId') || this._generateClientId();
+        localStorage.setItem('chessopiaClientId', this.clientId);
+        console.log(`[Terrain] clientId=${this.clientId}`);
         
         // Probe system: foreknowledge of distant terrain
         this._lastProbeRequest = 0;
@@ -197,7 +203,9 @@ class TerrainSystem {
             }
             return 0; // Default height if chunk not found
         }
-        
+
+        this._applyPendingDeltasForChunk(chunkKey);
+
         // Find the specific tile in chunk
         const localX = Math.floor(x - (chunkX * this.chunkSize));
         const localZ = Math.floor(y - (chunkZ * this.chunkSize));
@@ -293,6 +301,9 @@ class TerrainSystem {
             }
             return false;
         }
+
+        this._applyPendingDeltasForChunk(chunkKey);
+
         const localX = Math.floor(x - (chunkX * this.chunkSize));
         const localZ = Math.floor(y - (chunkZ * this.chunkSize));
         const tileIndex = localZ * this.chunkSize + localX;
@@ -319,15 +330,19 @@ class TerrainSystem {
             }
             return null;
         }
+
+        this._applyPendingDeltasForChunk(chunkKey);
+
         const localX = Math.floor(x - (chunkX * this.chunkSize));
         const localZ = Math.floor(y - (chunkZ * this.chunkSize));
         const tileIndex = localZ * this.chunkSize + localX;
-        const tile = chunk.data[tileIndex] || null;
-        const tk = `${Math.floor(x)},${Math.floor(y)}`;
-        if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
-            this._debugLog('[TerrainDebug] getTileData', { world: tk, chunkKey, localX, localZ, tileIndex, hasTile: !!tile });
-        }
-        return tile;
+        return chunk.data[tileIndex] || null;
+    }
+
+    refreshChunkMesh(chunkKey) {
+        // Mark chunk for rebuild — the update loop will regenerate geometry
+        const chunk = this.chunks.get(chunkKey);
+        if (chunk) chunk._needsRebuild = true;
     }
 
     getNormal(x, z) {
@@ -382,7 +397,7 @@ class TerrainSystem {
             const dist = Math.max(Math.abs(chunkX - this.lastCameraChunk.x), Math.abs(chunkZ - this.lastCameraChunk.z));
             this._debugLog('[TerrainDebug] req', { seq, chunkKey, dist });
             // console.log(`[Terrain] Loading chunk on-demand: ${chunkKey}`);
-            const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}`);
+            const response = await fetch(`/api/terrain/chunk/${chunkX}/${chunkZ}?clientId=${this.clientId}`);
             
             if (!response.ok) {
                 throw new Error(`Failed to load chunk ${chunkKey}: ${response.status}`);
@@ -393,10 +408,12 @@ class TerrainSystem {
             this._debugLog('[TerrainDebug] loaded', { seq, chunkKey, tiles: chunkData.length });
             
             // Cache the chunk
-            this.chunks.set(chunkKey, {
+            const chunkRecord = {
                 data: chunkData,
                 loaded: true
-            });
+            };
+            this.chunks.set(chunkKey, chunkRecord);
+            this._applyPendingDeltasForChunk(chunkKey);
 
             // Flash red warning light for terrain generation
             this._flashGenWarning();
@@ -498,6 +515,11 @@ class TerrainSystem {
             chunk.mesh.material.dispose();
         }
         this.chunks.delete(chunkKey);
+
+        const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+        if (this.onChunkUnloaded) {
+            this.onChunkUnloaded(chunkX, chunkZ);
+        }
     }
     
     async requestProbeAhead(cameraPos) {
@@ -518,13 +540,29 @@ class TerrainSystem {
 
         try {
             this._lastProbeRequest = now;
-            const response = await fetch(`/api/terrain/probe?x=${px}&z=${pz}&radius=48&profile=textured`);
+            const response = await fetch(`/api/terrain/probe?x=${px}&z=${pz}&radius=48&profile=textured&clientId=${this.clientId}`);
             if (response.ok) {
-                const data = await response.json();
-                console.log(`[Terrain] Probe placed at (${px}, ${pz}) height=${data.height.toFixed(2)}`);
+                await response.json();
             }
         } catch (err) {
             // Silently ignore probe failures
+        }
+    }
+
+    setChunkSize(size) {
+        const clamped = Math.max(8, Math.floor(size));
+        if (clamped === this.chunkSize) return;
+        console.log(`[Terrain] chunkSize changed ${this.chunkSize} -> ${clamped}`);
+        this.chunkSize = clamped;
+        this.loadDistance = Math.max(2, Math.round(96 / clamped));
+        this.chunks.clear();
+        this.loadingChunks.clear();
+        this.lastCameraChunk = { x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY };
+        if (typeof this.onChunkSizeChanged === 'function') {
+            try { this.onChunkSizeChanged(clamped); } catch (err) { console.warn('[Terrain] onChunkSizeChanged error', err); }
+        }
+        if (this._lastCameraPos) {
+            this.updateStreaming(this._lastCameraPos);
         }
     }
 
@@ -552,5 +590,75 @@ class TerrainSystem {
             this.lastCameraChunk = { x: cameraChunkX, z: cameraChunkZ };
             this.updateChunks(cameraChunkX, cameraChunkZ);
         }
+    }
+
+    applyHeightDeltas(chunkKey, deltas) {
+        if (!chunkKey || !Array.isArray(deltas) || deltas.length === 0) return;
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk || !chunk.data) {
+            const existing = this._pendingChunkDeltas.get(chunkKey) || [];
+            existing.push(...deltas);
+            this._pendingChunkDeltas.set(chunkKey, existing);
+            return;
+        }
+        this._applyDeltasToChunk(chunkKey, chunk, deltas);
+    }
+
+    _applyPendingDeltasForChunk(chunkKey) {
+        if (!this._pendingChunkDeltas.has(chunkKey)) return;
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk || !chunk.data) return;
+        const deltas = this._pendingChunkDeltas.get(chunkKey);
+        this._applyDeltasToChunk(chunkKey, chunk, deltas);
+        this._pendingChunkDeltas.delete(chunkKey);
+    }
+
+    _applyDeltasToChunk(chunkKey, chunk, deltas) {
+        if (!chunk || !chunk.data || !Array.isArray(deltas)) return;
+        let updated = false;
+        for (const d of deltas) {
+            if (!d || typeof d.localX !== 'number' || typeof d.localZ !== 'number') continue;
+            const idx = d.localZ * this.chunkSize + d.localX;
+            if (idx < 0 || idx >= chunk.data.length) continue;
+            let tile = chunk.data[idx];
+            if (!tile || typeof tile !== 'object') {
+                tile = {};
+                chunk.data[idx] = tile;
+            }
+            if (d.height !== undefined) {
+                tile.height = d.height;
+                updated = true;
+            }
+            if (d.isBlocked !== undefined) {
+                tile.isBlocked = d.isBlocked;
+                updated = true;
+            }
+            if (d.biome !== undefined) {
+                tile.biome = d.biome;
+                updated = true;
+            }
+        }
+        if (updated) {
+            chunk._needsRebuild = true;
+            if (this.onChunkLoaded) {
+                const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+                try {
+                    this.onChunkLoaded(chunkX, chunkZ);
+                } catch (err) {
+                    console.warn('[Terrain] onChunkLoaded callback failed after delta apply:', err);
+                }
+            }
+        }
+    }
+
+    _generateClientId() {
+        // Generate a random 16-char hex string for client identification
+        const arr = new Uint8Array(8);
+        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+            crypto.getRandomValues(arr);
+        } else {
+            for (let i = 0; i < 8; i++) arr[i] = Math.floor(Math.random() * 256);
+        }
+        return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     }
 }

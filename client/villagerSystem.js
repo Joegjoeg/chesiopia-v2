@@ -1,5 +1,17 @@
 // VillagerSystem — Villager agents with roles, daily schedules, and node-based movement
 
+const ROLE_HAT_COLORS = {
+    farmer: 0x8b6914,
+    fisher: 0x4a6fa5,
+    priest: 0x2d2d2d,
+    mayor: 0x8b0000,
+    townCrier: 0xd4a017,
+    child: 0x87ceeb,
+    villager: 0x6b8e23,
+    knight: 0xc0c0c0,
+    monk: 0x6b5b95
+};
+
 class VillagerSystem {
     constructor(scene, terrainSystem, settlementSystem) {
         this.scene = scene;
@@ -17,7 +29,7 @@ class VillagerSystem {
     }
 
     init() {
-        this.villagerGeometry = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8);
+        this.villagerGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.4, 8);
         this.villagerMaterials = {
             farmer:    new THREE.MeshLambertMaterial({ color: 0x8b6914 }),
             fisher:    new THREE.MeshLambertMaterial({ color: 0x4a6fa5 }),
@@ -34,6 +46,7 @@ class VillagerSystem {
     populateSettlement(settlement) {
         const pop = Math.floor(settlement.population);
         const roleDistribution = this.getRoleDistribution(settlement);
+        settlement.motteRadius = settlement.type === 'hamlet' ? 6 : 12;
 
         for (let i = 0; i < pop; i++) {
             const role = this.pickRole(roleDistribution, i, pop);
@@ -142,13 +155,58 @@ class VillagerSystem {
         mesh.receiveShadow = true;
         mesh.scale.set(0.6, 0.6, 0.6);
 
-        const pos = this.getNodeWorldPos(villager.currentNode, settlement);
+        // Role-colored hat
+        const hatColor = ROLE_HAT_COLORS[villager.role] || ROLE_HAT_COLORS.villager;
+        const hatGeo = new THREE.ConeGeometry(0.12, 0.2, 6);
+        const hatMat = new THREE.MeshLambertMaterial({ color: hatColor });
+        const hat = new THREE.Mesh(hatGeo, hatMat);
+        hat.position.y = 0.22;
+        mesh.add(hat);
+        villager._hatMesh = hat;
+
+        let pos;
+        if (villager.currentNode) {
+            pos = this.getNodeWorldPos(villager.currentNode, settlement);
+        } else {
+            pos = new THREE.Vector3(settlement.x, settlement.height + 0.5, settlement.z);
+        }
         mesh.position.copy(pos);
         mesh.position.y += 0.4;
 
         settlement._group.add(mesh);
         villager._mesh = mesh;
         this.villagerMeshes.set(villager.id, mesh);
+    }
+
+    initVillagersFromServer(settlement, serverVillagers) {
+        if (!serverVillagers || !Array.isArray(serverVillagers)) {
+            console.log(`[VillagerSystem] initVillagersFromServer: no villagers for ${settlement.name}`);
+            return;
+        }
+        console.log(`[VillagerSystem] initVillagersFromServer: ${serverVillagers.length} villagers for ${settlement.name}, geometry=${!!this.villagerGeometry}`);
+        let created = 0;
+        for (const v of serverVillagers) {
+            try {
+                v.home = v.home || this.findHomeNode(settlement);
+                v.currentNode = v.currentNode || v.home;
+                v.morningTask = v.morningTask || this.getDefaultTask(v.role, 'morning');
+                v.eveningTask = v.eveningTask || this.getDefaultTask(v.role, 'evening');
+                v.moveProgress = v.moveProgress || 0;
+                v.moveSpeed = v.moveSpeed || 0.8 + Math.random() * 0.6;
+                v.idleTimer = v.idleTimer || 0;
+                v.idleDuration = v.idleDuration || 2 + Math.random() * 4;
+                v.socialPreference = v.socialPreference || Math.random();
+                v.targetNode = v.targetNode || null;
+                v.currentTask = v.currentTask || null;
+                v._mesh = null;
+                v._lastPathTime = 0;
+                this.createVillagerMesh(v, settlement);
+                if (v._mesh) created++;
+            } catch (err) {
+                console.error(`[VillagerSystem] Failed to init villager ${v.id} (${v.name}):`, err);
+            }
+        }
+        console.log(`[VillagerSystem] Created ${created}/${serverVillagers.length} villager meshes for ${settlement.name}`);
     }
 
     getNodeWorldPos(node, settlement) {
@@ -158,19 +216,169 @@ class VillagerSystem {
         return new THREE.Vector3(x, y, z);
     }
 
-    updateSettlementVillagers(settlement, deltaTime) {
-        const hour = this.settlementSystem.getHourOfDay();
-        const timeSlot = getCurrentTimeSlot(hour);
-        const season = this.settlementSystem.getCurrentSeason();
-        const seasonDef = SEASONS[season];
+    updateSettlementVillagers(settlement, deltaTime, cameraPos) {
+        const dist = distance2D(settlement, cameraPos || { x: 0, z: 0 });
+
+        let interval;
+        if (dist < 30) interval = 0.05;
+        else if (dist < 60) interval = 0.3;
+        else if (dist < 120) interval = 1.5;
+        else if (dist < 200) interval = 4.0;
+        else interval = 10.0;
+
+        settlement._villagerUpdateTimer = (settlement._villagerUpdateTimer || 0) - deltaTime;
+        const shouldUpdate = settlement._villagerUpdateTimer <= 0;
+        if (shouldUpdate) {
+            settlement._villagerUpdateTimer = interval;
+        }
+
+        const isClose = dist < 20;
+
+        const currentInsideCount = settlement.villagers.filter(v => this.isVillagerInsideMotte(v, settlement)).length;
+        const dotCount = settlement._villagerDotVillagers ? settlement._villagerDotVillagers.length : -1;
+        if (!settlement._villagerDots || settlement._villagerDotsDirty || dotCount !== currentInsideCount) {
+            this.rebuildInsideVillagerDots(settlement);
+        }
+
+        if (shouldUpdate) {
+            const simDt = Math.min(interval, 0.5);
+            const hour = this.settlementSystem.getHourOfDay();
+            const timeSlot = getCurrentTimeSlot(hour);
+            const season = this.settlementSystem.getCurrentSeason();
+            const seasonDef = SEASONS[season];
+
+            for (const villager of settlement.villagers) {
+                this.updateVillager(villager, settlement, simDt, timeSlot, seasonDef);
+            }
+
+            this.updateInsideVillagerDots(settlement);
+        }
 
         for (const villager of settlement.villagers) {
-            this.updateVillager(villager, settlement, deltaTime, timeSlot, seasonDef);
+            if (!villager._mesh) continue;
+            const isInside = this.isVillagerInsideMotte(villager, settlement);
+            villager._mesh.visible = isInside ? isClose : true;
         }
+
+        if (settlement._villagerDots) {
+            settlement._villagerDots.visible = !isClose;
+        }
+    }
+
+    isVillagerInsideMotte(villager, settlement) {
+        const radius = settlement.motteRadius || 10;
+        let x, z;
+        if (villager._mesh) {
+            x = villager._mesh.position.x;
+            z = villager._mesh.position.z;
+        } else if (villager.currentNode) {
+            x = villager.currentNode.x;
+            z = villager.currentNode.z;
+        } else {
+            return true;
+        }
+        const dx = x - settlement.x;
+        const dz = z - settlement.z;
+        return Math.sqrt(dx * dx + dz * dz) <= radius;
+    }
+
+    rebuildInsideVillagerDots(settlement) {
+        if (settlement._villagerDots) {
+            settlement._group.remove(settlement._villagerDots);
+            settlement._villagerDots.geometry.dispose();
+            settlement._villagerDots.material.dispose();
+            settlement._villagerDots = null;
+        }
+        settlement._villagerDotsDirty = false;
+
+        const insideVillagers = settlement.villagers.filter(v => this.isVillagerInsideMotte(v, settlement));
+        if (insideVillagers.length === 0) {
+            settlement._villagerDotVillagers = [];
+            return;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(insideVillagers.length * 3);
+        const colors = new Float32Array(insideVillagers.length * 3);
+
+        for (let i = 0; i < insideVillagers.length; i++) {
+            const v = insideVillagers[i];
+            const node = v.currentNode || v.home;
+            let pos;
+            if (v._mesh) {
+                pos = v._mesh.position;
+            } else if (node) {
+                pos = this.getNodeWorldPos(node, settlement);
+            } else {
+                pos = new THREE.Vector3(settlement.x, settlement.height || 0, settlement.z);
+            }
+            positions[i * 3] = pos.x;
+            positions[i * 3 + 1] = pos.y + 0.05;
+            positions[i * 3 + 2] = pos.z;
+
+            const color = new THREE.Color(ROLE_HAT_COLORS[v.role] || ROLE_HAT_COLORS.villager);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            vertexColors: true,
+            size: 0.15,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.9
+        });
+
+        const points = new THREE.Points(geometry, material);
+        settlement._group.add(points);
+        settlement._villagerDots = points;
+        settlement._villagerDotVillagers = insideVillagers;
+    }
+
+    updateInsideVillagerDots(settlement) {
+        if (!settlement._villagerDots || !settlement._villagerDotVillagers) return;
+
+        const positions = settlement._villagerDots.geometry.attributes.position.array;
+        let needsRebuild = false;
+
+        for (let i = 0; i < settlement._villagerDotVillagers.length; i++) {
+            const v = settlement._villagerDotVillagers[i];
+            if (!v._mesh) continue;
+
+            if (!this.isVillagerInsideMotte(v, settlement)) {
+                needsRebuild = true;
+                break;
+            }
+
+            positions[i * 3] = v._mesh.position.x;
+            positions[i * 3 + 1] = v._mesh.position.y + 0.05;
+            positions[i * 3 + 2] = v._mesh.position.z;
+        }
+
+        if (needsRebuild) {
+            settlement._villagerDotsDirty = true;
+            return;
+        }
+
+        settlement._villagerDots.geometry.attributes.position.needsUpdate = true;
     }
 
     updateVillager(villager, settlement, deltaTime, timeSlot, seasonDef) {
         if (!villager._mesh) return;
+
+        if (villager._ceremonyBuilding) {
+            this.updateCeremonyVillager(villager, settlement, deltaTime);
+            return;
+        }
+
+        if (villager._constructionSite) {
+            this.updateConstructionVillager(villager, settlement, deltaTime);
+            return;
+        }
 
         if (timeSlot === 'night') {
             this.moveVillagerToward(villager, villager.home, settlement, deltaTime);
@@ -376,6 +584,47 @@ class VillagerSystem {
                 }
             }
         }
+        settlement._villagerDotsDirty = true;
+    }
+
+    applyTomeUpdate(settlement, villagerData) {
+        if (!settlement || !villagerData) return;
+
+        const serverMap = new Map(villagerData.map(v => [v.id, v]));
+
+        for (const villager of settlement.villagers) {
+            const serverVillager = serverMap.get(villager.id);
+            if (!serverVillager) continue;
+
+            villager.stress = serverVillager.stress;
+            villager.faith = serverVillager.faith;
+            villager.grumpy = serverVillager.grumpy;
+            villager.calledToService = serverVillager.calledToService;
+            villager.walkType = serverVillager.walkType;
+            villager.age = serverVillager.age;
+
+            if (serverVillager.activities) {
+                villager.activities = serverVillager.activities;
+            }
+
+            if (villager._mesh && villager.calledToService) {
+                this.ensureServiceHat(villager);
+            }
+        }
+    }
+
+    ensureServiceHat(villager) {
+        if (!villager._mesh) return;
+
+        let hat = villager._mesh.getObjectByName('serviceHat');
+        if (hat) return;
+
+        const hatGeo = new THREE.ConeGeometry(0.15, 0.3, 8);
+        const hatMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.6 });
+        hat = new THREE.Mesh(hatGeo, hatMat);
+        hat.name = 'serviceHat';
+        hat.position.set(0, 0.55, 0);
+        villager._mesh.add(hat);
     }
 
     removeVillager(villager, settlement) {
@@ -385,6 +634,7 @@ class VillagerSystem {
             this.villagerMeshes.delete(villager.id);
             villager._mesh = null;
         }
+        settlement._villagerDotsDirty = true;
         const idx = settlement.villagers.indexOf(villager);
         if (idx !== -1) settlement.villagers.splice(idx, 1);
     }
@@ -401,7 +651,163 @@ class VillagerSystem {
         return false;
     }
 
+    startConstruction(settlement, type) {
+        const site = settlement.buildings.find(b => b.type === type && b.state === 'under_construction');
+        if (!site) return;
+        const available = settlement.villagers.filter(v => !v._constructionSite && !v._ceremonyBuilding);
+        for (const w of available.slice(0, site._workerCount || 2)) {
+            w._constructionSite = site;
+            w._constructPhase = 'moving';
+            w._constructTimer = 0;
+        }
+    }
+
+    updateConstructionVillager(villager, settlement, deltaTime) {
+        if (!villager._mesh || !villager._constructionSite) return;
+        const site = villager._constructionSite;
+        if (site.state === 'complete') {
+            delete villager._constructionSite;
+            delete villager._constructPhase;
+            return;
+        }
+
+        if (villager._constructPhase === 'moving') {
+            const tx = site.x + (Math.random() - 0.5) * 3;
+            const tz = site.z + (Math.random() - 0.5) * 3;
+            villager._constructTarget = { x: tx, z: tz };
+            villager._constructPhase = 'walking';
+        }
+
+        if (villager._constructPhase === 'walking') {
+            const target = villager._constructTarget;
+            const pos = villager._mesh.position;
+            const dx = target.x - pos.x;
+            const dz = target.z - pos.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 0.3) {
+                villager._constructPhase = 'working';
+                villager._constructTimer = 1 + Math.random() * 1.5;
+            } else {
+                const speed = villager.moveSpeed * deltaTime;
+                pos.x += (dx / dist) * speed;
+                pos.z += (dz / dist) * speed;
+                pos.y = this.terrainSystem.getHeight(pos.x, pos.z) + 0.4;
+                villager._mesh.rotation.y = Math.atan2(dx, dz);
+            }
+        }
+
+        if (villager._constructPhase === 'working') {
+            villager._constructTimer -= deltaTime;
+            const isBarn = site.type === 'barn';
+            if ((isBarn && Math.random() < 0.15) || (!isBarn && Math.random() < 0.03)) {
+                this.doPissAround(villager, settlement, site);
+                return;
+            }
+            if (villager._constructTimer <= 0) {
+                this.playBuildingSound(villager, site);
+                if (this.settlementSystem && this.settlementSystem.buildingSystem) {
+                    this.settlementSystem.buildingSystem.advanceConstruction(site, 0.05);
+                }
+                villager._constructPhase = 'moving';
+            }
+        }
+    }
+
+    doPissAround(villager, settlement, site) {
+        const oldY = villager._mesh.position.y;
+        villager._mesh.position.y = oldY + 0.2;
+        setTimeout(() => {
+            if (villager._mesh) {
+                villager._mesh.position.y = this.terrainSystem.getHeight(villager._mesh.position.x, villager._mesh.position.z) + 0.4;
+            }
+        }, 200);
+        for (const v of settlement.villagers) {
+            if (v === villager || v._constructionSite) continue;
+            if (v._mesh && v._mesh.position.distanceTo(villager._mesh.position) < 8 && Math.random() < 0.3) {
+                this.playSound('get back to work', v);
+            }
+        }
+    }
+
+    playBuildingSound(villager, site) {
+        const phrases = {
+            house: ['hammer hammer hammer', 'thud thud', 'creak bang'],
+            barn: ['heave ho', 'timber', 'bang bang'],
+            church: ['stone on stone', 'chisel chisel', 'mason work'],
+            field: ['plough plough', 'dig dig'],
+            manor: ['fine craft', 'measure twice'],
+            fishingHut: ['saw saw', 'nail nail']
+        };
+        const list = phrases[site.type] || ['work work'];
+        this.playSound(list[Math.floor(Math.random() * list.length)], villager);
+    }
+
+    playSound(phrase, villager) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            const u = new SpeechSynthesisUtterance(phrase);
+            let baseVolume = 0.15;
+            let volume = baseVolume;
+            if (villager && villager._mesh && window.game && window.game.camera) {
+                const dx = villager._mesh.position.x - window.game.camera.position.x;
+                const dy = villager._mesh.position.y - window.game.camera.position.y;
+                const dz = villager._mesh.position.z - window.game.camera.position.z;
+                const distanceToCamera = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (window.soundManager && window.soundManager.calculateDistanceVolume) {
+                    volume = window.soundManager.calculateDistanceVolume(distanceToCamera, baseVolume);
+                }
+            }
+            u.volume = volume;
+            u.rate = 0.9 + Math.random() * 0.2;
+            window.speechSynthesis.speak(u);
+        }
+    }
+
+    triggerOpeningCeremony(settlement, building) {
+        const mayor = settlement.villagers.find(v => v.role === 'mayor');
+        const guests = settlement.villagers.filter(v => v !== mayor && !v._constructionSite).slice(0, 2);
+        const attendees = [mayor, ...guests].filter(Boolean);
+        for (const v of attendees) {
+            v._ceremonyBuilding = building;
+            v._ceremonyPhase = 'walking';
+        }
+        setTimeout(() => {
+            if (mayor) this.playSound(`I hereby declare this ${building.type} open for use!`, mayor);
+        }, 3000);
+        setTimeout(() => {
+            for (const v of attendees) {
+                delete v._ceremonyBuilding;
+                delete v._ceremonyPhase;
+            }
+        }, 8000);
+    }
+
+    updateCeremonyVillager(villager, settlement, deltaTime) {
+        if (!villager._mesh || !villager._ceremonyBuilding) return;
+        const b = villager._ceremonyBuilding;
+        const pos = villager._mesh.position;
+        const dx = b.x - pos.x + (Math.random() - 0.5) * 2;
+        const dz = b.z - pos.z + (Math.random() - 0.5) * 2;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > 0.5) {
+            const speed = villager.moveSpeed * deltaTime;
+            pos.x += (dx / dist) * speed;
+            pos.z += (dz / dist) * speed;
+            pos.y = this.terrainSystem.getHeight(pos.x, pos.z) + 0.4;
+            villager._mesh.rotation.y = Math.atan2(dx, dz);
+        }
+    }
+
     dispose() {
+        for (const settlement of this.settlementSystem?.settlements || []) {
+            if (settlement._villagerDots) {
+                settlement._group.remove(settlement._villagerDots);
+                settlement._villagerDots.geometry.dispose();
+                settlement._villagerDots.material.dispose();
+                settlement._villagerDots = null;
+            }
+            settlement._villagerDotVillagers = null;
+        }
+
         for (const [id, mesh] of this.villagerMeshes) {
             if (mesh.parent) mesh.parent.remove(mesh);
             mesh.geometry && mesh.geometry.dispose();

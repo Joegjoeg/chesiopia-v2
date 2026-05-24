@@ -1,5 +1,6 @@
 class DecorativeVisualsSystem {
     constructor(scene, terrainSystem, game) {
+        this._debug = false; // Set true for verbose decorative visual logs
         this.scene = scene;
         this.terrainSystem = terrainSystem;
         this.game = game; // Store game reference for mouse access
@@ -57,6 +58,39 @@ class DecorativeVisualsSystem {
 
         // One-time cleanup: remove any existing birdDebugSphere meshes from previous sessions
         setTimeout(() => this._cleanupLegacyDebugSpheres(), 1000);
+
+        // LODManager scratch vector for position callbacks (shared, no allocation)
+        this._lodScratchPos = new THREE.Vector3();
+        this._registerLodGroup();
+    }
+
+    _registerLodGroup() {
+        const lm = this.game?.lodManager;
+        if (!lm) return;
+        const posFn = (book) => this._lodScratchPos.set(book.position.x, book.position.y, book.position.z);
+        const radiusFn = () => 1.5;
+        lm.registerGroup('decorativeBooks', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 80,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 50,
+            updateInterval: 2,
+            onCull: (book, id) => {
+                if (book._lodVisible === false) return;
+                book._lodVisible = false;
+                book.sprite.visible = false;
+                book.light.visible = false;
+                book.glowSprite.visible = false;
+            },
+            onVisible: (book, id) => {
+                if (book._lodVisible === true) return;
+                book._lodVisible = true;
+                book.sprite.visible = true;
+                book.glowSprite.visible = true;
+            }
+        });
     }
     
     // DAISY SYSTEM
@@ -397,15 +431,22 @@ class DecorativeVisualsSystem {
         this.scene.add(book.glowSprite);
         book.glowSprite.visible = true;
         this.activeBirds.set(id, book);
+        book._lodVisible = true;
 
-        console.log(`[Fairy] Spawned ${id} — light visible: ${book.light.visible}, color: #${book.light.color.getHexString()}, intensity: ${book.light.intensity}, distance: ${book.light.distance}, pos: ${x.toFixed(1)},${height.toFixed(1)},${z.toFixed(1)}`);
-        
+        const lm = this.game?.lodManager;
+        if (lm) lm.add('decorativeBooks', book, id);
+
+        if (this._debug) console.log(`[Fairy] Spawned ${id} — light visible: ${book.light.visible}, color: #${book.light.color.getHexString()}, intensity: ${book.light.intensity}, distance: ${book.light.distance}, pos: ${x.toFixed(1)},${height.toFixed(1)},${z.toFixed(1)}`);
+
         return id;
     }
     
     despawnBird(id) {
         const bird = this.activeBirds.get(id);
         if (!bird) return;
+
+        const lm = this.game?.lodManager;
+        if (lm) lm.remove('decorativeBooks', id);
 
         // Remove from scene
         this.scene.remove(bird.group);
@@ -432,7 +473,13 @@ class DecorativeVisualsSystem {
         const blustery = ps ? (ps.getParameter('blusteryWind') || 0) : 0;
         const b = blustery / 10.0; // normalized 0..1
 
-        // Steer toward windTargetAngle (set by parameter slider) while keeping organic noise
+        // Blend pressure-gradient wind from minimap overlay
+        const localWind = window.minimapOverlay?.localWind;
+        if (localWind && localWind.speed > 0.1) {
+            this.windTargetAngle = localWind.angle;
+        }
+
+        // Steer toward windTargetAngle (set by parameter slider or minimap wind) while keeping organic noise
         let angleDiff = this.windTargetAngle - this.windAngle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -441,12 +488,14 @@ class DecorativeVisualsSystem {
         const angleNoise = baseAngleNoise * (1 - b) + blusteryAngleNoise;
         const targetInfluence = 0.8 * (1 - b * 0.7);
         const noiseInfluence = 0.2 + b * 1.5;
-        const turnRate = 0.15 + b * 0.8;
+        const turnRate = 1.2 + b * 0.8; // fast steering so local wind direction is actually followed
         this.windAngle += (angleDiff * targetInfluence + angleNoise * noiseInfluence) * deltaTime * turnRate;
         this.windDirection.set(Math.cos(this.windAngle), Math.sin(this.windAngle));
 
         // Wind speed base comes from parameterSystem; natural noise adds variation on top
-        const baseWind = ps ? ps.getParameter('windSpeed') : 2.0;
+        const paramWind = ps ? ps.getParameter('windSpeed') : 2.0;
+        const localSpeed = localWind ? localWind.speed : 0;
+        const baseWind = paramWind + localSpeed * 0.5; // pressure-gradient adds up to 50%
         const baseSpeedNoise = (Math.sin(this.windTime * 0.05) * 0.8 + Math.sin(this.windTime * 0.013) * 0.4) * (baseWind / 2.0);
         const blusterySpeedNoise = b * (Math.sin(this.windTime * 0.4) * baseWind * 2.0 + Math.sin(this.windTime * 0.12) * baseWind);
         const galeBoost = b * baseWind * 1.5;
@@ -536,7 +585,7 @@ class DecorativeVisualsSystem {
             this.gustTargetIntensity = 1.0; // Return to normal
         }, gustDuration * 1000);
 
-        console.log(`[GUST] Spawned gust: ${gustMultiplier.toFixed(2)}x intensity, duration ${gustDuration.toFixed(1)}s`);
+        // gust spawned silently
     }
     
     updateDaisies(deltaTime) {
@@ -623,13 +672,6 @@ class DecorativeVisualsSystem {
         // Periodic debug dump
         if (!this._naviDebugNext || now > this._naviDebugNext) {
             this._naviDebugNext = now + 2000;
-            const first = this.activeBirds.values().next().value;
-            if (first) {
-                console.log('[NaviDebug] _smoothTrail=' + (first._smoothTrail || 0).toFixed(3) +
-                    ' phase=' + first.phase.toFixed(2) +
-                    ' opacity=' + (first.sprite?.material?.opacity ?? '?') +
-                    ' canvas=' + (first.trailCanvas ? first.trailCanvas.width + 'x' + first.trailCanvas.height : 'MISSING'));
-            }
         }
 
         for (const [id, sprite] of this.activeBirds) {
@@ -679,6 +721,9 @@ class DecorativeVisualsSystem {
             sprite.prevPosition.z = sprite.position.z;
 
             this.updateBookPosition(sprite, deltaTime);
+
+            // Skip rendering for LODManager-culled books (keep updating position so they don't freeze)
+            if (sprite._lodVisible === false) continue;
 
             // ---- Canvas trail rendering ----
             const ctx = sprite.trailCtx;
@@ -910,7 +955,7 @@ class DecorativeVisualsSystem {
                     
                     if (distToTarget < 1.0 || sprite.panicTimer < 0.15) {
                         // Reached target or time for new zip - start pause then pick new point
-                        console.log('[ZIP ANIMATION] Reached target, pausing before next zip');
+                        // console.log('[ZIP ANIMATION] Reached target, pausing before next zip');
                         sprite.isZipPaused = true;
                         sprite.zipPauseTimer = 0.5; // Pause for 0.5 seconds between zips
                         
@@ -942,7 +987,7 @@ class DecorativeVisualsSystem {
                 
                 if (sprite.pauseTimer <= 0) {
                     // Pause finished - start panic zipping!
-                    console.log('[ZIP ANIMATION] Starting panic zip for sprite');
+                    // panic zip started silently
                     sprite.isPanicking = true;
                     sprite.panicTimer = 0.6; // Panic for 0.6 seconds
                     sprite.panicZips = 0;
@@ -974,28 +1019,26 @@ class DecorativeVisualsSystem {
     }
     
     playPanicSound(distanceToCamera = 0) {
-        // Play a random cute panic sound using TTS with distance-based volume
         const randomSound = this.panicSounds[Math.floor(Math.random() * this.panicSounds.length)];
         
-        // Calculate volume based on distance - BALANCED effect
-        // Close: 0.4 volume, Far: 0.03 volume, Fade starts at 12 units, complete at 32 units
-        const fadeStartDistance = 3;
-        const fadeEndDistance = 70;
-        const maxVolume = 0.3;
-        const minVolume = 0.001;
-        
-        let volume = maxVolume;
-        if (distanceToCamera > fadeStartDistance) {
-            const fadeProgress = Math.min((distanceToCamera - fadeStartDistance) / (fadeEndDistance - fadeStartDistance), 1);
-            volume = maxVolume * (1 - fadeProgress) + minVolume * fadeProgress;
+        let volume = 0.3;
+        if (window.soundManager && window.soundManager.calculateDistanceVolume) {
+            volume = window.soundManager.calculateDistanceVolume(distanceToCamera, 0.3);
+        } else {
+            const fadeStartDistance = 3;
+            const fadeEndDistance = 70;
+            const minVolume = 0.001;
+            if (distanceToCamera > fadeStartDistance) {
+                const fadeProgress = Math.min((distanceToCamera - fadeStartDistance) / (fadeEndDistance - fadeStartDistance), 1);
+                volume = 0.3 * (1 - fadeProgress) + minVolume * fadeProgress;
+            }
         }
         
-        // Use speech synthesis for cute, unobtrusive sounds
         if ('speechSynthesis' in window) {
             const utterance = new SpeechSynthesisUtterance(randomSound);
             utterance.pitch = 1.8; // High pitch for cute sound
             utterance.rate = 1.2; // Slightly fast for startled effect
-            utterance.volume = volume; // Distance-based volume
+            utterance.volume = volume;
             utterance.lang = 'en-US';
             
             // Try to use a female voice which sounds more cute/fairy-like
@@ -1134,6 +1177,13 @@ class DecorativeVisualsSystem {
     
     // CLEANUP METHODS
     dispose() {
+        // Clear LODManager group
+        const lm = this.game?.lodManager;
+        if (lm && lm.groups) {
+            const group = lm.groups.get('decorativeBooks');
+            if (group) group.items.clear();
+        }
+
         // Remove all daisies
         for (const [key, daisy] of this.daisies) {
             this.scene.remove(daisy.group);
@@ -1164,6 +1214,9 @@ class DecorativeVisualsSystem {
     despawnBook(id) {
         const book = this.activeBirds.get(id);
         if (!book) return;
+
+        const lm = this.game?.lodManager;
+        if (lm) lm.remove('decorativeBooks', id);
 
         // Remove from scene
         this.scene.remove(book.group);

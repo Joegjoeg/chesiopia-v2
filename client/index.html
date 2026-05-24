@@ -113,6 +113,14 @@
             <div id="loadingLog" style="margin-top:12px;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;color:#ccc;background:rgba(0,0,0,0.5);border-radius:6px;padding:8px;text-align:left;line-height:1.4;"></div>
         </div>
     </div>
+
+    <!-- Navi cursor overlay -->
+    <div id="naviCursor" aria-hidden="true">
+        <div class="navi-cursor-trail"></div>
+        <div class="navi-cursor-wing is-left"></div>
+        <div class="navi-cursor-wing is-right"></div>
+        <div class="navi-cursor-core"></div>
+    </div>
     
     <!-- Mobile debug logger: mirror console to the loading screen -->
     <script>
@@ -727,9 +735,9 @@
                     'textureAtlasGenerator.js?v=' + Date.now(),
                     'planetMapping.js?v=' + Date.now(),
                     'RollingTerrainMesh.js?v=' + Date.now(),
+                    'waterReflectionManager.js?v=' + Date.now(),
                     'skyShaderSystem.js?v=' + Date.now(),
                     'zodiacConstellationSystem.js?v=' + Date.now(),
-                    'waterReflectionManager.js?v=' + Date.now(),
                     'board_clean.js?v=' + Date.now(),
                     'camera.js?v=' + Date.now(),
                     'soundManager.js?v=' + Date.now(),
@@ -749,8 +757,10 @@
                     'shadowSystem.js?v=' + Date.now(),
                     'celShaderSimple.js?v=' + Date.now(),
                     'grassSystem.js?v=' + Date.now(),
+                    'materialRegistry.js?v=' + Date.now(),
                     'textureBlendingSystem.js?v=' + Date.now(),
                     'decorativeVisuals.js?v=' + Date.now(),
+                    'naviCursor.js?v=' + Date.now(),
                     'settlementData.js?v=' + Date.now(),
                     'settlementSystem.js?v=' + Date.now(),
                     'buildingSystem.js?v=' + Date.now(),
@@ -761,11 +771,13 @@
                     'tomeUI.js?v=' + Date.now(),
                     'minimapOverlay.js?v=' + Date.now(),
                     'performanceManager.js?v=' + Date.now(),
+                    'distanceManager.js?v=' + Date.now(),
                     'validationTests.js?v=' + Date.now(),
                     'modifierStack.js?v=' + Date.now(),
                     'parameterSystem.js?v=' + Date.now(),
                     'devInterface.js?v=' + Date.now(),
                     'memoryProfiler.js?v=' + Date.now(),
+                    'resourceGuard.js?v=' + Date.now(),
                     'lodManager.js?v=' + Date.now(),
                     'jesusSummonTriggerSystem.js?v=' + Date.now(),
                     'jesusSummonSystem.js?v=' + Date.now(),

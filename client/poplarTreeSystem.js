@@ -21,6 +21,9 @@ class PoplarTreeSystem {
         this._currentHeights = null;
         this.currentSeason = 'summer';
 
+        // Global tree size multiplier (controlled by dev tools)
+        this.globalTreeSizeMult = 1.0;
+
         this.windUniforms = {
             uTime:          { value: 0 },
             uWindStrength:  { value: 0.4 },
@@ -445,6 +448,7 @@ class PoplarTreeSystem {
 
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
+            if (!tree || tree._lodVisible === false) continue;
             const dx = Math.abs(tree.x - camera.position.x);
             const dz = Math.abs(tree.z - camera.position.z);
 
@@ -516,7 +520,7 @@ class PoplarTreeSystem {
             this._scratchScale.set(0.0001, 0.0001, 0.0001);
             this._scratchQuat.set(0, 0, 0, 1);
         } else {
-            const scale = tree.scale;
+            const scale = tree.scale * this.globalTreeSizeMult;
             const rotY = tree.rotY;
             const normal = tree.normal || UP;
             this._scratchQuat.setFromUnitVectors(UP, normal);
@@ -537,6 +541,13 @@ class PoplarTreeSystem {
         }
     }
 
+    setGlobalTreeSizeMult(value) {
+        this.globalTreeSizeMult = value;
+        for (let i = 0; i < this.treeCount; i++) {
+            this.updateTreeInstanceMatrix(i, this.treeData[i]);
+        }
+    }
+
     computeWindField() {
         const board = window.game && window.game.boardSystem;
         if (!board || !board.computeTreeWindField) {
@@ -544,7 +555,7 @@ class PoplarTreeSystem {
             return;
         }
         board.computeTreeWindField(this.treeData, this.windField);
-        console.log('[PoplarTreeSystem] Wind field computed for', this.windField.size, 'tiles');
+        // console.log('[PoplarTreeSystem] Wind field computed for', this.windField.size, 'tiles');
     }
 
     recomputeWindMultipliers() {
@@ -555,6 +566,7 @@ class PoplarTreeSystem {
         const windDir = new THREE.Vector3(wd.x, 0, wd.y).normalize();
         for (let i = 0; i < this.treeCount; i++) {
             const data = this.treeData[i];
+            if (!data || data._lodVisible === false) continue;
             const normal = data.normal || new THREE.Vector3(0, 1, 0);
             const windwardFactor = Math.max(0, normal.dot(windDir));
             let mult = 1.0 + 0.5 * exposureScale;
@@ -576,6 +588,28 @@ class PoplarTreeSystem {
             part.mesh.count = 0;
             part.mesh.instanceMatrix.needsUpdate = true;
         }
+    }
+
+    /** Remove a single tree by index using swap-with-last for O(1) removal. */
+    removeTree(index) {
+        if (index < 0 || index >= this.treeCount) return null;
+        const removed = this.treeData[index];
+        const lastIndex = this.treeCount - 1;
+        if (index !== lastIndex) {
+            const moved = this.treeData[lastIndex];
+            this.treeData[index] = moved;
+            this._currentHeights[index] = this._currentHeights[lastIndex];
+            this._sharedWindMultipliers[index] = this._sharedWindMultipliers[lastIndex];
+            this._sharedWindPhases[index] = this._sharedWindPhases[lastIndex];
+            this._sharedFade[index] = this._sharedFade[lastIndex];
+            this.updateTreeInstanceMatrix(index, moved);
+        }
+        this.treeData.length = lastIndex;
+        this.treeCount = lastIndex;
+        for (const part of this.parts) {
+            part.mesh.count = this.treeCount;
+        }
+        return removed;
     }
 
     dispose() {

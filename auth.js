@@ -31,6 +31,13 @@ async function loadUsers() {
     try {
         await ensureDataDir();
         const data = await fs.readFile(USERS_FILE, 'utf8');
+
+        // Handle empty or whitespace-only files gracefully
+        if (!data || !data.trim()) {
+            console.warn('[Auth] users.json empty, resetting to {}');
+            return {};
+        }
+
         return JSON.parse(data);
     } catch (error) {
         if (error.code === 'ENOENT') {

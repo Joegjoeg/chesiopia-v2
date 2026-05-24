@@ -37,16 +37,20 @@ class SkyShaderSystem {
                 uShimmerIntensity: { value: this.shimmerIntensity },
                 uStarColor: { value: this.starColor },
                 uSunElevation: { value: 0.0 }, // For sky gradient
-                uSunDirection: { value: new THREE.Vector3(0, 1, 0) }
+                uSunDirection: { value: new THREE.Vector3(0, 1, 0) },
+                uSkyTransparency: { value: 1.0 },
+                uFogColor: { value: new THREE.Color(0x808080) },
+                uFogHorizonStrength: { value: 0.75 }
             },
             vertexShader: `
-                varying vec3 vWorldPosition;
-                varying vec3 vNormal;
+                varying vec3 vLocalPos;
                 varying vec2 vUv;
-                
+
                 void main() {
-                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-                    vNormal = normalize(normalMatrix * normal);
+                    // Sky sphere is centered on camera with no rotation, so local
+                    // position is exactly the world-space view direction without
+                    // the precision loss of subtracting two large vectors.
+                    vLocalPos = position;
                     vUv = uv;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
@@ -64,9 +68,11 @@ class SkyShaderSystem {
                 uniform vec3 uStarColor;
                 uniform float uSunElevation;
                 uniform vec3 uSunDirection;
+                uniform float uSkyTransparency;
+                uniform vec3 uFogColor;
+                uniform float uFogHorizonStrength;
 
-                varying vec3 vWorldPosition;
-                varying vec3 vNormal;
+                varying vec3 vLocalPos;
                 varying vec2 vUv;
                 
                 // Hash function for star generation
@@ -157,8 +163,11 @@ class SkyShaderSystem {
                 }
                 
                 void main() {
-                    // Calculate view direction from camera
-                    vec3 viewDir = normalize(vWorldPosition - cameraPosition);
+                    // Calculate view direction from camera.
+                    // vLocalPos is the sphere vertex in local (world-aligned) coords.
+                    // Since the sphere is centered on the camera, this is exactly the
+                    // view direction without subtracting two large numbers.
+                    vec3 viewDir = normalize(vLocalPos);
 
                     // Calculate fade factor based on camera height (0 = ground, 1 = orbit)
                     float fadeFactor = smoothstep(uFadeStartHeight, uFadeEndHeight, uCameraHeight);
@@ -174,8 +183,11 @@ class SkyShaderSystem {
                     // Blue-white atmospheric rim around sun direction
                     vec3 orbitSky = vec3(0.0, 0.0, 0.005) + vec3(0.4, 0.6, 1.0) * sunGlow;
 
+                    // Apply time-based transparency to atmospheric sky
+                    vec3 transparentAtmos = atmosSky * uSkyTransparency;
+
                     // Mix between atmospheric and orbit sky based on altitude
-                    vec3 skyColor = mix(atmosSky, orbitSky, fadeFactor);
+                    vec3 skyColor = mix(transparentAtmos, orbitSky, fadeFactor);
 
                     // Generate starfield using direction-based hash stars
                     float starField = 0.0;
@@ -198,6 +210,10 @@ class SkyShaderSystem {
                     // Keep atmospheric gradient at horizon when near ground
                     float horizonFade = smoothstep(0.0, 0.15, abs(viewDir.y));
                     finalColor = mix(skyColor, finalColor, horizonFade);
+
+                    // Blend sky toward fog color at horizon for seamless transition
+                    float horizonBlend = 1.0 - smoothstep(0.0, 0.2, abs(viewDir.y));
+                    finalColor = mix(finalColor, uFogColor, horizonBlend * uFogHorizonStrength);
 
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
@@ -294,7 +310,14 @@ class SkyShaderSystem {
             this.skySphere.material.uniforms.uStarColor.value.copy(this.starColor);
         }
     }
-    
+
+    setSkyTransparency(value) {
+        this.skyTransparency = value;
+        if (this.skySphere?.material?.uniforms) {
+            this.skySphere.material.uniforms.uSkyTransparency.value = value;
+        }
+    }
+
     dispose() {
         if (this.skySphere) {
             this.scene.remove(this.skySphere);

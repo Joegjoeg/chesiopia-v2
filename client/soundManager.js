@@ -2,7 +2,7 @@ class SoundManager {
     constructor() {
         this.audioContext = null;
         this.sounds = {};
-        this.masterVolume = 0.5;
+        this.masterVolume = 0.8;
         this.lastGrumbleTime = 0;
         this.grumbleCooldown = 3000; // 3 seconds between grumbles
         this.footstepCooldown = 100; // 100ms between footsteps
@@ -286,7 +286,100 @@ class SoundManager {
         }
     }
     
-    playGrumble(pieceType = null) {
+    playSplash() {
+        if (!this.audioContext) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.0001, now);
+        masterGain.connect(ctx.destination);
+
+        const bufferSize = ctx.sampleRate * 0.3;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.5;
+        }
+
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(2000, now);
+        filter.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+        filter.Q.setValueAtTime(1.5, now);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.6 * this.masterVolume, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+
+        noise.start(now);
+        noise.stop(now + 0.3);
+
+        masterGain.gain.linearRampToValueAtTime(0.5 * this.masterVolume, now + 0.02);
+        masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    }
+
+    playHarumph(text = 'harumph', distanceToCamera = null) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.pitch = 1.6;
+            utterance.rate = 0.85;
+            let volume = 0.4 * this.masterVolume;
+            if (distanceToCamera !== null) {
+                volume = this.calculateDistanceVolume(distanceToCamera, volume);
+            }
+            utterance.volume = volume;
+            utterance.lang = 'en-US';
+
+            const voices = speechSynthesis.getVoices();
+            const femaleVoice = voices.find(v =>
+                v.name.includes('Female') ||
+                v.name.includes('Samantha') ||
+                v.name.includes('Karen') ||
+                v.lang.includes('female')
+            );
+            if (femaleVoice) utterance.voice = femaleVoice;
+
+            speechSynthesis.speak(utterance);
+        }
+    }
+
+    setCursorBuzzMuffled(isMuffled, intensity = 1.0) {
+        if (!this.audioContext || !this.cursorBuzz) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+        const targetFreq = isMuffled ? 220 : 900;
+        const targetQ = isMuffled ? 0.25 : 0.5;
+        this.cursorBuzz.filter.frequency.setTargetAtTime(targetFreq, now, 0.15);
+        this.cursorBuzz.filter.Q.setTargetAtTime(targetQ, now, 0.15);
+        const baseFreq = this.cursorBuzz.baseFreq;
+        const angryFreq = baseFreq + (isMuffled ? -30 : 60 * intensity);
+        this.cursorBuzz.buzz1.frequency.setTargetAtTime(angryFreq, now, 0.1);
+        this.cursorBuzz.buzz2.frequency.setTargetAtTime(angryFreq * 1.015, now, 0.1);
+    }
+
+    calculateDistanceVolume(distanceToCamera, baseVolume = 1.0) {
+        const fadeStartDistance = 3;
+        const fadeEndDistance = 70;
+        const minVolume = 0.001;
+
+        let volume = baseVolume;
+        if (distanceToCamera > fadeStartDistance) {
+            const fadeProgress = Math.min((distanceToCamera - fadeStartDistance) / (fadeEndDistance - fadeStartDistance), 1);
+            volume = baseVolume * (1 - fadeProgress) + minVolume * fadeProgress;
+        }
+        return volume;
+    }
+
+    playGrumble(pieceType = null, distanceToCamera = null) {
         const now = Date.now();
         if (now - this.lastGrumbleTime < this.grumbleCooldown) return;
         
@@ -321,7 +414,11 @@ class SoundManager {
             
             // Apply voice settings
             const settings = voiceConfig.voiceSettings;
-            utterance.volume = this.masterVolume * settings.volume;
+            let volume = this.masterVolume * settings.volume;
+            if (distanceToCamera !== null) {
+                volume = this.calculateDistanceVolume(distanceToCamera, volume);
+            }
+            utterance.volume = volume;
             utterance.rate = settings.rate;
             utterance.pitch = settings.pitch;
             utterance.voice = this.getVoiceForPiece(pieceType);
@@ -418,15 +515,15 @@ class SoundManager {
         return this.getVoiceForPiece('pawn');
     }
     
-    playMoveSound(pieceType = null) {
+    playMoveSound(pieceType = null, distanceToCamera = null) {
         // Play a sequence of footsteps for a move
         this.playFootstep();
         setTimeout(() => this.playFootstep(), 150);
         setTimeout(() => this.playFootstep(), 300);
-        
+
         // Maybe add a grumble occasionally with piece type
         if (Math.random() > 0.7) {
-            setTimeout(() => this.playGrumble(pieceType), 200);
+            setTimeout(() => this.playGrumble(pieceType, distanceToCamera), 200);
         }
     }
     
@@ -648,6 +745,174 @@ class SoundManager {
             gain.disconnect();
         }, fade * 1000 + 50);
         this.rotationHum = null;
+    }
+
+    startCursorBuzz(options = {}) {
+        if (!this.audioContext) return;
+        if (this.cursorBuzz) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+        let baseVolume = Math.max(0, Math.min(1, options.volume ?? 0.12));
+        if (window.parameterSystem) {
+            const paramVol = window.parameterSystem.getParameter('cursorBuzzVolume');
+            if (typeof paramVol === 'number') baseVolume = paramVol;
+        }
+        if (baseVolume <= 0) {
+            this.stopCursorBuzz();
+            return;
+        }
+
+        const masterGain = ctx.createGain();
+        masterGain.gain.setValueAtTime(0.0001, now);
+        masterGain.connect(ctx.destination);
+
+        // Primary buzz oscillator (sawtooth for buzzy harmonics)
+        const buzz1 = ctx.createOscillator();
+        buzz1.type = 'sawtooth';
+        buzz1.frequency.setValueAtTime(180, now);
+        const buzz1Gain = ctx.createGain();
+        buzz1Gain.gain.setValueAtTime(0.5 * baseVolume * this.masterVolume, now);
+        buzz1.connect(buzz1Gain);
+        buzz1Gain.connect(masterGain);
+        buzz1.start(now);
+
+        // Secondary oscillator slightly detuned for beating/insect richness
+        const buzz2 = ctx.createOscillator();
+        buzz2.type = 'triangle';
+        buzz2.frequency.setValueAtTime(182, now);
+        const buzz2Gain = ctx.createGain();
+        buzz2Gain.gain.setValueAtTime(0.35 * baseVolume * this.masterVolume, now);
+        buzz2.connect(buzz2Gain);
+        buzz2Gain.connect(masterGain);
+        buzz2.start(now);
+
+        // Flutter LFO - amplitude modulation for wing-beat feel
+        const flutter = ctx.createOscillator();
+        flutter.type = 'sine';
+        flutter.frequency.setValueAtTime(32, now);
+        const flutterGain = ctx.createGain();
+        flutterGain.gain.setValueAtTime(0.18 * baseVolume * this.masterVolume, now);
+        flutter.connect(flutterGain);
+        flutterGain.connect(masterGain.gain);
+        flutter.start(now);
+
+        // Lowpass filter to keep it soft/subtle
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(900, now);
+        filter.Q.setValueAtTime(0.5, now);
+
+        // Re-wire through filter: disconnect from destination, reconnect
+        masterGain.disconnect();
+        masterGain.connect(filter);
+        filter.connect(ctx.destination);
+
+        masterGain.gain.linearRampToValueAtTime(1.0, now + 0.4);
+
+        this.cursorBuzz = {
+            masterGain,
+            filter,
+            buzz1,
+            buzz2,
+            buzz1Gain,
+            buzz2Gain,
+            flutter,
+            flutterGain,
+            baseVolume,
+            baseFreq: 180,
+            buzz1BaseGain: 0.5,
+            buzz2BaseGain: 0.35,
+            flutterBaseGain: 0.18
+        };
+    }
+
+    updateCursorBuzz(speed = 0, distance = 20, isGrabbing = false, grabIntensity = 1.6) {
+        if (!this.audioContext || !this.cursorBuzz) return;
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Read live volume & fade params from parameter system
+        let baseVolume = this.cursorBuzz.baseVolume;
+        let fadeStart = 5;
+        let fadeEnd = 80;
+        if (window.parameterSystem) {
+            const paramVol = window.parameterSystem.getParameter('cursorBuzzVolume');
+            if (typeof paramVol === 'number') baseVolume = paramVol;
+            const paramNear = window.parameterSystem.getParameter('cursorBuzzFadeNear');
+            const paramFar = window.parameterSystem.getParameter('cursorBuzzFadeFar');
+            if (typeof paramNear === 'number') fadeStart = paramNear;
+            if (typeof paramFar === 'number') fadeEnd = paramFar;
+        }
+        if (baseVolume <= 0 || this.masterVolume <= 0) {
+            this.stopCursorBuzz();
+            return;
+        }
+
+        // Grabbing = extra effort: HIGHER pitch than fast flight
+        const grabPitchOffset = isGrabbing ? +120 : 0;
+        const targetFreq = this.cursorBuzz.baseFreq + grabPitchOffset + speed * 220;
+        this.cursorBuzz.buzz1.frequency.setTargetAtTime(targetFreq, now, 0.06);
+        // Moderate detune when grabbing for a strained, urgent feel
+        this.cursorBuzz.buzz2.frequency.setTargetAtTime(targetFreq * (isGrabbing ? 1.04 : 1.015), now, 0.06);
+
+        // Flutter rate: slightly faster when grabbing for frantic effort
+        this.cursorBuzz.flutter.frequency.setTargetAtTime(
+            (isGrabbing ? 38 : 28) + speed * 40, now, 0.08);
+
+        // Distance attenuates volume: near = louder, far = quieter
+        let distAtten = 1;
+        if (distance > fadeStart) {
+            distAtten = 1 - Math.min((distance - fadeStart) / (fadeEnd - fadeStart), 1);
+            distAtten = Math.max(distAtten, 0.0);
+        }
+
+        // Speed also contributes a little to volume (moving wings are louder)
+        const speedAmp = 0.6 + speed * 0.4;
+
+        // Grabbing amplifies volume
+        const grabVol = isGrabbing ? grabIntensity : 1.0;
+        const targetVol = baseVolume * distAtten * speedAmp * grabVol * this.masterVolume;
+        const { buzz1BaseGain, buzz2BaseGain, flutterBaseGain } = this.cursorBuzz;
+        this.cursorBuzz.buzz1Gain.gain.setTargetAtTime(buzz1BaseGain * targetVol, now, 0.08);
+        this.cursorBuzz.buzz2Gain.gain.setTargetAtTime(buzz2BaseGain * targetVol, now, 0.08);
+        this.cursorBuzz.flutterGain.gain.setTargetAtTime(flutterBaseGain * targetVol, now, 0.08);
+
+        // When grabbing, open filter for brighter high-pitch; close when idle for softness
+        const targetFilterFreq = isGrabbing ? 2000 : 700;
+        this.cursorBuzz.filter.frequency.setTargetAtTime(targetFilterFreq, now, 0.1);
+
+        // Debug log on grab state change (throttled to max once per 200ms)
+        const nowMs = performance.now();
+        const stateChanged = isGrabbing !== this._lastBuzzGrabState;
+        const intensityChanged = isGrabbing && Math.abs((this._lastBuzzIntensity || 0) - grabIntensity) > 0.1;
+        if ((stateChanged || intensityChanged) && (nowMs - (this._lastBuzzLogTime || 0) > 200)) {
+            // console.log('[SoundManager] updateCursorBuzz — isGrabbing=', isGrabbing, 'intensity=', grabIntensity, 'targetFreq=', targetFreq.toFixed(1), 'targetVol=', targetVol.toFixed(4), 'filter=', targetFilterFreq, 'distAtten=', distAtten.toFixed(3));
+            this._lastBuzzLogTime = nowMs;
+            this._lastBuzzGrabState = isGrabbing;
+            this._lastBuzzIntensity = grabIntensity;
+        }
+    }
+
+    stopCursorBuzz(options = {}) {
+        if (!this.audioContext || !this.cursorBuzz) return;
+        const ctx = this.audioContext;
+        const fade = Math.max(0.1, options.fade ?? 0.5);
+        const now = ctx.currentTime;
+        const { masterGain, buzz1, buzz2, flutter } = this.cursorBuzz;
+        masterGain.gain.cancelScheduledValues(now);
+        masterGain.gain.setValueAtTime(masterGain.gain.value || 0.0001, now);
+        masterGain.gain.linearRampToValueAtTime(0.0001, now + fade);
+        setTimeout(() => {
+            try {
+                buzz1.stop();
+                buzz2.stop();
+                flutter.stop();
+            } catch (err) {
+                console.warn('[SoundManager] Cursor buzz stop error:', err);
+            }
+            masterGain.disconnect();
+        }, fade * 1000 + 50);
+        this.cursorBuzz = null;
     }
 
     setMasterVolume(volume) {

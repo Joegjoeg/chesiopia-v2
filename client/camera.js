@@ -47,6 +47,31 @@ class CameraController {
         this.deceleration = 0.98; // Lower damping for more gradual coasting
         this.maxSpeed = 0.2; // Much lower max speed for very gentle movement
         
+        // Per-frame drag accumulation (high-DPI mice fire many events per frame)
+        this.pendingDrag = { x: 0, y: 0 };
+
+        // Double-right-click detection
+        this.lastRightClickTime = 0;
+        this.lastRightClickPos = { x: 0, y: 0 };
+        this.rightClickDownPos = { x: 0, y: 0 };
+        this.doubleClickDelay = 300; // ms between clicks
+        this.doubleClickDistance = 10; // pixels between clicks
+
+        // Cursor-grab anchor state for world-locked panning
+        this.cursorGrabState = {
+            active: false,
+            worldPoint: null,
+            target: new THREE.Vector3(),
+            slowFactor: 1.0
+        };
+        this.panAnchorWorld = null;
+        this.panAnchorTarget = null;
+        this.dragLimitState = {
+            active: false,
+            origin: new THREE.Vector3()
+        };
+        this._dragLimitOffset = new THREE.Vector3();
+        
         // Smooth rotation with spin momentum
         this.currentAngle = this.angle; // Actual angle being interpolated
         this.angleVelocity = 0; // Angular velocity for momentum
@@ -70,7 +95,7 @@ class CameraController {
         this.isometricAzimuth = Math.PI / 4; // 45 degrees for diamond silhouette
         this.isometricPolar = 0.55;           // ~31.5 degrees elevation
         this.minOrbitDistance = 12;           // Min zoom: pieces stay tap-friendly
-        this.maxOrbitDistance = 45;           // Max zoom: fills screen edge-to-edge
+        this.maxOrbitDistance = (window.parameterSystem && window.parameterSystem.getParameter('maxCameraHeight')) || 45;
 
         // Touch state for mobile
         this.touchDragged = false;
@@ -103,6 +128,7 @@ class CameraController {
     }
     
     handleKeyDown(event) {
+        if (!event.key) return;
         this.keys[event.key.toLowerCase()] = true;
         
         // Prevent default for game keys
@@ -112,28 +138,65 @@ class CameraController {
     }
     
     handleKeyUp(event) {
+        if (!event.key) return;
         this.keys[event.key.toLowerCase()] = false;
     }
 
+    beginCursorGrabAnchor(worldPoint, anchorTarget, slowFactor = 1) {
+        if (!worldPoint) {
+            this.cursorGrabState.active = false;
+            this.cursorGrabState.worldPoint = null;
+            return;
+        }
+        this.cursorGrabState.active = true;
+        this.cursorGrabState.worldPoint = worldPoint.clone();
+        this.cursorGrabState.target.copy(anchorTarget || this.target);
+        this.cursorGrabState.slowFactor = Math.min(1, Math.max(0.1, slowFactor || 1));
+    }
+
+    endCursorGrabAnchor() {
+        this.cursorGrabState.active = false;
+        this.cursorGrabState.worldPoint = null;
+    }
+
+    _enforceDragCutoff() {
+        if (!this.dragLimitState.active) return false;
+        const ps = window.parameterSystem;
+        if (!ps) return false;
+        const cutoff = ps.getParameter('cursorDragCutoffDistance');
+        if (cutoff === undefined || cutoff <= 0) return false;
+
+        const offset = this._dragLimitOffset;
+        offset.copy(this.target).sub(this.dragLimitState.origin);
+        offset.y = 0;
+        const distance = Math.hypot(offset.x, offset.z);
+        if (distance <= cutoff) return false;
+
+        const clampRatio = cutoff / distance;
+        offset.multiplyScalar(clampRatio);
+        this.target.set(
+            this.dragLimitState.origin.x + offset.x,
+            this.target.y,
+            this.dragLimitState.origin.z + offset.z
+        );
+        this.currentTarget.copy(this.target);
+        this.velocity.set(0, 0, 0);
+        this.pendingDrag.x = 0;
+        this.pendingDrag.y = 0;
+        this.endCursorGrabAnchor();
+        return true;
+    }
+
     getDynamicPanSpeed() {
-        if (!window.parameterSystem) return 0.04;
+        const ps = window.parameterSystem;
+        const base = 0.03;
 
-        const startHeight = window.parameterSystem.getParameter('scrollEffectStartHeight') ?? 0;
-        const baseSpeed = window.parameterSystem.getParameter('scrollBaseDragSpeed') ?? 0.04;
-        const multiplier = window.parameterSystem.getParameter('scrollHeightMultiplier') ?? 0.001;
-
-        // Compute camera height above terrain
-        let heightAboveTerrain = this.camera.position.y;
-        if (window.game && window.game.boardSystem) {
-            const terrainHeight = window.game.boardSystem.getTerrainHeight(this.camera.position.x, this.camera.position.z);
-            heightAboveTerrain = Math.max(0, this.camera.position.y - terrainHeight);
+        if (ps) {
+            const cap = ps.getParameter('cursorDragSpeedCap');
+            return Math.min(cap, base);
         }
 
-        if (heightAboveTerrain <= startHeight) {
-            return baseSpeed;
-        }
-
-        return baseSpeed + (heightAboveTerrain - startHeight) * multiplier;
+        return Math.min(0.10, base);
     }
 
     handleMouseDown(event) {
@@ -154,10 +217,41 @@ class CameraController {
             
             event.preventDefault(); // Prevent middle-click behavior
         } else if (event.button === 2) { // Right click - camera position
+            // Record start position for drag vs click detection
+            this.rightClickDownPos = { x: event.clientX, y: event.clientY };
+
+            // Defensive: suppress pan if cursor is over water (NaviCursor drowning animation)
+            const boardSys = window.game?.boardSystem;
+            if (boardSys) {
+                const mwp = boardSys.mouseWorldPosition;
+                const waterLevel = boardSys.tidalWaterLevel ?? boardSys.waterLevel ?? -1.5;
+                let terrainHeight;
+                if (boardSys.getUnifiedTerrainHeight) {
+                    terrainHeight = boardSys.getUnifiedTerrainHeight(mwp.x, mwp.z);
+                } else if (boardSys.getHeightWithRipple) {
+                    terrainHeight = boardSys.getHeightWithRipple(mwp.x, mwp.z);
+                } else {
+                    terrainHeight = mwp.y;
+                }
+                if (terrainHeight < waterLevel) {
+                    event.preventDefault();
+                    return;
+                }
+            }
             this.rightMouseDown = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
             this.zoomTarget = null; // Cancel smooth zoom when taking manual control
+            this.dragLimitState.active = true;
+            this.dragLimitState.origin.copy(this.target);
+
+            // Capture world anchor for world-locked panning
+            const boardSystem = window.game?.boardSystem;
+            if (boardSystem?.mouseWorldPosition) {
+                this.panAnchorWorld = boardSystem.mouseWorldPosition.clone();
+                this.panAnchorTarget = this.target.clone();
+            }
+
             event.preventDefault(); // Prevent context menu
         }
     }
@@ -168,6 +262,34 @@ class CameraController {
         } else if (event.button === 1) { // Middle click - camera orientation
             this.middleMouseDown = false;
         } else if (event.button === 2) { // Right click - camera position
+            // Check if this was a click (not a drag)
+            const dx = event.clientX - this.rightClickDownPos.x;
+            const dy = event.clientY - this.rightClickDownPos.y;
+            const moveDist = Math.sqrt(dx * dx + dy * dy);
+
+            if (moveDist < 5) { // It's a click, not a drag
+                const now = Date.now();
+                const timeSinceLast = now - this.lastRightClickTime;
+
+                if (timeSinceLast < this.doubleClickDelay) {
+                    const lastDx = event.clientX - this.lastRightClickPos.x;
+                    const lastDy = event.clientY - this.lastRightClickPos.y;
+                    const lastDist = Math.sqrt(lastDx * lastDx + lastDy * lastDy);
+
+                    if (lastDist < this.doubleClickDistance) {
+                        // Double-right-click detected!
+                        this.handleDoubleRightClick();
+                        this.lastRightClickTime = 0; // Reset to prevent triple-click
+                    } else {
+                        this.lastRightClickTime = now;
+                        this.lastRightClickPos = { x: event.clientX, y: event.clientY };
+                    }
+                } else {
+                    this.lastRightClickTime = now;
+                    this.lastRightClickPos = { x: event.clientX, y: event.clientY };
+                }
+            }
+
             this.rightMouseDown = false;
             // Sync currentTarget with target to prevent wobble when drag ends
             this.currentTarget.copy(this.target);
@@ -175,9 +297,22 @@ class CameraController {
             this.velocity.set(0, 0, 0);
             // Reset oscillation counter to prevent false triggers
             this.oscillationCount = 0;
+            this.endCursorGrabAnchor();
+            this.dragLimitState.active = false;
+            this.panAnchorWorld = null;
+            this.panAnchorTarget = null;
         }
     }
-    
+
+    handleDoubleRightClick() {
+        const worldPoint = window.game?.boardSystem?.mouseWorldPosition;
+        if (worldPoint) {
+            console.log('[Camera] Double-right-click at world position:', worldPoint);
+            // Move camera to this position using same animation as Jesus summon
+            this.centerOnPosition(worldPoint.x, worldPoint.z);
+        }
+    }
+
     handleMouseMove(event) {
         if (this.middleMouseDown) {
             const deltaX = event.clientX - this.lastMouseX;
@@ -200,35 +335,18 @@ class CameraController {
         }
         
         if (this.rightMouseDown) {
-            const deltaX = event.clientX - this.lastMouseX;
-            const deltaY = event.clientY - this.lastMouseY;
-            
-            if (this.mode === 'tactical' || this.mode === 'free') {
-                // Move camera target like WASD keys (now right click)
-                const panSpeed = this.getDynamicPanSpeed();
-                const angleRad = this.orbitAzimuth; // Use actual camera azimuth (radians)
-                
-                // Calculate movement vectors based on camera direction
-                const moveVector = new THREE.Vector3();
-                
-                // Horizontal mouse movement (left/right) affects strafing (A/D keys)
-                moveVector.x -= Math.cos(angleRad) * deltaX * panSpeed;
-                moveVector.z += Math.sin(angleRad) * deltaX * panSpeed;
-                
-                // Vertical mouse movement (up/down) affects forward/backward (W/S keys)
-                moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed;
-                moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
-                
-                // Apply movement directly to target during dragging for immediate response
-                this.target.add(moveVector);
-                
-                // During dragging, update currentTarget more aggressively for smoother movement
-                this.currentTarget.lerp(this.target, 0.3); // Faster interpolation during drag
-                this.velocity.set(0, 0, 0); // Clear velocity during drag to prevent sway
+            if (this.cursorGrabState.active) {
+                return;
             }
+            let deltaX = event.movementX;
+            let deltaY = event.movementY;
+            const maxDelta = 20;
+            deltaX = Math.max(-maxDelta, Math.min(maxDelta, deltaX));
+            deltaY = Math.max(-maxDelta, Math.min(maxDelta, deltaY));
             
-            this.lastMouseX = event.clientX;
-            this.lastMouseY = event.clientY;
+            // Accumulate for single frame-bound application (prevents runaway on high-DPI mice)
+            this.pendingDrag.x += deltaX;
+            this.pendingDrag.y += deltaY;
         }
     }
     
@@ -301,9 +419,9 @@ class CameraController {
                     moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
                     
                     this.target.add(moveVector);
-                    this.currentTarget.lerp(this.target, 0.3);
+                    this.currentTarget.copy(this.target);
                     this.velocity.set(0, 0, 0);
-                    
+
                     // Deselect piece if dragging on empty ground
                     if (this.touchOnEmptyGround && window.game && window.game.deselectFromTouchDrag) {
                         window.game.deselectFromTouchDrag();
@@ -326,24 +444,18 @@ class CameraController {
             // Two-finger pan: move camera target (same as right-click drag)
             const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
             const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-            const deltaX = midX - this.lastTouchMidX;
-            const deltaY = midY - this.lastTouchMidY;
+            let deltaX = midX - this.lastTouchMidX;
+            let deltaY = midY - this.lastTouchMidY;
+
+            // Clamp deltas to prevent runaway on lag or touch glitches
+            const maxDelta = 20;
+            deltaX = Math.max(-maxDelta, Math.min(maxDelta, deltaX));
+            deltaY = Math.max(-maxDelta, Math.min(maxDelta, deltaY));
             
-            if (this.mode === 'isometric' || this.mode === 'tactical' || this.mode === 'free') {
-                const panSpeed = this.getDynamicPanSpeed();
-                const angleRad = this.mode === 'isometric' ? this.isometricAzimuth : this.orbitAzimuth;
-                
-                const moveVector = new THREE.Vector3();
-                moveVector.x -= Math.cos(angleRad) * deltaX * panSpeed;
-                moveVector.z += Math.sin(angleRad) * deltaX * panSpeed;
-                moveVector.x -= Math.sin(angleRad) * deltaY * panSpeed;
-                moveVector.z -= Math.cos(angleRad) * deltaY * panSpeed;
-                
-                this.target.add(moveVector);
-                this.currentTarget.lerp(this.target, 0.3);
-                this.velocity.set(0, 0, 0);
-            }
-            
+            // Accumulate for single frame-bound application
+            this.pendingDrag.x += deltaX;
+            this.pendingDrag.y += deltaY;
+
             this.lastTouchMidX = midX;
             this.lastTouchMidY = midY;
             
@@ -528,6 +640,36 @@ class CameraController {
         }
     }
     
+    applyCursorGrabPan() {
+        if (!this.cursorGrabState.active || !this.rightMouseDown) return false;
+        const boardSystem = window.game?.boardSystem;
+        const anchor = this.cursorGrabState.worldPoint;
+        const current = boardSystem?.mouseWorldPosition;
+        if (!anchor || !current) return false;
+
+        // anchor - current so the camera compensates in the opposite direction
+        // and the grabbed terrain data point stays glued under the cursor
+        const deltaX = (anchor.x - current.x) * this.cursorGrabState.slowFactor;
+        const deltaZ = (anchor.z - current.z) * this.cursorGrabState.slowFactor;
+
+        if (Math.abs(deltaX) < 1e-4 && Math.abs(deltaZ) < 1e-4) {
+            return true;
+        }
+
+        this.target.set(
+            this.cursorGrabState.target.x + deltaX,
+            this.cursorGrabState.target.y,
+            this.cursorGrabState.target.z + deltaZ
+        );
+
+        this.currentTarget.copy(this.target);
+        this.velocity.set(0, 0, 0);
+        this.pendingDrag.x = 0;
+        this.pendingDrag.y = 0;
+        this._enforceDragCutoff();
+        return true;
+    }
+
     updateCameraPosition() {
         // Calculate desired movement direction
         const desiredMovement = new THREE.Vector3().subVectors(this.target, this.currentTarget);
@@ -590,6 +732,55 @@ class CameraController {
         if (this.mode === 'isometric') {
             this.orbitAzimuth = this.isometricAzimuth;
             this.orbitPolar = this.isometricPolar;
+        }
+        
+        // World-locked cursor grab panning (overrides legacy drag)
+        let handledByCursor = this.applyCursorGrabPan();
+
+        // Direct world-space panning using mouse world position delta
+        if (!handledByCursor && this.rightMouseDown && this.panAnchorWorld) {
+            const boardSystem = window.game?.boardSystem;
+            const currentWorld = boardSystem?.mouseWorldPosition;
+            if (currentWorld) {
+                const deltaX = this.panAnchorWorld.x - currentWorld.x;
+                const deltaZ = this.panAnchorWorld.z - currentWorld.z;
+
+                this.target.set(
+                    this.panAnchorTarget.x + deltaX,
+                    this.panAnchorTarget.y,
+                    this.panAnchorTarget.z + deltaZ
+                );
+                this.currentTarget.copy(this.target);
+                this.velocity.set(0, 0, 0);
+                this.pendingDrag.x = 0;
+                this.pendingDrag.y = 0;
+                this._enforceDragCutoff();
+                handledByCursor = true;
+            }
+        }
+
+        // Legacy screen-pixel drag fallback
+        if (!handledByCursor && this.rightMouseDown && (this.pendingDrag.x !== 0 || this.pendingDrag.y !== 0)) {
+            const maxFrameDelta = 20;
+            const dx = Math.max(-maxFrameDelta, Math.min(maxFrameDelta, this.pendingDrag.x));
+            const dy = Math.max(-maxFrameDelta, Math.min(maxFrameDelta, this.pendingDrag.y));
+
+            const panSpeed = this.getDynamicPanSpeed();
+            const angleRad = this.orbitAzimuth;
+
+            const moveVector = new THREE.Vector3();
+            moveVector.x -= Math.cos(angleRad) * dx * panSpeed;
+            moveVector.z += Math.sin(angleRad) * dx * panSpeed;
+            moveVector.x -= Math.sin(angleRad) * dy * panSpeed;
+            moveVector.z -= Math.cos(angleRad) * dy * panSpeed;
+
+            this.target.add(moveVector);
+            this.currentTarget.copy(this.target);
+            this.velocity.set(0, 0, 0);
+
+            this.pendingDrag.x = 0;
+            this.pendingDrag.y = 0;
+            this._enforceDragCutoff();
         }
         
         // Calculate camera position using spherical coordinates
@@ -659,12 +850,8 @@ class CameraController {
             this.camera.updateProjectionMatrix();
         }
 
-        // During right-click drag (panning), lock camera orientation to avoid swing.
-        // Otherwise the camera smoothly tracks the target.
-        // In isometric mode, always track target even during panning.
-        if (!this.rightMouseDown || this.mode === 'isometric') {
-            this.camera.lookAt(this.target);
-        }
+        // Camera always tracks the orbit target so panning feels connected to the landscape
+        this.camera.lookAt(this.target);
     }
     
     cycleMode() {

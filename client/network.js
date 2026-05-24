@@ -215,7 +215,6 @@ class NetworkManager {
         
         // Game time sync from server
         this.socket.on('timeSync', (data) => {
-            console.log('[Network] Received timeSync event:', data);
             this.triggerEvent('timeSync', data);
         });
         
@@ -233,11 +232,37 @@ class NetworkManager {
             }
         });
         
-        // Debug: Catch-all event listener to see what we receive
-        this.socket.onAny((eventName, ...args) => {
-            console.log('[Network] ANY EVENT:', eventName, args);
+        // Settlement events (server-authoritative villages)
+        this.socket.on('settlementsReceived', (data) => {
+            // console.log('[Network] settlementsReceived socket event, villages:', data?.villages?.length);
+            this.triggerEvent('settlementsReceived', data);
         });
-        
+
+        this.socket.on('tomeUpdate', (data) => {
+            this.triggerEvent('tomeUpdate', data);
+        });
+
+        this.socket.on('buildingStarted', (data) => {
+            this.triggerEvent('buildingStarted', data);
+        });
+
+        this.socket.on('terrainModified', (data) => {
+            this.triggerEvent('terrainModified', data);
+        });
+
+        this.socket.on('worldRegenerated', (data) => {
+            console.log('[Network] Received worldRegenerated:', data);
+            this.triggerEvent('worldRegenerated', data);
+        });
+
+        this.socket.on('envAgents', (data) => {
+            this.triggerEvent('envAgents', data);
+        });
+
+        this.socket.on('envFields', (data) => {
+            this.triggerEvent('envFields', data);
+        });
+
         console.log('[Network] All socket events set up');
     }
     

@@ -74,6 +74,12 @@ class JesusSummonSystem {
         };
         this.boardSystem.setTerrainModifier(this._hillKey, modifierConfig);
 
+        // Move camera target to summon location
+        const game = this.boardSystem && this.boardSystem.game;
+        if (game && game.cameraController) {
+            game.cameraController.centerOnPosition(centerX, centerZ);
+        }
+
         this._currentAnimation = {
             duration: 3500,
             elapsedMs: 0,

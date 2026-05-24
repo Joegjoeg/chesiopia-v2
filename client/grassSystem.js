@@ -299,10 +299,18 @@ class GrassSystem {
                 const basePos = basePositions[i];
                 const phase = (basePos.x * 0.3 + basePos.z * 0.7) * Math.PI * 2 * phaseScl;
 
-                // Wind effect
-                const windX = Math.sin(this.animationTime * 2.0 + phase) * strength;
-                const windZ = Math.cos(this.animationTime * 1.6 + phase) * strength * 0.5;
-                
+                // Wind effect — base organic sway
+                const sway = Math.sin(this.animationTime * 2.0 + phase) * strength;
+
+                // Pressure-gradient wind from minimap: rotate sway toward wind angle
+                const localWind = window.minimapOverlay?.localWind;
+                const windAngle = localWind ? localWind.angle : 0;
+                const windPush = localWind ? Math.min(localWind.speed * 0.25, strength * 1.5) : 0;
+
+                // Orient sway + static push in wind direction
+                const windX = Math.cos(windAngle) * (sway + windPush);
+                const windZ = Math.sin(windAngle) * (sway + windPush);
+
                 // Update position
                 const arrayIndex = i * 3;
                 positions[arrayIndex] = basePos.x + windX;

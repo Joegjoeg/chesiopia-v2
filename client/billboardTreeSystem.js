@@ -13,6 +13,9 @@ class BillboardTreeSystem {
         this._heightSmoothingFactor = 0.25;
         this._currentHeights = null;
 
+        // Global tree size multiplier (controlled by dev tools; applied via shader uniform)
+        this.globalTreeSizeMult = 1.0;
+
         this.windUniforms = {
             uTime: { value: 0 },
             uWindStrength: { value: 0.4 },
@@ -367,6 +370,7 @@ class BillboardTreeSystem {
         const meshExtent = 96;
         for (let i = 0; i < this.treeCount; i++) {
             const tree = this.treeData[i];
+            if (!tree || tree._lodVisible === false) continue;
             const dx = Math.abs(tree.x - camera.position.x);
             const dz = Math.abs(tree.z - camera.position.z);
             let targetHeight;
@@ -382,6 +386,15 @@ class BillboardTreeSystem {
             }
             tree.y = newHeight;
             this.updateTreeInstanceMatrix(i, tree);
+        }
+    }
+
+    setGlobalTreeSizeMult(value) {
+        this.globalTreeSizeMult = value;
+        for (const part of this.parts) {
+            if (part.mesh && part.mesh.material && part.mesh.material.uniforms && part.mesh.material.uniforms.uTreeSizeMult) {
+                part.mesh.material.uniforms.uTreeSizeMult.value = value;
+            }
         }
     }
 
@@ -428,6 +441,31 @@ class BillboardTreeSystem {
             part.mesh.count = 0;
             part.mesh.instanceMatrix.needsUpdate = true;
         }
+    }
+
+    /** Remove a single tree by index using swap-with-last for O(1) removal. */
+    removeTree(index) {
+        if (index < 0 || index >= this.treeCount) return null;
+        const removed = this.treeData[index];
+        const lastIndex = this.treeCount - 1;
+        if (index !== lastIndex) {
+            const moved = this.treeData[lastIndex];
+            this.treeData[index] = moved;
+            this._currentHeights[index] = this._currentHeights[lastIndex];
+            for (const part of this.parts) {
+                const attr = part.mesh.geometry.attributes.aWindMultiplier;
+                if (attr) attr.setX(index, attr.getX(lastIndex));
+                const attr2 = part.mesh.geometry.attributes.aTreeVariant;
+                if (attr2) attr2.setX(index, attr2.getX(lastIndex));
+            }
+            this.updateTreeInstanceMatrix(index, moved);
+        }
+        this.treeData.length = lastIndex;
+        this.treeCount = lastIndex;
+        for (const part of this.parts) {
+            part.mesh.count = this.treeCount;
+        }
+        return removed;
     }
 
     dispose() {
