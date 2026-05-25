@@ -54,15 +54,15 @@ class PressureAgent {
         // console.log(`[Agent] Created ${type === AGENT_TYPE.PRESSURE ? 'pressure' : 'moisture'} at (${x.toFixed(1)},${z.toFixed(1)}) life=${this.life}`);
     }
 
-    tick(envFields, terrainGenerator, windVector, moveScale = 1.0, globalSampleCount = null) {
+    tick(envFields, terrainGenerator, groundwaterSystem, windVector, moveScale = 1.0, globalSampleCount = null) {
         if (this._dying) {
             this.life = Math.max(0, this.life - 0.05);
         } else {
             this.life = Math.min(1, this.life + 0.05);
         }
         this._move(envFields, windVector, moveScale, globalSampleCount);
-        this._deposit(envFields);
-        this._absorb(envFields, terrainGenerator);
+        this._deposit(envFields, groundwaterSystem, terrainGenerator);
+        this._absorb(envFields, terrainGenerator, groundwaterSystem, windVector);
         this._updateStrength(envFields);
         this._decayInstability();
     }
@@ -147,7 +147,7 @@ class PressureAgent {
         this.z = newZ;
     }
 
-    _deposit(envFields) {
+    _deposit(envFields, groundwaterSystem, terrainGenerator) {
         const tx = Math.round(this.x);
         const tz = Math.round(this.z);
         const key = `${tx},${tz}`;
@@ -172,6 +172,45 @@ class PressureAgent {
             field.pressure += 0.005 * lifeScale;
         }
 
+        // === WATER CYCLE: PRECIPITATION ===
+        if (groundwaterSystem && terrainGenerator) {
+            const height = terrainGenerator.getHeight(tx, tz);
+            const prevHeight = terrainGenerator.getHeight(
+                Math.round(this.x - this.lastDx),
+                Math.round(this.z - this.lastDz)
+            );
+
+            // Saturation capacity: how much moisture air can hold at this temperature
+            // warmer air holds more (range ~0.2 cold to ~1.8 hot)
+            const satCapacity = 0.2 + this.state.temperature * 1.6;
+
+            let precipitate = 0;
+
+            // Orographic precipitation: moving uphill cools air, lowers saturation
+            if (height > prevHeight) {
+                const rise = height - prevHeight;
+                const cooling = Math.min(0.3, rise * 0.02); // adiabatic cooling
+                const orographicSat = Math.max(0.1, satCapacity - cooling);
+
+                if (this.state.humidity > orographicSat) {
+                    precipitate += (this.state.humidity - orographicSat) * 0.5;
+                }
+            }
+
+            // General precipitation: humidity exceeds saturation capacity
+            if (this.state.humidity > satCapacity) {
+                const excess = this.state.humidity - satCapacity;
+                precipitate += excess * 0.3;
+            }
+
+            // Apply precipitation to surface water
+            if (precipitate > 0) {
+                const lifeScaledPrecip = precipitate * lifeScale;
+                this.state.humidity -= lifeScaledPrecip;
+                groundwaterSystem.addSurfaceWater(tx, tz, lifeScaledPrecip);
+            }
+        }
+
         // Clamp
         field.pressure = Math.max(0, Math.min(1, field.pressure));
         field.humidity = Math.max(0, Math.min(1, field.humidity));
@@ -180,7 +219,7 @@ class PressureAgent {
         this.state.humidity = Math.max(0, Math.min(1, this.state.humidity));
     }
 
-    _absorb(envFields, terrainGenerator) {
+    _absorb(envFields, terrainGenerator, groundwaterSystem, windVector) {
         const tx = Math.round(this.x);
         const tz = Math.round(this.z);
         const key = `${tx},${tz}`;
@@ -195,11 +234,41 @@ class PressureAgent {
         this.state.humidity += (field.humidity - this.state.humidity) * this.absorbRate * lifeScale;
         this.state.temperature += (field.temperature - this.state.temperature) * this.absorbRate * lifeScale;
 
-        // Dual water detection: climate humidity OR terrain height
+        // === WATER CYCLE: EVAPORATION ===
+        // Evaporation limited by local air moisture (slower as air saturates)
+        const localHumidity = field ? field.humidity : 0.5;
+        const capacityRemaining = Math.max(0, 1 - localHumidity);
+
+        // Evaporation from surface water pools
+        if (groundwaterSystem) {
+            const surfaceWater = groundwaterSystem.getSurfaceWater(tx, tz);
+            if (surfaceWater > 0.01) {
+                const temp = this.state.temperature;
+                const windSpeed = Math.sqrt(
+                    (windVector?.dx ?? 0) ** 2 + (windVector?.dz ?? 0) ** 2
+                );
+                // evap = surfaceWater * baseRate * temperature * wind * (1 - localHumidity)
+                const evapAmount = surfaceWater * 0.05 * temp * (0.5 + windSpeed) * capacityRemaining * lifeScale;
+
+                if (evapAmount > 0.001) {
+                    this.state.humidity = Math.min(1, this.state.humidity + evapAmount);
+                    groundwaterSystem.removeSurfaceWater(tx, tz, evapAmount);
+                }
+            }
+        }
+
+        // Evaporation from sea (terrain below water level)
         const height = terrainGenerator.getHeight(tx, tz);
-        const isWater = field.humidity > 0.7 || height < terrainGenerator.waterLevel + 1;
-        if (isWater) {
-            this.state.humidity = Math.min(1, this.state.humidity + 0.03 * lifeScale);
+        if (height < terrainGenerator.waterLevel) {
+            const temp = this.state.temperature;
+            const windSpeed = Math.sqrt(
+                (windVector?.dx ?? 0) ** 2 + (windVector?.dz ?? 0) ** 2
+            );
+            const seaEvap = 0.03 * temp * (0.5 + windSpeed) * capacityRemaining * lifeScale;
+
+            if (seaEvap > 0.001) {
+                this.state.humidity = Math.min(1, this.state.humidity + seaEvap);
+            }
         }
 
         // Clamp
@@ -241,6 +310,7 @@ class PressureAgent {
 class EnvironmentalSimulation {
     constructor(terrainGenerator, options = {}) {
         this.terrainGenerator = terrainGenerator;
+        this.groundwaterSystem = null; // set externally after construction
         this.agentCount = options.agentCount || 200;
         this.tickIntervalMs = options.tickIntervalMs || 2000;
         this.windChangeInterval = options.windChangeInterval || 10;
@@ -268,6 +338,10 @@ class EnvironmentalSimulation {
         // Agent movement tuning
         this.moveScale = 1.0;
         this.globalSampleCount = null; // null = use agent default
+    }
+
+    setGroundwaterSystem(groundwaterSystem) {
+        this.groundwaterSystem = groundwaterSystem;
     }
 
     init() {
@@ -340,7 +414,7 @@ class EnvironmentalSimulation {
 
         // Agent phase
         for (const agent of this.agents) {
-            agent.tick(this.envFields, this.terrainGenerator, this.windVector, this.moveScale, this.globalSampleCount);
+            agent.tick(this.envFields, this.terrainGenerator, this.groundwaterSystem, this.windVector, this.moveScale, this.globalSampleCount);
         }
 
         // Remove agents that have fully faded out
@@ -431,14 +505,60 @@ class EnvironmentalSimulation {
         this.windTimer++;
         if (this.windTimer >= this.windChangeInterval) {
             this.windTimer = 0;
-            // Slowly evolving global wind using superimposed sine waves
-            // (simulates continental-scale weather patterns)
-            const t = this.tickCount * 0.08;
-            const angle = Math.sin(t * 0.31) * 1.2 + Math.sin(t * 0.17) * 0.7 + Math.sin(t * 0.53) * 0.4;
-            const magnitude = 0.3 + Math.sin(t * 0.23) * 0.2 + Math.cos(t * 0.11) * 0.15;
-            this.windVector.dx = Math.cos(angle) * magnitude;
-            this.windVector.dz = Math.sin(angle) * magnitude;
+
+            if (this.envFields.size === 0) {
+                // Fallback: synthetic sine waves when no pressure field exists yet
+                const t = this.tickCount * 0.08;
+                const angle = Math.sin(t * 0.31) * 1.2 + Math.sin(t * 0.17) * 0.7 + Math.sin(t * 0.53) * 0.4;
+                const magnitude = 0.3 + Math.sin(t * 0.23) * 0.2 + Math.cos(t * 0.11) * 0.15;
+                this.windVector.dx = Math.cos(angle) * magnitude;
+                this.windVector.dz = Math.sin(angle) * magnitude;
+                return;
+            }
+
+            // Compute wind from pressure gradient in envFields around focal point
+            const delta = 16;
+            const pLeft  = this._samplePressureAt(this.focalX - delta, this.focalZ);
+            const pRight = this._samplePressureAt(this.focalX + delta, this.focalZ);
+            const pUp    = this._samplePressureAt(this.focalX, this.focalZ - delta);
+            const pDown  = this._samplePressureAt(this.focalX, this.focalZ + delta);
+
+            const dPdx = (pRight - pLeft) / (2 * delta);
+            const dPdz = (pDown - pUp) / (2 * delta);
+
+            // Wind flows from high to low pressure (negative gradient)
+            const scale = 60;
+            let windX = -dPdx * scale;
+            let windZ = -dPdz * scale;
+
+            // Coriolis-like deflection: wind crosses isobars at ~15deg
+            const coriolis = 0.15;
+            const tmpX = windX;
+            windX = windX - windZ * coriolis;
+            windZ = windZ + tmpX * coriolis;
+
+            // Smooth transition toward new gradient-driven wind
+            const blend = 0.6;
+            this.windVector.dx = this.windVector.dx * (1 - blend) + windX * blend;
+            this.windVector.dz = this.windVector.dz * (1 - blend) + windZ * blend;
         }
+    }
+
+    _samplePressureAt(x, z) {
+        const searchRadius = 16;
+        let pSum = 0, weightSum = 0;
+        for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (let dz = -searchRadius; dz <= searchRadius; dz++) {
+                const field = this.envFields.get(`${Math.round(x) + dx},${Math.round(z) + dz}`);
+                if (!field) continue;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist > searchRadius) continue;
+                const weight = 1 / (1 + dist);
+                pSum += field.pressure * weight;
+                weightSum += weight;
+            }
+        }
+        return weightSum > 0 ? pSum / weightSum : 0.5;
     }
 
     _mergeAgents() {

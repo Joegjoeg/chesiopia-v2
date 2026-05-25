@@ -18,6 +18,7 @@ class ChessopiaGame {
         this.celShaderSystem = null;
         this.grassSystem = null;
         this.textureBlendingSystem = null;
+        this.fogPlaneSystem = null;
         this.lodManager = null;
         this.temporalAA = null;
         this.minimapOverlay = null;
@@ -666,6 +667,21 @@ class ChessopiaGame {
             this.textureBlendingSystem = null;
             this.boardSystem.textureBlendingSystem = null;
         }
+
+        // Initialize fog plane system
+        if (typeof FogPlaneSystem !== 'undefined') {
+            try {
+                this.fogPlaneSystem = new FogPlaneSystem(this.scene);
+                this.fogPlaneSystem.init();
+                console.log('[Game] FogPlaneSystem initialized');
+            } catch (error) {
+                console.error('[Game] Failed to create FogPlaneSystem:', error);
+                this.fogPlaneSystem = null;
+            }
+        } else {
+            console.log('[Game] FogPlaneSystem class not available');
+            this.fogPlaneSystem = null;
+        }
         
         // Generate initial terrain sized to device capability tier
         const caps = this.deviceCapabilities;
@@ -899,6 +915,9 @@ class ChessopiaGame {
             if (this.boardSystem) {
                 this.boardSystem.updateServerGameTime(data);
             }
+            if (this.fogPlaneSystem && data.timeOfDay !== undefined) {
+                this.fogPlaneSystem.setDayTime(data.timeOfDay);
+            }
         });
 
         this.networkManager.on('terrainModified', (data) => {
@@ -942,6 +961,13 @@ class ChessopiaGame {
             this._lastEnvFields = data;
             if (this.textureBlendingSystem) {
                 this.textureBlendingSystem.setEnvironmentalFields(
+                    data.pressure ?? 0.5,
+                    data.humidity ?? 0.5,
+                    data.temperature ?? 0.5
+                );
+            }
+            if (this.fogPlaneSystem) {
+                this.fogPlaneSystem.setEnvironmentalFields(
                     data.pressure ?? 0.5,
                     data.humidity ?? 0.5,
                     data.temperature ?? 0.5
@@ -1061,6 +1087,9 @@ class ChessopiaGame {
                     const windSpeed = this.decorativeVisuals.windSpeed || 1.0;
                     const windDirection = Math.atan2(this.decorativeVisuals.windDirection.y, this.decorativeVisuals.windDirection.x);
                     this.boardSystem.setWindParameters(windSpeed, windDirection);
+                    if (this.fogPlaneSystem) {
+                        this.fogPlaneSystem.setWind(windSpeed, windDirection);
+                    }
                 }
             }
 
@@ -1100,6 +1129,11 @@ class ChessopiaGame {
             this.terrainSystem.requestProbeAhead(this.camera.position);
 
             this.boardSystem.updateStreaming(this.camera.position, this.camera);
+
+            // Update fog plane position and animation
+            if (this.fogPlaneSystem) {
+                this.fogPlaneSystem.update(this.camera, currentTime * 0.001);
+            }
 
             // Update terrain tree foliage based on season (handled internally by tree systems)
 

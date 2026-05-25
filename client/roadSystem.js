@@ -14,6 +14,7 @@ class RoadSystem {
         this.maxPathStrength = 200;
 
         this.roadMaterialCache = {};
+        this._archGeometry = null;
     }
 
     init() {
@@ -59,20 +60,25 @@ class RoadSystem {
         if (!roadType) {
             if (segment._mesh) {
                 settlement._group.remove(segment._mesh);
+                this._disposeGroup(segment._mesh);
                 segment._mesh = null;
             }
             return;
         }
 
-        if (!segment._mesh) {
+        if (!segment._mesh || !segment._mesh.userData || segment._mesh.userData.width !== roadType.width) {
+            if (segment._mesh) {
+                settlement._group.remove(segment._mesh);
+                this._disposeGroup(segment._mesh);
+            }
             segment._mesh = this.createRoadMesh(segment, roadType);
             if (segment._mesh) {
                 settlement._group.add(segment._mesh);
             }
         } else {
-            segment._mesh.material.color.setHex(roadType.color);
-            const scale = roadType.width / 0.5;
-            segment._mesh.scale.x = scale;
+            // Color the road mesh (first child)
+            const roadMesh = segment._mesh.children.find(c => c.userData && c.userData.width !== undefined);
+            if (roadMesh) roadMesh.material.color.setHex(roadType.color);
         }
     }
 
@@ -83,35 +89,314 @@ class RoadSystem {
         return null;
     }
 
+    _getArchGeometry() {
+        if (!this._archGeometry) {
+            // Base half-torus: R=2 gives 4m span and 2m drop at centreline.
+            // It is scaled per-bridge to match pier spacing and deck-to-water height.
+            const R = 2.0;
+            const tube = 0.2;
+            this._archGeometry = new THREE.TorusGeometry(R, tube, 6, 12, Math.PI);
+            this._archGeometry.rotateZ(Math.PI);
+        }
+        return this._archGeometry;
+    }
+
+    _buildRoadGeometry(centerPoints, carriagewayWidth, aggerWidth, aggerDepth, roadColor, waterLevel) {
+        if (!centerPoints || centerPoints.length < 2) return null;
+
+        const roadThickness = 0.05;
+        const waterBuffer = 0.3;
+        const bridgeClearance = 0.8;
+        const archSpan = 4.5;
+        const maxGrade = 0.15; // tan(~8.5 deg)
+        const aggerEmbed = 0.05;
+
+        const perps = [];
+        for (let i = 0; i < centerPoints.length; i++) {
+            let dx, dz;
+            if (i === 0) {
+                dx = centerPoints[1].x - centerPoints[0].x;
+                dz = centerPoints[1].z - centerPoints[0].z;
+            } else if (i === centerPoints.length - 1) {
+                dx = centerPoints[i].x - centerPoints[i - 1].x;
+                dz = centerPoints[i].z - centerPoints[i - 1].z;
+            } else {
+                dx = centerPoints[i + 1].x - centerPoints[i - 1].x;
+                dz = centerPoints[i + 1].z - centerPoints[i - 1].z;
+            }
+            const len = Math.sqrt(dx * dx + dz * dz) || 1;
+            perps.push({ x: -dz / len, z: dx / len });
+        }
+
+        const isWater = centerPoints.map(p => p.y < waterLevel + waterBuffer);
+
+        // Target heights: land follows terrain (+thickness), water is flat bridge deck
+        const roadY = centerPoints.map((p, i) =>
+            isWater[i] ? waterLevel + bridgeClearance : p.y + roadThickness
+        );
+
+        // Grade-limit the road surface; water points act as fixed anchors
+        for (let pass = 0; pass < 20; pass++) {
+            let changed = false;
+            for (let i = 1; i < centerPoints.length; i++) {
+                const dx = centerPoints[i].x - centerPoints[i - 1].x;
+                const dz = centerPoints[i].z - centerPoints[i - 1].z;
+                const dist = Math.sqrt(dx * dx + dz * dz) || 0.01;
+                const maxDy = maxGrade * dist;
+                if (roadY[i] > roadY[i - 1] + maxDy) {
+                    if (!isWater[i]) { roadY[i] = roadY[i - 1] + maxDy; changed = true; }
+                    else if (!isWater[i - 1]) { roadY[i - 1] = roadY[i] - maxDy; changed = true; }
+                } else if (roadY[i] < roadY[i - 1] - maxDy) {
+                    if (!isWater[i]) { roadY[i] = roadY[i - 1] - maxDy; changed = true; }
+                    else if (!isWater[i - 1]) { roadY[i - 1] = roadY[i] + maxDy; changed = true; }
+                }
+            }
+            for (let i = centerPoints.length - 2; i >= 0; i--) {
+                const dx = centerPoints[i + 1].x - centerPoints[i].x;
+                const dz = centerPoints[i + 1].z - centerPoints[i].z;
+                const dist = Math.sqrt(dx * dx + dz * dz) || 0.01;
+                const maxDy = maxGrade * dist;
+                if (roadY[i + 1] > roadY[i] + maxDy) {
+                    if (!isWater[i]) { roadY[i] = roadY[i + 1] - maxDy; changed = true; }
+                    else if (!isWater[i + 1]) { roadY[i + 1] = roadY[i] + maxDy; changed = true; }
+                } else if (roadY[i + 1] < roadY[i] - maxDy) {
+                    if (!isWater[i]) { roadY[i] = roadY[i + 1] + maxDy; changed = true; }
+                    else if (!isWater[i + 1]) { roadY[i + 1] = roadY[i] - maxDy; changed = true; }
+                }
+            }
+            if (!changed) break;
+        }
+
+        const pointData = centerPoints.map((p, i) => ({
+            isWater: isWater[i],
+            roadY: roadY[i],
+            terrainY: p.y,
+            bottomY: 0,
+            aggerWidth: carriagewayWidth
+        }));
+
+        // Simple extrusion: land = embankment, water = thin deck slab only
+        for (let i = 0; i < pointData.length; i++) {
+            if (pointData[i].isWater) {
+                pointData[i].bottomY = pointData[i].roadY - 0.05;
+                pointData[i].aggerWidth = carriagewayWidth;
+            } else {
+                pointData[i].bottomY = pointData[i].terrainY - aggerEmbed;
+                const minBase = pointData[i].roadY - 0.05;
+                if (pointData[i].bottomY > minBase) {
+                    pointData[i].bottomY = minBase;
+                }
+                pointData[i].aggerWidth = aggerWidth;
+            }
+        }
+
+        const vertices = [];
+        const indices = [];
+
+        for (let i = 0; i < centerPoints.length; i++) {
+            const cp = centerPoints[i];
+            const pd = pointData[i];
+            const p = perps[i];
+            const cw = carriagewayWidth / 2;
+            const aw = pd.aggerWidth / 2;
+
+            vertices.push(cp.x + p.x * cw, pd.roadY, cp.z + p.z * cw);
+            vertices.push(cp.x - p.x * cw, pd.roadY, cp.z - p.z * cw);
+            vertices.push(cp.x + p.x * aw, pd.bottomY, cp.z + p.z * aw);
+            vertices.push(cp.x - p.x * aw, pd.bottomY, cp.z - p.z * aw);
+        }
+
+        for (let i = 0; i < centerPoints.length - 1; i++) {
+            const b = i * 4;
+            const n = (i + 1) * 4;
+
+            indices.push(b, n, b + 1);
+            indices.push(b + 1, n, n + 1);
+
+            indices.push(b, b + 2, n);
+            indices.push(n, b + 2, n + 2);
+
+            indices.push(b + 1, n + 1, b + 3);
+            indices.push(b + 3, n + 1, n + 3);
+
+            indices.push(b + 2, n + 2, b + 3);
+            indices.push(b + 3, n + 2, n + 3);
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+
+        // Build arch and pier transforms for water spans (separate cloned geometry)
+        const archTransforms = [];
+        const pierTransforms = [];
+        const spans = [];
+        let start = -1;
+        for (let i = 0; i < pointData.length; i++) {
+            if (pointData[i].isWater && start === -1) start = i;
+            if (!pointData[i].isWater && start !== -1) {
+                spans.push({ start, end: i - 1 });
+                start = -1;
+            }
+        }
+        if (start !== -1) spans.push({ start, end: pointData.length - 1 });
+
+        for (const span of spans) {
+            const dists = [0];
+            for (let i = span.start + 1; i <= span.end; i++) {
+                const dx = centerPoints[i].x - centerPoints[i - 1].x;
+                const dz = centerPoints[i].z - centerPoints[i - 1].z;
+                dists.push(dists[dists.length - 1] + Math.sqrt(dx * dx + dz * dz));
+            }
+            const totalDist = dists[dists.length - 1];
+            if (totalDist < 0.1) continue;
+
+            const numArches = Math.max(2, Math.round(totalDist / archSpan));
+            const pierSpacing = totalDist / numArches;
+
+            const deckBottom = waterLevel + bridgeClearance - 0.05;
+            const pierBase = waterLevel - 0.3;
+            const drop = Math.max(0.4, deckBottom - pierBase);
+            const baseR = 2.0;
+
+            const pierHalfW = carriagewayWidth / 2; // pier matches full road width
+
+            for (let p = 0; p <= numArches; p++) {
+                const targetDist = p * pierSpacing;
+                let bestIdx = span.start;
+                let bestDiff = Infinity;
+                for (let i = span.start; i <= span.end; i++) {
+                    const d = Math.abs(dists[i - span.start] - targetDist);
+                    if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+                }
+                const cp = centerPoints[bestIdx];
+                let rdx, rdz;
+                if (bestIdx === 0) {
+                    rdx = centerPoints[1].x - centerPoints[0].x;
+                    rdz = centerPoints[1].z - centerPoints[0].z;
+                } else if (bestIdx === centerPoints.length - 1) {
+                    rdx = centerPoints[bestIdx].x - centerPoints[bestIdx - 1].x;
+                    rdz = centerPoints[bestIdx].z - centerPoints[bestIdx - 1].z;
+                } else {
+                    rdx = centerPoints[bestIdx + 1].x - centerPoints[bestIdx - 1].x;
+                    rdz = centerPoints[bestIdx + 1].z - centerPoints[bestIdx - 1].z;
+                }
+                const angle = Math.atan2(rdx, rdz);
+
+                // Sample actual terrain height under this pier
+                let pierBottom = waterLevel - 0.3;
+                if (this.terrainSystem && this.terrainSystem.getHeight) {
+                    const terrainY = this.terrainSystem.getHeight(cp.x, cp.z);
+                    pierBottom = Math.min(terrainY, waterLevel) - 0.2;
+                }
+                const pierHeight = Math.max(0.4, deckBottom - pierBottom);
+
+                pierTransforms.push({
+                    x: cp.x,
+                    y: deckBottom - pierHeight / 2,
+                    z: cp.z,
+                    ry: angle,
+                    halfW: pierHalfW,
+                    height: pierHeight
+                });
+            }
+
+            for (let a = 1; a <= numArches; a++) {
+                const targetDist = (a - 0.5) * pierSpacing;
+                let bestIdx = span.start;
+                let bestDiff = Infinity;
+                for (let i = span.start; i <= span.end; i++) {
+                    const d = Math.abs(dists[i - span.start] - targetDist);
+                    if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+                }
+                const cp = centerPoints[bestIdx];
+                let rdx, rdz;
+                if (bestIdx === 0) {
+                    rdx = centerPoints[1].x - centerPoints[0].x;
+                    rdz = centerPoints[1].z - centerPoints[0].z;
+                } else if (bestIdx === centerPoints.length - 1) {
+                    rdx = centerPoints[bestIdx].x - centerPoints[bestIdx - 1].x;
+                    rdz = centerPoints[bestIdx].z - centerPoints[bestIdx - 1].z;
+                } else {
+                    rdx = centerPoints[bestIdx + 1].x - centerPoints[bestIdx - 1].x;
+                    rdz = centerPoints[bestIdx + 1].z - centerPoints[bestIdx - 1].z;
+                }
+                const angle = Math.atan2(rdx, rdz);
+                archTransforms.push({
+                    x: cp.x,
+                    y: deckBottom,
+                    z: cp.z,
+                    ry: angle,
+                    scaleX: pierSpacing / (baseR * 2),
+                    scaleY: drop / baseR,
+                    scaleZ: 1
+                });
+            }
+        }
+
+        return { geometry: geo, archTransforms, pierTransforms };
+    }
+
     createRoadMesh(segment, roadType) {
+        const fromY = this.terrainSystem ? this.terrainSystem.getHeight(segment.from.x, segment.from.z) : 0;
+        const toY = this.terrainSystem ? this.terrainSystem.getHeight(segment.to.x, segment.to.z) : 0;
         const midX = (segment.from.x + segment.to.x) / 2;
         const midZ = (segment.from.z + segment.to.z) / 2;
-        const dx = segment.to.x - segment.from.x;
-        const dz = segment.to.z - segment.from.z;
-        const length = Math.sqrt(dx * dx + dz * dz);
-        const angle = Math.atan2(dx, dz);
+        const midY = this.terrainSystem ? this.terrainSystem.getHeight(midX, midZ) : 0;
 
-        const midY = this.terrainSystem
-            ? this.terrainSystem.getHeight(midX, midZ)
-            : 0;
+        const waterLevel = this.terrainSystem && this.terrainSystem._currentWaterLevel
+            ? this.terrainSystem._currentWaterLevel()
+            : -1.5;
 
-        if (midY < -1.5) return null;
+        const points = [
+            { x: segment.from.x, z: segment.from.z, y: fromY },
+            { x: midX, z: midZ, y: midY },
+            { x: segment.to.x, z: segment.to.z, y: toY }
+        ];
 
-        const geo = new THREE.PlaneGeometry(0.5, length);
+        const aggerWidth = roadType.width * 1.8;
+        const aggerDepth = 0.4;
+
+        const result = this._buildRoadGeometry(points, roadType.width, aggerWidth, aggerDepth, roadType.color, waterLevel);
+        if (!result) return null;
+
         const mat = new THREE.MeshLambertMaterial({
             color: roadType.color,
             side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.85
+            polygonOffset: true,
+            polygonOffsetFactor: -1.0,
+            polygonOffsetUnits: -1.0
         });
 
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.rotation.z = angle;
-        mesh.position.set(midX, midY + 0.03, midZ);
+        const group = new THREE.Group();
+        const mesh = new THREE.Mesh(result.geometry, mat);
         mesh.receiveShadow = true;
+        mesh.userData.width = roadType.width;
+        group.add(mesh);
 
-        return mesh;
+        const archMat = new THREE.MeshLambertMaterial({ color: roadType.color });
+        const archGeo = this._getArchGeometry();
+        for (const t of result.archTransforms) {
+            const arch = new THREE.Mesh(archGeo, archMat);
+            arch.position.set(t.x, t.y, t.z);
+            arch.rotation.y = t.ry;
+            arch.scale.set(t.scaleX, t.scaleY, t.scaleZ);
+            group.add(arch);
+        }
+
+        const pierMat = new THREE.MeshLambertMaterial({ color: 0xff3333 });
+        for (const t of result.pierTransforms) {
+            const pierGeo = new THREE.BoxGeometry(t.halfW * 2, t.height, t.halfW * 2);
+            const pier = new THREE.Mesh(pierGeo, pierMat);
+            pier.position.set(t.x, t.y, t.z);
+            pier.rotation.y = t.ry;
+            pier.castShadow = true;
+            pier.receiveShadow = true;
+            group.add(pier);
+        }
+
+        return group;
     }
 
     updateSettlementRoads(settlement) {
@@ -149,7 +434,7 @@ class RoadSystem {
             const t = 0.3 + Math.random() * 0.4;
             const lx = lerp(seg.from.x, seg.to.x, t);
             const lz = lerp(seg.from.z, seg.to.z, t);
-            this.settlementSystem.buildingSystem.addBuilding(settlement, 'lampPost', lx, lz);
+            this.settlementSystem.buildingSystem.attachComponent(settlement, 'lampPost');
         }
     }
 
@@ -181,46 +466,59 @@ class RoadSystem {
         const points = this.generateCurvedPath(settlementA, settlementB);
         if (points.length < 2) return null;
 
-        const roadGroup = new THREE.Group();
-        roadGroup.name = `Arterial_${settlementA.name}_${settlementB.name}`;
+        const waterLevel = this.terrainSystem && this.terrainSystem._currentWaterLevel
+            ? this.terrainSystem._currentWaterLevel()
+            : -1.5;
 
-        for (let i = 0; i < points.length - 1; i++) {
-            const p0 = points[i];
-            const p1 = points[i + 1];
-            const dx = p1.x - p0.x;
-            const dz = p1.z - p0.z;
-            const length = Math.sqrt(dx * dx + dz * dz);
-            const angle = Math.atan2(dx, dz);
-            const midX = (p0.x + p1.x) / 2;
-            const midZ = (p0.z + p1.z) / 2;
-            const midY = this.terrainSystem ? this.terrainSystem.getHeight(midX, midZ) : 0;
+        const aggerWidth = 1.2 * 1.8;
+        const aggerDepth = 0.6;
 
-            if (midY < -1.5) continue;
+        const result = this._buildRoadGeometry(points, 1.2, aggerWidth, aggerDepth, ROAD_TYPES.arterialRoad.color, waterLevel);
+        if (!result) return null;
 
-            const geo = new THREE.PlaneGeometry(1.2, length);
-            const mat = new THREE.MeshLambertMaterial({
-                color: ROAD_TYPES.arterialRoad.color,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 0.8
-            });
+        const mat = new THREE.MeshLambertMaterial({
+            color: ROAD_TYPES.arterialRoad.color,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -1.0,
+            polygonOffsetUnits: -1.0
+        });
 
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.rotation.x = -Math.PI / 2;
-            mesh.rotation.z = angle;
-            mesh.position.set(midX, midY + 0.04, midZ);
-            mesh.receiveShadow = true;
-            roadGroup.add(mesh);
+        const group = new THREE.Group();
+        const mesh = new THREE.Mesh(result.geometry, mat);
+        mesh.receiveShadow = true;
+        mesh.name = `Arterial_${settlementA.name}_${settlementB.name}`;
+        group.add(mesh);
+
+        const archMat = new THREE.MeshLambertMaterial({ color: ROAD_TYPES.arterialRoad.color });
+        const archGeo = this._getArchGeometry();
+        for (const t of result.archTransforms) {
+            const arch = new THREE.Mesh(archGeo, archMat);
+            arch.position.set(t.x, t.y, t.z);
+            arch.rotation.y = t.ry;
+            arch.scale.set(t.scaleX, t.scaleY, t.scaleZ);
+            group.add(arch);
         }
 
-        this.scene.add(roadGroup);
+        const pierMat = new THREE.MeshLambertMaterial({ color: 0xff3333 });
+        for (const t of result.pierTransforms) {
+            const pierGeo = new THREE.BoxGeometry(t.halfW * 2, t.height, t.halfW * 2);
+            const pier = new THREE.Mesh(pierGeo, pierMat);
+            pier.position.set(t.x, t.y, t.z);
+            pier.rotation.y = t.ry;
+            pier.castShadow = true;
+            pier.receiveShadow = true;
+            group.add(pier);
+        }
+
+        this.scene.add(group);
 
         return {
             key,
             settlementA: settlementA.id,
             settlementB: settlementB.id,
             points,
-            _group: roadGroup
+            _mesh: group
         };
     }
 
@@ -262,25 +560,40 @@ class RoadSystem {
         return points;
     }
 
+    _disposeGroup(group) {
+        if (!group) return;
+        group.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(m => m.dispose());
+                } else {
+                    child.material.dispose();
+                }
+            }
+        });
+    }
+
     dispose() {
         for (const [key, segment] of this.roadSegments) {
             if (segment._mesh) {
-                segment._mesh.geometry && segment._mesh.geometry.dispose();
-                segment._mesh.material && segment._mesh.material.dispose();
+                this._disposeGroup(segment._mesh);
             }
         }
         this.roadSegments.clear();
 
         for (const road of this.arterialRoads) {
-            if (road._group) {
-                this.scene.remove(road._group);
-                road._group.traverse(child => {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) child.material.dispose();
-                });
+            if (road._mesh) {
+                this.scene.remove(road._mesh);
+                this._disposeGroup(road._mesh);
             }
         }
         this.arterialRoads = [];
+
+        if (this._archGeometry) {
+            this._archGeometry.dispose();
+            this._archGeometry = null;
+        }
     }
 }
 

@@ -16,6 +16,7 @@ const SettlementTomeManager = require('./server/settlementTomeManager');
 const settlementData = require('./client/settlementData');
 const { SETTLEMENT_TYPES, generateSettlementName } = settlementData;
 const ClimateInference = require('./climateInference');
+const { GroundwaterSystem } = require('./client/groundwaterSystem');
 
 class ChessopiaServer {
     constructor() {
@@ -2070,6 +2071,18 @@ class ChessopiaServer {
             activeRadius: 128,
             seed: this.worldSeed || 42
         });
+
+        // Create groundwater system and wire into env simulation and terrain
+        this.groundwaterSystem = new GroundwaterSystem(this.terrainGenerator, {
+            chunkSize: 16,
+            activeRadius: 4
+        });
+        this.envSimulation.setGroundwaterSystem(this.groundwaterSystem);
+        this.terrainGenerator.setGroundwaterSystem(this.groundwaterSystem);
+        for (const gen of this.clientTerrainGenerators.values()) {
+            gen.setGroundwaterSystem(this.groundwaterSystem);
+        }
+
         this.envSimulation.init();
         this.envSimulation.start();
 
@@ -2082,6 +2095,9 @@ class ChessopiaServer {
         // Tick loop
         this.envSimInterval = setInterval(() => {
             this.envSimulation.tick();
+            if (this.groundwaterSystem) {
+                this.groundwaterSystem.tick(Date.now());
+            }
             this.io.emit('envAgents', this.envSimulation.getAgentPositions());
         }, this.envSimulation.tickIntervalMs);
 

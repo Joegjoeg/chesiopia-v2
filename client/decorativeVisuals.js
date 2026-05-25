@@ -473,10 +473,12 @@ class DecorativeVisualsSystem {
         const blustery = ps ? (ps.getParameter('blusteryWind') || 0) : 0;
         const b = blustery / 10.0; // normalized 0..1
 
-        // Blend pressure-gradient wind from minimap overlay
+        // Choose wind target: minimap local wind wins, else fall back to parameterSystem slider
         const localWind = window.minimapOverlay?.localWind;
         if (localWind && localWind.speed > 0.1) {
             this.windTargetAngle = localWind.angle;
+        } else if (ps) {
+            this.windTargetAngle = ps.getWindDirection();
         }
 
         // Steer toward windTargetAngle (set by parameter slider or minimap wind) while keeping organic noise

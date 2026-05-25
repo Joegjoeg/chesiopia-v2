@@ -10,10 +10,11 @@ class RollingTerrainMesh {
     constructor(boardSystem, terrainSystem, options = {}) {
         this.board    = boardSystem;
         this.terrain  = terrainSystem;
+        this.groundwaterSystem = null; // set externally
         this.N        = options.gridSize        || 64;   // vertices per axis
         this.S        = options.cellSize        || 1;    // world units per cell
         this.threshold = options.thresholdCells || 12;  // safe-zone margin
-        this.maxStep  = options.maxStepPerFrame || 8;   // per-axis clamp
+        this.maxStep  = options.maxStepPerFrame || 16;   // per-axis clamp
 
         this.originX = 0;    // world X of local vertex (0,0)
         this.originZ = 0;    // world Z of local vertex (0,0)
@@ -397,6 +398,10 @@ class RollingTerrainMesh {
         this._lastLogTime = 0;
         this._logInterval = 1000; // ms
 
+        // Cliff mask throttling
+        this._lastCliffMaskUpdate = 0;
+        this._cliffMaskUpdateIntervalMs = 200;
+
         // Debug tracking
         this._debugTrackEnabled = false;
         this._lastTrackTime = 0;
@@ -613,11 +618,20 @@ class RollingTerrainMesh {
             this.updateThrottle.lastUpdateTime = now;
             this.updateThrottle.lastCameraPos.copy(cameraPos);
         }
-        const targetOriginX = Math.floor(cameraPos.x) - Math.floor(this.N / 2);
-        const targetOriginZ = Math.floor(cameraPos.z) - Math.floor(this.N / 2);
+        // Threshold-based rolling: only roll when camera nears mesh edge,
+        // not on every integer boundary crossing. This eliminates the
+        // visual jitter caused by terrain snapping while camera drags smoothly.
+        const localX = cameraPos.x - this.originX;
+        const localZ = cameraPos.z - this.originZ;
+        const edgeMin = this.threshold;
+        const edgeMax = this.N - 1 - this.threshold;
 
-        let dx = targetOriginX - this.originX;
-        let dz = targetOriginZ - this.originZ;
+        let dx = 0;
+        let dz = 0;
+        if (localX < edgeMin)  dx = Math.floor(localX - edgeMin);
+        if (localX > edgeMax)  dx = Math.ceil(localX - edgeMax);
+        if (localZ < edgeMin)  dz = Math.floor(localZ - edgeMin);
+        if (localZ > edgeMax)  dz = Math.ceil(localZ - edgeMax);
 
         // Clamp to max step so we don't do giant recalcs in one frame
         if (dx !== 0) {
@@ -633,6 +647,8 @@ class RollingTerrainMesh {
         const meshMinZ = this.originZ;
         const meshMaxZ = this.originZ + (this.N - 1);
         this._debugTrack(cameraPos, meshMinX, meshMaxX, meshMinZ, meshMaxZ, dx, dz);
+
+        // Debug: console.log(`[RollingTerrain] ROLL triggered: local(${localX.toFixed(1)},${localZ.toFixed(1)}) edge[${edgeMin}..${edgeMax}] dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ})`);
 
         if (dx === 0 && dz === 0) return;
 
@@ -706,6 +722,9 @@ class RollingTerrainMesh {
     // ---- internals ----------------------------------------------------------
 
     _computeCliffMasks() {
+        const now = performance.now();
+        if (now - this._lastCliffMaskUpdate < this._cliffMaskUpdateIntervalMs) return;
+        this._lastCliffMaskUpdate = now;
         const N = this.N;
         const heights = this.terrainHeights;
         const cliffAttr = this.geometry.attributes.terrainCliff.array;
@@ -921,6 +940,10 @@ class RollingTerrainMesh {
         this.waterUniforms.uWaveSteepness.value = this.waveConfig.steepness;
     }
 
+    setGroundwaterSystem(groundwaterSystem) {
+        this.groundwaterSystem = groundwaterSystem;
+    }
+
     // Update terrainDepth attribute for the radial water mesh based on current camera position
     _updateRadialWaterDepths(cameraX, cameraZ) {
         if (!this.waterMesh || !this.waterMesh.geometry) return;
@@ -935,8 +958,21 @@ class RollingTerrainMesh {
         for (let i = 0; i < depths.length; i++) {
             const vx = pos[i * 3];
             const vz = pos[i * 3 + 2];
-            const h = this._height(worldX + vx, worldZ + vz);
-            depths[i] = waterLevel - h;
+            const wx = worldX + vx;
+            const wz = worldZ + vz;
+            const h = this._height(wx, wz);
+
+            // Check for local groundwater pool
+            let effectiveWaterLevel = waterLevel;
+            if (this.groundwaterSystem) {
+                const surfaceWater = this.groundwaterSystem.getSurfaceWater(wx, wz);
+                if (surfaceWater > 0.02) {
+                    // Pool exists: water surface is at terrain height + pool depth
+                    effectiveWaterLevel = h + surfaceWater;
+                }
+            }
+
+            depths[i] = effectiveWaterLevel - h;
         }
         this.waterMesh.geometry.attributes.terrainDepth.needsUpdate = true;
     }

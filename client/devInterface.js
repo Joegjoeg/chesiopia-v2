@@ -7,7 +7,7 @@ class DevInterface {
         this.isVisible = false;
         this.container = null;
         this.parameterSystem = window.parameterSystem;
-        this.categories = ['terrain', 'planet', 'lighting', 'spotlight', 'time', 'environment', 'graphics', 'taa', 'performance', 'lod', 'distances', 'water', 'reflection', 'shoreline', 'landCover', 'cliff', 'tree', 'blending', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus', 'settlement', 'flare', 'minimap', 'cursor', 'shader', 'weather', 'blur'];
+        this.categories = ['terrain', 'planet', 'lighting', 'spotlight', 'time', 'environment', 'graphics', 'taa', 'performance', 'lod', 'distances', 'water', 'reflection', 'shoreline', 'landCover', 'cliff', 'tree', 'blending', 'verts', 'camera', 'sky', 'stars', 'rig', 'checkerboard', 'models', 'jesus', 'settlement', 'flare', 'minimap', 'cursor', 'shader', 'weather'];
         this.categoryCache = new Map(); // Cache DOM elements for each category
         this.activeCategories = new Set(); // Multiple categories can be active
         this._jesusStatusInterval = null;
@@ -20,7 +20,8 @@ class DevInterface {
             'cursorBuzzFadeNear',
             'cursorBuzzFadeFar',
             'cursorDragSpeedCap',
-            'cursorDragCutoffDistance'
+            'cursorDragCutoffDistance',
+            'cursorDragMomentum'
         ]);
         
         this.init();
@@ -392,7 +393,7 @@ class DevInterface {
             flex-wrap: wrap;
         `;
 
-        const categoryLabels = { shoreline: 'Shore', landCover: 'Land', graphics: 'GRA', taa: 'TAA', tree: 'TRE', blending: 'BLD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES', settlement: 'SET', distances: 'DST', flare: 'FLR', minimap: 'MAP', spotlight: 'SPT', reflection: 'REF', shader: 'SHD', weather: 'WTH', blur: 'BLR' };
+        const categoryLabels = { shoreline: 'Shore', landCover: 'Land', graphics: 'GRA', taa: 'TAA', tree: 'TRE', blending: 'BLD', verts: 'GEO', camera: 'CAM', rig: 'RIG', checkerboard: 'CHK', models: 'MDL', jesus: 'JES', settlement: 'SET', distances: 'DST', flare: 'FLR', minimap: 'MAP', spotlight: 'SPT', reflection: 'REF', shader: 'SHD', weather: 'WTH' };
         this.categories.forEach(category => {
             const tab = document.createElement('button');
             tab.textContent = (categoryLabels[category] || category.slice(0, 3)).toUpperCase();
@@ -2889,6 +2890,39 @@ class DevInterface {
         header.appendChild(closeBtn);
         section.appendChild(header);
 
+        // Enable checkbox
+        const enableRow = document.createElement('div');
+        enableRow.style.cssText = `display: flex; align-items: center; gap: 6px; padding: 2px 0;`;
+        
+        const enableLabel = document.createElement('label');
+        enableLabel.textContent = 'Enabled';
+        enableLabel.style.cssText = `font-size: 9px; color: #aaffaa; width: 90px; cursor: pointer;`;
+        
+        const enableCheckbox = document.createElement('input');
+        enableCheckbox.type = 'checkbox';
+        enableCheckbox.checked = true;
+        enableCheckbox.dataset.parameter = 'checkerboardEnabled';
+        enableCheckbox.style.cssText = `width: 14px; height: 14px; cursor: pointer; accent-color: #00ff00;`;
+        
+        enableCheckbox.addEventListener('change', (e) => {
+            console.log(`[DevInterface] Checkerboard enabled ->`, e.target.checked);
+            this.parameterSystem?.setParameter('checkerboardEnabled', e.target.checked);
+        });
+        
+        enableRow.appendChild(enableCheckbox);
+        enableRow.appendChild(enableLabel);
+        section.appendChild(enableRow);
+
+        // Initialize checkbox from parameter system or system state
+        const paramEnabled = this.parameterSystem?.getParameter('checkerboardEnabled');
+        const currentEnabled = typeof paramEnabled === 'boolean' ? paramEnabled : window.game?.textureBlendingSystem?.checkerboardEnabled;
+        if (typeof currentEnabled === 'boolean') {
+            enableCheckbox.checked = currentEnabled;
+        }
+
+        // Store reference to checkbox for updates
+        section._enableCheckbox = enableCheckbox;
+
         // Transparency fade slider
         const fadeRow = document.createElement('div');
         fadeRow.style.cssText = `display: flex; align-items: center; gap: 6px; padding: 2px 0;`;
@@ -4266,7 +4300,7 @@ class DevInterface {
             },
             {
                 title: 'Drag Speed',
-                names: ['cursorDragSpeedCap', 'cursorDragCutoffDistance']
+                names: ['cursorDragSpeedCap', 'cursorDragCutoffDistance', 'cursorDragMomentum']
             },
             {
                 title: 'Grab Behavior',
@@ -4353,6 +4387,10 @@ class DevInterface {
             {
                 title: 'Fog',
                 names: ['fogNear', 'fogFar', 'fogGradientEnabled', 'fogGradientExponent', 'fogGradientBias', 'fogDensity', 'fogColorBandCount', 'fogColor1', 'fogColorStop1', 'fogColor2', 'fogColorStop2', 'fogColor3', 'fogColorStop3', 'fogColor4', 'fogColorStop4', 'fogColor5', 'fogColorStop5']
+            },
+            {
+                title: 'Fog Plane',
+                names: ['fogPlaneEnabled', 'fogPlaneHeight', 'fogPlaneRadius', 'fogPlaneInnerRadius', 'fogPlaneNearDist', 'fogPlaneFarDist', 'fogPlaneDistTransparency', 'fogPlaneDensity', 'fogPlaneWindFade', 'fogPlaneNoiseScale', 'fogPlaneSpeed', 'fogPlaneColor', 'fogPlaneDiurnalAmp']
             }
         ];
 

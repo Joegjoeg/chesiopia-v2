@@ -56,6 +56,35 @@ class MinimapOverlay {
         this.ctx.imageSmoothingEnabled = false;
         this.container.appendChild(this.canvas);
 
+        // Time-of-day controls (sun / moon) positioned over the canvas
+        const timeControls = document.createElement('div');
+        timeControls.className = 'minimap-time-controls';
+
+        this.sunBtn = document.createElement('button');
+        this.sunBtn.type = 'button';
+        this.sunBtn.className = 'minimap-time-btn';
+        this.sunBtn.title = 'Advance 3 hours';
+        this.sunBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+
+        this.moonBtn = document.createElement('button');
+        this.moonBtn.type = 'button';
+        this.moonBtn.className = 'minimap-time-btn';
+        this.moonBtn.title = 'Rewind 3 hours';
+        this.moonBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
+        timeControls.appendChild(this.sunBtn);
+        timeControls.appendChild(this.moonBtn);
+        this.container.appendChild(timeControls);
+
+        this.sunBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this._adjustTimeOfDay(3);
+        });
+        this.moonBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this._adjustTimeOfDay(-3);
+        });
+
         this.scaleLabel = document.createElement('div');
         this.scaleLabel.className = 'minimap-scale-label';
         this.container.appendChild(this.scaleLabel);
@@ -118,6 +147,17 @@ class MinimapOverlay {
         }, { passive: false });
 
         this.parent.appendChild(this.container);
+    }
+
+    _adjustTimeOfDay(deltaHours) {
+        const ps = window.parameterSystem;
+        if (!ps) return;
+        const current = ps.getParameter('dayTime') ?? 12;
+        let next = current + deltaHours;
+        // Wrap within 0-24
+        while (next >= 24) next -= 24;
+        while (next < 0) next += 24;
+        ps.setParameter('dayTime', next, 'user');
     }
 
     setHeadingRadians(angle) {

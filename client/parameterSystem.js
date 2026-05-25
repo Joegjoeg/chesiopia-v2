@@ -921,9 +921,14 @@ class ParameterSystem {
             category: 'environment', type: 'number', default: 0, min: 0, max: 360, step: 1,
             description: 'Wind direction (degrees)',
             apply: (v, sys) => {
+                const rad = v * (Math.PI / 180);
+                if (sys._wind) {
+                    sys._wind.targetRad = rad;
+                    sys._wind.currentRad = rad;
+                }
                 const game = window.game;
                 if (game && game.decorativeVisuals) {
-                    game.decorativeVisuals.windTargetAngle = v * (Math.PI / 180);
+                    game.decorativeVisuals.windTargetAngle = rad;
                 }
             }
         });
@@ -1019,14 +1024,7 @@ class ParameterSystem {
             while (this._wind.currentRad > Math.PI) this._wind.currentRad -= Math.PI * 2;
             while (this._wind.currentRad < -Math.PI) this._wind.currentRad += Math.PI * 2;
 
-            // Apply to systems
-            const game = window.game;
-            if (game && game.decorativeVisuals) {
-                game.decorativeVisuals.windAngle = this._wind.currentRad;
-                if (game.decorativeVisuals.windDirection && game.decorativeVisuals.windDirection.set) {
-                    game.decorativeVisuals.windDirection.set(Math.cos(this._wind.currentRad), Math.sin(this._wind.currentRad));
-                }
-            }
+            // Internal wind state is updated above; decorativeVisuals reads getWindDirection() as fallback
         };
 
         // Getter for systems that need immediate read
@@ -1695,6 +1693,20 @@ class ParameterSystem {
             description: 'Checkerboard transparency fade strength (0 = full checkerboard, 1 = full biome)',
             shortLabel: 'Fade',
             apply: checkerboardUniformApply('uCheckerFadeStrength')
+        });
+        reg('checkerboardEnabled', {
+            category: 'checkerboard', type: 'boolean', default: true,
+            description: 'Enable checkerboard pattern (disabled = full biome texture)',
+            shortLabel: 'Enabled',
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) {
+                    tbs.checkerboardEnabled = v;
+                    if (tbs.shaderMaterial && tbs.shaderMaterial.uniforms && tbs.shaderMaterial.uniforms.uCheckerboardEnabled) {
+                        tbs.shaderMaterial.uniforms.uCheckerboardEnabled.value = v ? 1.0 : 0.0;
+                    }
+                }
+            }
         });
 
         reg('dontRenderTrees', {
@@ -2443,6 +2455,11 @@ class ParameterSystem {
             description: 'Maximum world distance the camera can pan during a right-click drag',
             shortLabel: 'Drag Cutoff'
         });
+        reg('cursorDragMomentum', {
+            category: 'cursor', type: 'number', default: 0, min: 0, max: 1.0, step: 0.05,
+            description: 'Camera coasting momentum after releasing a right-click drag (0 = no coasting)',
+            shortLabel: 'Drag Momentum'
+        });
         reg('cursorIdleRadius', {
             category: 'cursor', type: 'number', default: 18, min: 0, max: 60, step: 1,
             description: 'Max orbit radius of idle local-space hover (px)',
@@ -2639,60 +2656,102 @@ class ParameterSystem {
             }
         });
 
-        // --- Distance Blur ---
-        const blurUniformApply = (uniformName) => (v, sys) => {
-            const tbs = sys.textureBlendingSystem;
-            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
-                tbs.shaderMaterial.uniforms[uniformName].value = v;
+        // --- Fog Plane (rolling quad with procedural animated splatter texture) ---
+        const fogPlaneApply = () => (v, sys) => {
+            if (window.game && window.game.fogPlaneSystem) {
+                window.game.fogPlaneSystem.updateParameters();
             }
         };
-        reg('blurEnabled', {
-            category: 'blur', type: 'boolean', default: false,
-            description: 'Enable shader-based distance blur',
-            shortLabel: 'Blur',
-            apply: blurUniformApply('uBlurEnabled')
+        reg('fogPlaneEnabled', {
+            category: 'environment', type: 'boolean', default: false,
+            description: 'Enable fog plane',
+            shortLabel: 'Fog Plane',
+            rebuildCategory: true,
+            apply: fogPlaneApply()
         });
-        reg('blurStart', {
-            category: 'blur', type: 'number', default: 20, min: 5, max: 100, step: 1,
-            description: 'Distance where blur begins',
-            shortLabel: 'Blur Start',
-            apply: blurUniformApply('uBlurStart')
+        reg('fogPlaneHeight', {
+            category: 'environment', type: 'number', default: 0.5, min: -2, max: 10, step: 0.1,
+            description: 'Fog plane height above water',
+            shortLabel: 'Height',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('blurEnd', {
-            category: 'blur', type: 'number', default: 60, min: 10, max: 200, step: 1,
-            description: 'Distance where blur is full strength',
-            shortLabel: 'Blur End',
-            apply: blurUniformApply('uBlurEnd')
+        reg('fogPlaneRadius', {
+            category: 'environment', type: 'number', default: 80, min: 10, max: 300, step: 5,
+            description: 'Fog plane outer circular mask radius',
+            shortLabel: 'Radius',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('blurStrength', {
-            category: 'blur', type: 'number', default: 1.0, min: 0, max: 3, step: 0.1,
-            description: 'Blur desaturation / softening strength',
-            shortLabel: 'Blur Strength',
-            apply: blurUniformApply('uBlurStrength')
+        reg('fogPlaneInnerRadius', {
+            category: 'environment', type: 'number', default: 60, min: 5, max: 280, step: 5,
+            description: 'Fog plane inner radius where circular fade begins',
+            shortLabel: 'Inner Radius',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('mipBiasEnabled', {
-            category: 'blur', type: 'boolean', default: false,
-            description: 'Enable mipmap distance bias on textures',
-            shortLabel: 'Mip Bias',
-            apply: blurUniformApply('uMipBiasEnabled')
+        reg('fogPlaneNearDist', {
+            category: 'environment', type: 'number', default: 10, min: 1, max: 100, step: 1,
+            description: 'Near distance for alpha ramp (transparent)',
+            shortLabel: 'Near Dist',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('mipBiasStart', {
-            category: 'blur', type: 'number', default: 15, min: 5, max: 80, step: 1,
-            description: 'Distance where mip bias begins',
-            shortLabel: 'Mip Start',
-            apply: blurUniformApply('uMipBiasStart')
+        reg('fogPlaneFarDist', {
+            category: 'environment', type: 'number', default: 50, min: 5, max: 200, step: 1,
+            description: 'Far distance for alpha ramp (opaque)',
+            shortLabel: 'Far Dist',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('mipBiasEnd', {
-            category: 'blur', type: 'number', default: 50, min: 10, max: 150, step: 1,
-            description: 'Distance where mip bias is maximum',
-            shortLabel: 'Mip End',
-            apply: blurUniformApply('uMipBiasEnd')
+        reg('fogPlaneDistTransparency', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 1, step: 0.01,
+            description: 'Distance transparency strength (0 = uniform opacity, 1 = full near-far fade)',
+            shortLabel: 'Dist Fade',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
-        reg('mipBiasStrength', {
-            category: 'blur', type: 'number', default: 2.0, min: 0, max: 4, step: 0.1,
-            description: 'Maximum mip level bias (higher = blurrier textures)',
-            shortLabel: 'Mip Strength',
-            apply: blurUniformApply('uMipBiasStrength')
+        reg('fogPlaneDensity', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 3, step: 0.05,
+            description: 'Overall fog density multiplier',
+            shortLabel: 'Density',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
+        });
+        reg('fogPlaneWindFade', {
+            category: 'environment', type: 'number', default: 0.5, min: 0, max: 2, step: 0.05,
+            description: 'How much wind blows fog away',
+            shortLabel: 'Wind Fade',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
+        });
+        reg('fogPlaneNoiseScale', {
+            category: 'environment', type: 'number', default: 0.05, min: 0.001, max: 0.5, step: 0.001,
+            description: 'Noise UV scale for fog splatter pattern',
+            shortLabel: 'Noise Scale',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
+        });
+        reg('fogPlaneSpeed', {
+            category: 'environment', type: 'number', default: 0.3, min: 0, max: 3, step: 0.05,
+            description: 'Fog animation speed',
+            shortLabel: 'Anim Speed',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
+        });
+        reg('fogPlaneColor', {
+            category: 'environment', type: 'color', default: '#cccccc',
+            description: 'Fog color',
+            shortLabel: 'Color',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
+        });
+        reg('fogPlaneDiurnalAmp', {
+            category: 'environment', type: 'number', default: 0.15, min: 0, max: 0.5, step: 0.01,
+            description: 'Diurnal temperature amplitude (±range)',
+            shortLabel: 'Diurnal Amp',
+            showIf: { param: 'fogPlaneEnabled', value: true },
+            apply: fogPlaneApply()
         });
     }
 

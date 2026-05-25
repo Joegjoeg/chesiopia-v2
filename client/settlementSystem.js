@@ -67,15 +67,25 @@ class SettlementSystem {
 
     setSubsystems(villagerSystem, buildingSystem, roadSystem, knightSystem, tournamentSystem) {
 
-        // Deferred init: if any settlements were created before villagerSystem was ready
+        // Deferred init: if any settlements were created before subsystems were ready
         for (const settlement of this.settlements) {
-            if (settlement._needsVillagerInit && this.villagerSystem) {
+            if (settlement._needsVillagerInit && villagerSystem) {
                 delete settlement._needsVillagerInit;
                 if (settlement.villagers.length > 0) {
-                    this.villagerSystem.initVillagersFromServer(settlement, settlement.villagers);
+                    villagerSystem.initVillagersFromServer(settlement, settlement.villagers);
                 } else if (settlement.population > 0) {
-                    this.villagerSystem.populateSettlement(settlement);
+                    villagerSystem.populateSettlement(settlement);
                 }
+                for (const b of settlement.buildings) {
+                    if (b.state === 'under_construction') {
+                        villagerSystem.startConstruction(settlement, b.type);
+                    }
+                }
+            }
+            if (settlement._needsBuildingInit && buildingSystem) {
+                delete settlement._needsBuildingInit;
+                buildingSystem.createSettlementBase(settlement);
+                buildingSystem.placeInitialBuildings(settlement);
             }
         }
         this.villagerSystem = villagerSystem;
@@ -147,10 +157,8 @@ class SettlementSystem {
                     // console.log('[SettlementSystem] Created and added settlement, total:', this.settlements.length);
                 } else {
                     this.updateSettlementFromBlueprint(settlement, villageData);
-                    if (villageData.buildings) {
-                        for (const b of villageData.buildings) {
-                            this.addBuildingData(settlement, b);
-                        }
+                    if (villageData.buildings && this.buildingSystem) {
+                        this.buildingSystem.syncBuildings(settlement, villageData.buildings);
                     }
                 }
             }
@@ -227,14 +235,15 @@ class SettlementSystem {
             settlement.height = this.terrainSystem.getHeight(settlement.x, settlement.z);
         }
 
-        // Create the single motte model
-        this.createMotteMesh(settlement);
-
-        // Add building data objects (no meshes) for simulation
-        if (data.buildings && data.buildings.length > 0) {
-            for (const b of data.buildings) {
-                this.addBuildingData(settlement, b);
+        if (this.buildingSystem) {
+            this.buildingSystem.createSettlementBase(settlement);
+            if (data.buildings && data.buildings.length > 0) {
+                this.buildingSystem.syncBuildings(settlement, data.buildings);
+            } else {
+                this.buildingSystem.placeInitialBuildings(settlement);
             }
+        } else {
+            settlement._needsBuildingInit = true;
         }
 
         // Initialize villagers
@@ -270,8 +279,12 @@ class SettlementSystem {
         if (!settlement) return;
 
         const b = data.building;
-        // Add building data only (no mesh) for simulation
-        this.addBuildingData(settlement, { ...b, state: 'under_construction' });
+        if (this.buildingSystem) {
+            this.buildingSystem.attachComponent(settlement, b.type, {
+                state: 'under_construction',
+                startedAtDay: b.startedAtDay
+            });
+        }
 
         if (this.villagerSystem && this.villagerSystem.startConstruction) {
             this.villagerSystem.startConstruction(settlement, b.type);
@@ -283,7 +296,12 @@ class SettlementSystem {
             const settlement = this.settlementMap.get(villageId);
             if (!settlement) continue;
             for (const b of list) {
-                this.addBuildingData(settlement, { ...b, state: 'under_construction' });
+                if (this.buildingSystem) {
+                    this.buildingSystem.attachComponent(settlement, b.type, {
+                        state: 'under_construction',
+                        startedAtDay: b.startedAtDay
+                    });
+                }
                 if (this.villagerSystem && this.villagerSystem.startConstruction) {
                     this.villagerSystem.startConstruction(settlement, b.type);
                 }
@@ -292,80 +310,10 @@ class SettlementSystem {
         }
     }
 
-    createMotteMesh(settlement) {
-        const radius = settlement.type === 'hamlet' ? 6 : settlement.type === 'village' ? 12 : 18;
-        const wallHeight = settlement.type === 'hamlet' ? 0.8 : settlement.type === 'village' ? 1.2 : 1.6;
-        const platformHeight = 0.3;
-        const h = settlement.height || 0;
-        const sx = settlement.x;
-        const sz = settlement.z;
-
-        const group = settlement._group;
-
-        // Raised earth platform
-        const platformGeo = new THREE.CylinderGeometry(radius, radius + 0.5, platformHeight, 32);
-        const platformMat = new THREE.MeshLambertMaterial({ color: 0x6b8e4a });
-        const platform = new THREE.Mesh(platformGeo, platformMat);
-        platform.position.set(sx, h + platformHeight / 2, sz);
-        platform.receiveShadow = true;
-        platform.castShadow = true;
-        group.add(platform);
-
-        // Flat top surface
-        const topGeo = new THREE.CylinderGeometry(radius, radius, 0.05, 32);
-        const topMat = new THREE.MeshLambertMaterial({ color: 0x7caa4a });
-        const top = new THREE.Mesh(topGeo, topMat);
-        top.position.set(sx, h + platformHeight, sz);
-        top.receiveShadow = true;
-        group.add(top);
-
-        // Palisade wall — ring of posts
-        const postCount = Math.floor(radius * 5);
-        const postGeo = new THREE.CylinderGeometry(0.12, 0.14, wallHeight, 6);
-        const postMat = new THREE.MeshLambertMaterial({ color: 0x8b6914 });
-
-        // Gate gap (facing +Z / south)
-        const gateStart = postCount - Math.floor(postCount / 8);
-        const gateEnd = postCount;
-
-        for (let i = 0; i < postCount; i++) {
-            if (i >= gateStart && i < gateEnd) continue; // gate gap
-            const angle = (i / postCount) * Math.PI * 2;
-            const px = sx + Math.cos(angle) * (radius - 0.15);
-            const pz = sz + Math.sin(angle) * (radius - 0.15);
-            const post = new THREE.Mesh(postGeo, postMat);
-            post.position.set(px, h + platformHeight + wallHeight / 2, pz);
-            post.castShadow = true;
-            post.receiveShadow = true;
-            group.add(post);
+    createSettlementBase(settlement) {
+        if (this.buildingSystem) {
+            this.buildingSystem.createSettlementBase(settlement);
         }
-
-        // Gate posts
-        const gatePostGeo = new THREE.CylinderGeometry(0.16, 0.18, wallHeight * 1.2, 6);
-        for (const side of [-1, 1]) {
-            const angle = (gateStart / postCount) * Math.PI * 2 + side * 0.08;
-            const gx = sx + Math.cos(angle) * (radius - 0.15);
-            const gz = sz + Math.sin(angle) * (radius - 0.15);
-            const gatePost = new THREE.Mesh(gatePostGeo, postMat);
-            gatePost.position.set(gx, h + platformHeight + wallHeight * 0.6, gz);
-            gatePost.castShadow = true;
-            group.add(gatePost);
-        }
-
-        // Crossbeam above gate
-        const beamGeo = new THREE.BoxGeometry(0.15, 0.1, 1.2);
-        const beam = new THREE.Mesh(beamGeo, postMat);
-        const midAngle = ((gateStart + gateEnd) / 2 / postCount) * Math.PI * 2;
-        beam.position.set(
-            sx + Math.cos(midAngle) * (radius - 0.15),
-            h + platformHeight + wallHeight,
-            sz + Math.sin(midAngle) * (radius - 0.15)
-        );
-        beam.rotation.y = -midAngle + Math.PI / 2;
-        group.add(beam);
-
-        settlement._motteMesh = { platform, top, wallHeight, platformHeight };
-        console.log(`[SettlementSystem] Motte created for ${settlement.name}: radius=${radius}, wallHeight=${wallHeight} at (${sx.toFixed(1)}, ${sz.toFixed(1)})`);
     }
 
     addBuildingData(settlement, b) {

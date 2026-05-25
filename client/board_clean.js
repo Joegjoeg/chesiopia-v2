@@ -1780,6 +1780,17 @@ class CleanBoardSystem {
             size: this.chunkSize * meshMultiplier
         };
         
+        // Create client-side groundwater system (mirrors server simulation)
+        if (typeof GroundwaterSystem !== 'undefined' && this.terrainSystem) {
+            this.groundwaterSystem = new GroundwaterSystem(this.terrainSystem, {
+                chunkSize: 16,
+                activeRadius: 4
+            });
+            if (typeof this.terrainSystem.setGroundwaterSystem === 'function') {
+                this.terrainSystem.setGroundwaterSystem(this.groundwaterSystem);
+            }
+        }
+
         // Create rolling terrain mesh (fixed grid, ring-buffer updates)
         if (this.useViewportMesh) {
             const material = this.textureBlendingSystem
@@ -1789,8 +1800,11 @@ class CleanBoardSystem {
                   });
 
             this.rollingTerrain = new RollingTerrainMesh(this, this.terrainSystem, {
-                gridSize, cellSize: 1, thresholdCells: 0, material
+                gridSize, cellSize: 1, thresholdCells: Math.floor(gridSize * 0.15), material
             });
+            if (this.groundwaterSystem) {
+                this.rollingTerrain.setGroundwaterSystem(this.groundwaterSystem);
+            }
             await this.rollingTerrain.initAt(centerX, centerZ);
             this.continuousMesh = this.rollingTerrain.mesh;
             this.scene.add(this.continuousMesh);
@@ -2557,6 +2571,11 @@ class CleanBoardSystem {
                 if (this.rollingTerrain) {
                     this.rollingTerrain.update(cameraPosition);
                     this.rollingTerrain.updateWaves();
+                }
+                // Update groundwater system camera position and tick
+                if (this.groundwaterSystem) {
+                    this.groundwaterSystem.updateCamera(cameraPosition.x, cameraPosition.z);
+                    this.groundwaterSystem.tick(performance.now());
                 }
             } else {
                 // Traditional mesh: only regenerate when camera moves far enough

@@ -1,7 +1,7 @@
 {
   "waterLevel": {
     "value": -2.8319999999999967,
-    "defaultValue": -3.0124999999999953,
+    "defaultValue": -2.8319999999999967,
     "userOverridden": true,
     "type": "number",
     "category": "terrain",
@@ -10,7 +10,7 @@
     "max": 10,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779636028583,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "tideAmplitude": {
@@ -25,7 +25,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "snowLevelSeasonal": {
@@ -40,7 +40,7 @@
     "max": 30,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "beachWidth": {
@@ -54,7 +54,7 @@
     "max": 20,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "chunkSize": {
@@ -68,7 +68,7 @@
     "max": 64,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "meshMultiplier": {
@@ -82,7 +82,7 @@
     "max": 72,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "terrainOpacity": {
@@ -97,7 +97,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "useViewportMesh": {
@@ -109,7 +109,7 @@
     "description": "Use rolling viewport mesh (disable for shoreline subdivision)",
     "shortLabel": "Viewport Mesh",
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "shorelineSubdivision": {
@@ -124,7 +124,7 @@
     "max": 2,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389602,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "terrainSunOrbitScale": {
@@ -139,7 +139,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "terrainMoonOrbitScale": {
@@ -154,7 +154,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "waterVisible": {
@@ -166,12 +166,12 @@
     "description": "Show terrain-following water plane",
     "shortLabel": "Visible",
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "waterOpacity": {
-    "value": 0.04875000000000001,
-    "defaultValue": 0.11849999999999974,
+    "value": 0.25749999999999984,
+    "defaultValue": 0.19074999999999998,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -181,7 +181,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779635970232,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "waterOffset": {
@@ -196,7 +196,7 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181282,
     "modifiedBy": "user"
   },
   "waterRoughness": {
@@ -211,7 +211,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterMetalness": {
@@ -226,19 +226,19 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waveEnabled": {
     "value": true,
-    "defaultValue": true,
+    "defaultValue": false,
     "userOverridden": true,
     "type": "boolean",
     "category": "water",
     "description": "Enable toroidal Gerstner wave animation",
     "shortLabel": "Waves",
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waveAmplitude": {
@@ -253,11 +253,11 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waveSpeed": {
-    "value": 0.027500000000000004,
+    "value": 0.037499999999999825,
     "defaultValue": 0.027500000000000004,
     "userOverridden": true,
     "type": "number",
@@ -268,12 +268,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670357319,
     "modifiedBy": "user"
   },
   "waveSteepness": {
-    "value": 0,
-    "defaultValue": 0,
+    "value": 0.89425,
+    "defaultValue": 0.55025,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -283,12 +283,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waveTexScale": {
-    "value": 1.1970000000000003,
-    "defaultValue": 1.4255000000000002,
+    "value": 0.29400000000000004,
+    "defaultValue": 0.6820000000000003,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -298,12 +298,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779635950198,
+    "lastModified": 1779670432720,
     "modifiedBy": "user"
   },
   "waveTexSpeed": {
-    "value": 0.9329999999999999,
-    "defaultValue": 0.8874999999999998,
+    "value": 1,
+    "defaultValue": 0.9329999999999999,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -313,12 +313,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779635954715,
+    "lastModified": 1779670407917,
     "modifiedBy": "user"
   },
   "waveTexNormal": {
-    "value": 1,
-    "defaultValue": 1,
+    "value": 0.4357500000000002,
+    "defaultValue": 0.4357500000000002,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -328,7 +328,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waveWindFactor": {
@@ -343,11 +343,11 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterWindDirX": {
-    "value": -1,
+    "value": 1,
     "defaultValue": -1,
     "userOverridden": true,
     "type": "number",
@@ -358,11 +358,11 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670370269,
     "modifiedBy": "user"
   },
   "waterWindDirZ": {
-    "value": -0.39225000000000015,
+    "value": 0.877,
     "defaultValue": -0.39225000000000015,
     "userOverridden": true,
     "type": "number",
@@ -373,11 +373,11 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670373703,
     "modifiedBy": "user"
   },
   "waterColor": {
-    "value": "#3a5a43",
+    "value": "#546359",
     "defaultValue": "#3a5a43",
     "userOverridden": true,
     "type": "color",
@@ -385,7 +385,7 @@
     "description": "Base water colour",
     "shortLabel": "Water Colour",
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "shoreLagTime": {
@@ -400,7 +400,7 @@
     "max": 30,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterFalloffEnabled": {
@@ -412,12 +412,12 @@
     "description": "Enable distance-based transparency falloff",
     "shortLabel": "Falloff",
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterFalloffDistance": {
-    "value": 80.87500000000001,
-    "defaultValue": 80.87500000000001,
+    "value": 71.92500000000003,
+    "defaultValue": 34.875,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -427,11 +427,11 @@
     "max": 200,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterRadius": {
-    "value": 60,
+    "value": 56.25999999999999,
     "defaultValue": 60,
     "userOverridden": true,
     "type": "number",
@@ -442,11 +442,11 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389603,
+    "lastModified": 1779670181283,
     "modifiedBy": "user"
   },
   "waterFadeRadius": {
-    "value": 43.385,
+    "value": 37.790000000000006,
     "defaultValue": 43.385,
     "userOverridden": true,
     "type": "number",
@@ -457,11 +457,11 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389604,
+    "lastModified": 1779670181284,
     "modifiedBy": "user"
   },
   "waterGeoFadeWidth": {
-    "value": 20,
+    "value": 14.797500000000008,
     "defaultValue": 20,
     "userOverridden": true,
     "type": "number",
@@ -472,11 +472,11 @@
     "max": 20,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389604,
+    "lastModified": 1779670181284,
     "modifiedBy": "user"
   },
   "waterResolution": {
-    "value": 64,
+    "value": 47.59500000000001,
     "defaultValue": 64,
     "userOverridden": true,
     "type": "number",
@@ -487,12 +487,12 @@
     "max": 64,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389604,
+    "lastModified": 1779670181284,
     "modifiedBy": "user"
   },
   "waveCrestTint": {
-    "value": 0.5,
-    "defaultValue": 0.5,
+    "value": 0.61775,
+    "defaultValue": 0.6165,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -502,12 +502,12 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "waveTroughTint": {
-    "value": 0.2,
-    "defaultValue": 0.2,
+    "value": 0.798,
+    "defaultValue": 0.6295,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -517,7 +517,7 @@
     "max": 1.5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "waveSparkle": {
@@ -532,12 +532,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "waveSpecularPower": {
-    "value": 79.11500000000004,
-    "defaultValue": 79.11500000000004,
+    "value": 72.90000000000002,
+    "defaultValue": 90.79000000000003,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -547,12 +547,12 @@
     "max": 128,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "waveFresnelPower": {
-    "value": 4.5365,
-    "defaultValue": 4.5365,
+    "value": 0.8925000000000001,
+    "defaultValue": 1.7424999999999997,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -562,12 +562,12 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "waveNormalEps": {
-    "value": 0.2,
-    "defaultValue": 0.2,
+    "value": 0.01,
+    "defaultValue": 0.12815000000000004,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -577,7 +577,7 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "reflectionEnabled": {
@@ -590,7 +590,7 @@
     "shortLabel": "Enabled",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "reflectionResolution": {
@@ -609,7 +609,7 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "reflectionFresnel": {
@@ -628,7 +628,7 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "reflectionDebug": {
@@ -644,7 +644,7 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "lodHighDistance": {
@@ -658,7 +658,7 @@
     "max": 30,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "lodMediumDistance": {
@@ -672,7 +672,7 @@
     "max": 45,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "lodLowDistance": {
@@ -686,7 +686,7 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "lodVeryLowDistance": {
@@ -700,7 +700,7 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "distanceFogScale": {
@@ -715,7 +715,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "distanceTreeScale": {
@@ -730,7 +730,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "distanceLODScale": {
@@ -745,7 +745,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "planetSphereRadius": {
@@ -760,7 +760,7 @@
     "max": 5000,
     "step": 10,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "planetWrapRadius": {
@@ -775,11 +775,11 @@
     "max": 512,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "deformStartHeight": {
-    "value": 10,
+    "value": 41.27500000000005,
     "defaultValue": 10,
     "userOverridden": true,
     "type": "number",
@@ -790,7 +790,7 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "deformEndHeight": {
@@ -805,7 +805,7 @@
     "max": 500,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "enablePlanetWrap": {
@@ -816,7 +816,7 @@
     "category": "planet",
     "description": "Planet wrap",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "enableSpherical": {
@@ -827,7 +827,7 @@
     "category": "planet",
     "description": "Spherical shader",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "debugForceSpherical": {
@@ -838,7 +838,7 @@
     "category": "planet",
     "description": "Force spherical",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "curvatureScale": {
@@ -853,7 +853,7 @@
     "max": 10,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "enableTerrainFade": {
@@ -864,7 +864,7 @@
     "category": "planet",
     "description": "Terrain circular fade",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "sunIntensity": {
@@ -878,7 +878,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "moonIntensity": {
@@ -892,7 +892,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "ambientIntensity": {
@@ -906,7 +906,7 @@
     "max": 2,
     "step": 0.02,
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "sunColor": {
@@ -917,7 +917,7 @@
     "category": "lighting",
     "description": "Sun color",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "moonColor": {
@@ -928,7 +928,7 @@
     "category": "lighting",
     "description": "Moon color",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "ambientColor": {
@@ -939,11 +939,11 @@
     "category": "lighting",
     "description": "Ambient color",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181286,
     "modifiedBy": "user"
   },
   "spotlightEnabled": {
-    "value": true,
+    "value": false,
     "defaultValue": true,
     "userOverridden": true,
     "type": "boolean",
@@ -951,11 +951,11 @@
     "description": "Enable mouse spotlight",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779671882619,
     "modifiedBy": "user"
   },
   "spotlightType": {
-    "value": "DirectionalLight",
+    "value": "SpotLight",
     "defaultValue": "DirectionalLight",
     "userOverridden": true,
     "type": "select",
@@ -976,7 +976,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389605,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "spotlightHeight": {
@@ -990,7 +990,7 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "spotlightIntensity": {
@@ -1004,11 +1004,11 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "spotlightAngle": {
-    "value": 0.19635,
+    "value": 0.05,
     "defaultValue": 0.19635,
     "userOverridden": true,
     "type": "number",
@@ -1018,7 +1018,7 @@
     "max": 1.5708,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "spotlightColor": {
@@ -1029,7 +1029,7 @@
     "category": "spotlight",
     "description": "Mouse light color",
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "spotlightHelper": {
@@ -1040,11 +1040,11 @@
     "category": "spotlight",
     "description": "Show light cone helper",
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "dayTime": {
-    "value": 10.495950000000006,
+    "value": 7.495950000000008,
     "defaultValue": 12,
     "userOverridden": false,
     "type": "number",
@@ -1054,7 +1054,7 @@
     "max": 24,
     "step": 0.01,
     "persist": false,
-    "lastModified": 1779635874209,
+    "lastModified": 1779671109129,
     "modifiedBy": "user"
   },
   "daySpeed": {
@@ -1068,7 +1068,7 @@
     "max": 600,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "yearTime": {
@@ -1082,7 +1082,7 @@
     "max": 120,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "month": {
@@ -1111,7 +1111,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "year": {
@@ -1164,7 +1164,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "windSpeed": {
@@ -1178,7 +1178,7 @@
     "max": 50,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "windDirection": {
@@ -1192,7 +1192,7 @@
     "max": 360,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "windExposureScale": {
@@ -1207,7 +1207,7 @@
     "max": 20,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "windShadowStrength": {
@@ -1222,7 +1222,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "windHeightPower": {
@@ -1237,7 +1237,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "blusteryWind": {
@@ -1252,12 +1252,12 @@
     "max": 10,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogNear": {
     "value": 9.64,
-    "defaultValue": 41.80500000000001,
+    "defaultValue": 9.64,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1266,12 +1266,12 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634524491,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogFar": {
     "value": 50.71500000000004,
-    "defaultValue": 86.70000000000003,
+    "defaultValue": 50.71500000000004,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1280,7 +1280,7 @@
     "max": 400,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634529974,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogGradientEnabled": {
@@ -1293,12 +1293,12 @@
     "shortLabel": "Fog Gradient",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogGradientExponent": {
     "value": 0.5,
-    "defaultValue": 2,
+    "defaultValue": 0.5,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1312,12 +1312,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634701777,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogGradientBias": {
     "value": 0.2522500000000001,
-    "defaultValue": 0,
+    "defaultValue": 0.2522500000000001,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1331,12 +1331,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634690194,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogDensity": {
     "value": 0.3410000000000003,
-    "defaultValue": 1,
+    "defaultValue": 0.3410000000000003,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1346,12 +1346,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634693294,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogColorBandCount": {
     "value": 5,
-    "defaultValue": 2,
+    "defaultValue": 5,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1365,12 +1365,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634680010,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogColor1": {
     "value": "#e0d7da",
-    "defaultValue": "#dd92d7",
+    "defaultValue": "#e0d7da",
     "userOverridden": true,
     "type": "color",
     "category": "environment",
@@ -1381,7 +1381,7 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634709483,
+    "lastModified": 1779670181287,
     "modifiedBy": "user"
   },
   "fogColorStop1": {
@@ -1400,12 +1400,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColor2": {
     "value": "#ac687f",
-    "defaultValue": "#8b93a2",
+    "defaultValue": "#ac687f",
     "userOverridden": true,
     "type": "color",
     "category": "environment",
@@ -1416,12 +1416,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634716304,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColorStop2": {
     "value": 0.7307999999999999,
-    "defaultValue": 1,
+    "defaultValue": 0.7307999999999999,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1435,12 +1435,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634592659,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColor3": {
     "value": "#ac6db0",
-    "defaultValue": "#4d3456",
+    "defaultValue": "#ac6db0",
     "userOverridden": true,
     "type": "color",
     "category": "environment",
@@ -1451,12 +1451,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634723202,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColorStop3": {
     "value": 0,
-    "defaultValue": 0.6749999999999997,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1470,12 +1470,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634624780,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColor4": {
     "value": "#6d77a2",
-    "defaultValue": "#3357e6",
+    "defaultValue": "#6d77a2",
     "userOverridden": true,
     "type": "color",
     "category": "environment",
@@ -1486,12 +1486,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634634415,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColorStop4": {
     "value": 0.97875,
-    "defaultValue": 0.83,
+    "defaultValue": 0.97875,
     "userOverridden": true,
     "type": "number",
     "category": "environment",
@@ -1505,12 +1505,12 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634602342,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColor5": {
     "value": "#6e73af",
-    "defaultValue": "#202020",
+    "defaultValue": "#6e73af",
     "userOverridden": true,
     "type": "color",
     "category": "environment",
@@ -1521,7 +1521,7 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634623221,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "fogColorStop5": {
@@ -1540,7 +1540,7 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1779634607809,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "daisiesEnabled": {
@@ -1552,7 +1552,7 @@
     "description": "Show daisies",
     "shortLabel": "Daisies",
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassUvScale": {
@@ -1567,7 +1567,7 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassWindMultiplier": {
@@ -1582,7 +1582,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassBlendAmount": {
@@ -1597,7 +1597,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassSharpness": {
@@ -1612,7 +1612,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassColorTint": {
@@ -1624,7 +1624,7 @@
     "description": "Grass colour tint",
     "shortLabel": "Colour",
     "persist": true,
-    "lastModified": 1779634389606,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassColorLight": {
@@ -1636,7 +1636,7 @@
     "description": "Grass highlight colour (light base)",
     "shortLabel": "Light",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassWindSpeed": {
@@ -1651,7 +1651,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassPhaseScale": {
@@ -1666,7 +1666,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassBladeStretchX": {
@@ -1681,7 +1681,7 @@
     "max": 16,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassBladeStretchY": {
@@ -1696,7 +1696,7 @@
     "max": 64,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassMicroAmount": {
@@ -1711,7 +1711,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType0": {
@@ -1749,7 +1749,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType1": {
@@ -1787,7 +1787,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType2": {
@@ -1825,7 +1825,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType3": {
@@ -1863,7 +1863,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType4": {
@@ -1901,7 +1901,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType5": {
@@ -1939,7 +1939,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType6": {
@@ -1977,7 +1977,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "grassType7": {
@@ -2015,7 +2015,7 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestEnabled": {
@@ -2027,7 +2027,7 @@
     "description": "Enable biome-dependent forest floor textures under trees",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestBlendMax": {
@@ -2042,7 +2042,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestMaskStrength": {
@@ -2057,7 +2057,7 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestBiomeBias": {
@@ -2072,7 +2072,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestTexScale": {
@@ -2087,7 +2087,7 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestNoiseScale": {
@@ -2102,7 +2102,7 @@
     "max": 0.5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "forestBaseInfluence": {
@@ -2117,7 +2117,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachEnabled": {
@@ -2129,7 +2129,7 @@
     "description": "Enable beach surface detail rendering",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachStoneAmount": {
@@ -2144,7 +2144,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachStoneScale": {
@@ -2159,7 +2159,7 @@
     "max": 10,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachWetWidth": {
@@ -2174,7 +2174,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachWetIntensity": {
@@ -2189,7 +2189,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "wetFadeDelay": {
@@ -2204,7 +2204,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "wetFadeSpeed": {
@@ -2219,7 +2219,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachShrubAmount": {
@@ -2234,7 +2234,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachBiomeBias": {
@@ -2249,7 +2249,7 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachHeightBlend": {
@@ -2264,7 +2264,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachSandColor": {
@@ -2276,7 +2276,7 @@
     "description": "Base dry sand colour",
     "shortLabel": "Sand Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachStoneColor": {
@@ -2288,7 +2288,7 @@
     "description": "Stone patch colour",
     "shortLabel": "Stone Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachWetColor": {
@@ -2300,7 +2300,7 @@
     "description": "Wet sand high-tide line colour",
     "shortLabel": "Wet Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "beachShrubColor": {
@@ -2312,7 +2312,7 @@
     "description": "Hardy shrub colour",
     "shortLabel": "Shrub Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "debugBeachState": {
@@ -2324,7 +2324,7 @@
     "description": "Debug: show beach mask only",
     "shortLabel": "Debug Mask",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffEnabled": {
@@ -2336,7 +2336,7 @@
     "description": "Enable cliff material on steep slopes",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffThreshold": {
@@ -2351,7 +2351,7 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffBlendWidth": {
@@ -2366,7 +2366,7 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffRubbleAmount": {
@@ -2381,7 +2381,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffStrataScale": {
@@ -2396,7 +2396,7 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffStrataAmount": {
@@ -2410,7 +2410,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffDarkenAmount": {
@@ -2425,7 +2425,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffBaseColor": {
@@ -2437,7 +2437,7 @@
     "description": "Base dark rock colour",
     "shortLabel": "Base Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181288,
     "modifiedBy": "user"
   },
   "cliffLightColor": {
@@ -2449,7 +2449,7 @@
     "description": "Lighter exposed rock colour",
     "shortLabel": "Light Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "cliffMossColor": {
@@ -2461,7 +2461,7 @@
     "description": "Moss / lichen tint colour",
     "shortLabel": "Moss Colour",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "cliffMossAmount": {
@@ -2476,7 +2476,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "cliffDebug": {
@@ -2488,12 +2488,12 @@
     "description": "Debug: show cliff mask only",
     "shortLabel": "Debug Mask",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeEdgeA": {
-    "value": 0,
-    "defaultValue": 0,
+    "value": 2,
+    "defaultValue": 2,
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -2534,12 +2534,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeEdgeB": {
-    "value": 1,
-    "defaultValue": 1,
+    "value": 3,
+    "defaultValue": 3,
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -2580,8 +2580,8 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeEdgeMode": {
     "value": 2,
@@ -2606,12 +2606,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeEdgeScale": {
-    "value": 2,
-    "defaultValue": 2,
+    "value": 0.69445,
+    "defaultValue": 0.69445,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2621,12 +2621,12 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeEdgeStrength": {
-    "value": 3,
-    "defaultValue": 3,
+    "value": 0,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2636,12 +2636,12 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeSplatterScale": {
-    "value": 3,
-    "defaultValue": 3,
+    "value": 2.0344,
+    "defaultValue": 2.0344,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2651,12 +2651,12 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeSplatterAmount": {
-    "value": 1,
-    "defaultValue": 1,
+    "value": 0.4979999999999999,
+    "defaultValue": 0.4979999999999999,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2666,12 +2666,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomeEdgeSplatterMix": {
-    "value": 1,
-    "defaultValue": 1,
+    "value": 0.7362500000000002,
+    "defaultValue": 0.7362500000000002,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2681,12 +2681,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779636032562,
-    "modifiedBy": "ui-sync"
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
   },
   "biomePatchScale": {
     "value": 0.05313500000000003,
-    "defaultValue": 0.04228500000000002,
+    "defaultValue": 0.05313500000000003,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2696,12 +2696,12 @@
     "max": 0.1,
     "step": 0.001,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomePatchStrength": {
     "value": 1.6645000000000008,
-    "defaultValue": 0.8615000000000003,
+    "defaultValue": 1.6645000000000008,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2711,12 +2711,12 @@
     "max": 6,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomePatchSeed": {
     "value": 135.32499999999996,
-    "defaultValue": 140.79999999999993,
+    "defaultValue": 135.32499999999996,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2726,7 +2726,7 @@
     "max": 999.99,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor0": {
@@ -2738,19 +2738,19 @@
     "description": "Deep Water color",
     "shortLabel": "Deep Water Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor1": {
     "value": "#112f09",
-    "defaultValue": "#1b3e14",
+    "defaultValue": "#112f09",
     "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Shallow Water color",
     "shortLabel": "Shallow Water Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor2": {
@@ -2762,7 +2762,7 @@
     "description": "Beach color",
     "shortLabel": "Beach Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor3": {
@@ -2774,7 +2774,7 @@
     "description": "Lowland color",
     "shortLabel": "Lowland Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor4": {
@@ -2786,7 +2786,7 @@
     "description": "Grassland color",
     "shortLabel": "Grassland Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor5": {
@@ -2798,7 +2798,7 @@
     "description": "Forest color",
     "shortLabel": "Forest Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor6": {
@@ -2810,7 +2810,7 @@
     "description": "Mountain color",
     "shortLabel": "Mountain Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeColor7": {
@@ -2822,12 +2822,12 @@
     "description": "Snow color",
     "shortLabel": "Snow Col",
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold0": {
     "value": -2,
-    "defaultValue": -3,
+    "defaultValue": -2,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -2837,7 +2837,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389607,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold1": {
@@ -2852,7 +2852,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779636037511,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold2": {
@@ -2867,7 +2867,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold3": {
@@ -2882,7 +2882,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold4": {
@@ -2897,7 +2897,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold5": {
@@ -2912,7 +2912,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeThreshold6": {
@@ -2927,7 +2927,7 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "biomeModifierStack": {
@@ -3023,7 +3023,7 @@
     "description": "Layered noise modifiers for biome surface edges",
     "shortLabel": "Modifier Stack",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "checkerFadeStrength": {
@@ -3038,7 +3038,19 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
+    "modifiedBy": "user"
+  },
+  "checkerboardEnabled": {
+    "value": false,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "checkerboard",
+    "description": "Enable checkerboard pattern (disabled = full biome texture)",
+    "shortLabel": "Enabled",
+    "persist": true,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "dontRenderTrees": {
@@ -3050,7 +3062,7 @@
     "description": "Dont render trees",
     "shortLabel": "No Trees",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "shadowMapSize": {
@@ -3064,7 +3076,7 @@
     "max": 4096,
     "step": 512,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "shadowCameraSize": {
@@ -3078,7 +3090,7 @@
     "max": 800,
     "step": 25,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "taaEnabled": {
@@ -3090,7 +3102,7 @@
     "description": "Enable temporal anti-aliasing (WebGL2 devices only)",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "taaFeedbackLow": {
@@ -3105,7 +3117,7 @@
     "max": 0.95,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181289,
     "modifiedBy": "user"
   },
   "taaFeedbackHigh": {
@@ -3120,7 +3132,7 @@
     "max": 0.99,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "taaClampScalar": {
@@ -3135,7 +3147,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "taaJitterSpread": {
@@ -3150,7 +3162,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "taaSharpenStrength": {
@@ -3165,7 +3177,7 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "flareEnabled": {
@@ -3177,7 +3189,7 @@
     "description": "Enable sun lens flares",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "flareOpacity": {
@@ -3192,7 +3204,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "flareSize": {
@@ -3207,7 +3219,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "flareSpread": {
@@ -3222,7 +3234,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapEdgeFade": {
@@ -3234,7 +3246,7 @@
     "description": "Fade minimap chunks at the edge of explored area",
     "shortLabel": "Edge Fade",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapFadeDepth": {
@@ -3249,7 +3261,7 @@
     "max": 8,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapCircularMask": {
@@ -3261,7 +3273,7 @@
     "description": "Apply circular soft-edge mask to the whole minimap",
     "shortLabel": "Circular Mask",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapMaskStart": {
@@ -3276,7 +3288,7 @@
     "max": 0.48,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapContourFade": {
@@ -3288,7 +3300,7 @@
     "description": "Fade only chunks at the actual boundary of explored area",
     "shortLabel": "Contour Fade",
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapContourOpacity": {
@@ -3303,7 +3315,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "minimapUpdateInterval": {
@@ -3318,7 +3330,7 @@
     "max": 1000,
     "step": 16,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeType": {
@@ -3360,7 +3372,7 @@
       }
     ],
     "persist": false,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeWindSensitivity": {
@@ -3375,7 +3387,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeSwayMult": {
@@ -3390,7 +3402,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeSize": {
@@ -3405,7 +3417,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389608,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeLODEnabled": {
@@ -3417,7 +3429,7 @@
     "description": "Enable LOD animation throttling",
     "shortLabel": "LOD",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeCullDistance": {
@@ -3432,7 +3444,7 @@
     "max": 300,
     "step": 10,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "treeMaxVisible": {
@@ -3447,7 +3459,7 @@
     "max": 2000,
     "step": 100,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "maxRenderDistance": {
@@ -3461,7 +3473,7 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "vertexReduction": {
@@ -3475,7 +3487,7 @@
     "max": 0.95,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "targetFps": {
@@ -3489,7 +3501,7 @@
     "max": 120,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "scrollEffectStartHeight": {
@@ -3504,7 +3516,7 @@
     "max": 200,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "scrollBaseDragSpeed": {
@@ -3519,7 +3531,7 @@
     "max": 0.5,
     "step": 0.001,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "scrollHeightMultiplier": {
@@ -3534,7 +3546,7 @@
     "max": 0.05,
     "step": 0.0001,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "wheelSensitivity": {
@@ -3549,7 +3561,7 @@
     "max": 10,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "maxCameraHeight": {
@@ -3564,7 +3576,7 @@
     "max": 300,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "isometricMode": {
@@ -3576,7 +3588,7 @@
     "description": "Enable isometric camera mode",
     "shortLabel": "Isometric",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "starType": {
@@ -3618,12 +3630,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyFadeStartHeight": {
     "value": 0,
-    "defaultValue": 50,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "sky",
@@ -3633,12 +3645,12 @@
     "max": 500,
     "step": 5,
     "persist": true,
-    "lastModified": 1779635839630,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyFadeEndHeight": {
     "value": 96.7,
-    "defaultValue": 120,
+    "defaultValue": 96.7,
     "userOverridden": true,
     "type": "number",
     "category": "sky",
@@ -3648,12 +3660,12 @@
     "max": 1000,
     "step": 10,
     "persist": true,
-    "lastModified": 1779635852213,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyTransparency": {
     "value": 0.15475,
-    "defaultValue": 1,
+    "defaultValue": 0.15475,
     "userOverridden": true,
     "type": "number",
     "category": "sky",
@@ -3663,7 +3675,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779635778279,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyStarDensity": {
@@ -3678,7 +3690,7 @@
     "max": 5000,
     "step": 100,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyStarBrightness": {
@@ -3693,7 +3705,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyShimmerSpeed": {
@@ -3708,7 +3720,7 @@
     "max": 10,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyShimmerIntensity": {
@@ -3723,7 +3735,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyStarColor": {
@@ -3735,7 +3747,7 @@
     "description": "Star color tint",
     "shortLabel": "Star Color",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "skyEnabled": {
@@ -3747,7 +3759,7 @@
     "description": "Enable starfield shader (disable to use canvas sky)",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "jesusLift": {
@@ -3762,7 +3774,7 @@
     "max": 20,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "pieceModelOverrides": {
@@ -3773,7 +3785,7 @@
     "category": "models",
     "description": "GLB model overrides for chess pieces",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "cursorEnabled": {
@@ -3785,7 +3797,7 @@
     "description": "Enable custom Navi cursor",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181290,
     "modifiedBy": "user"
   },
   "cursorSize": {
@@ -3800,7 +3812,7 @@
     "max": 80,
     "step": 2,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingWidth": {
@@ -3815,7 +3827,7 @@
     "max": 40,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingHeight": {
@@ -3830,7 +3842,7 @@
     "max": 80,
     "step": 2,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingOffset": {
@@ -3845,7 +3857,7 @@
     "max": 0,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingAngle": {
@@ -3860,7 +3872,7 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorCoreColorInner": {
@@ -3872,7 +3884,7 @@
     "description": "Core inner color",
     "shortLabel": "Core Inner",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorCoreColorOuter": {
@@ -3884,7 +3896,7 @@
     "description": "Core outer glow color",
     "shortLabel": "Core Outer",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingColor": {
@@ -3896,7 +3908,7 @@
     "description": "Wing color",
     "shortLabel": "Wing Color",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorTrailColor": {
@@ -3908,7 +3920,7 @@
     "description": "Trail color",
     "shortLabel": "Trail Color",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorGlowColor": {
@@ -3920,7 +3932,7 @@
     "description": "Cursor glow color",
     "shortLabel": "Glow Color",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorPulseSpeed": {
@@ -3935,7 +3947,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDistanceScale": {
@@ -3947,7 +3959,7 @@
     "description": "Scale cursor size based on camera height",
     "shortLabel": "Distance Scale",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDistanceNear": {
@@ -3962,7 +3974,7 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDistanceFar": {
@@ -3977,7 +3989,7 @@
     "max": 500,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDistanceMinScale": {
@@ -3992,7 +4004,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorTrailScaleX": {
@@ -4007,7 +4019,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorTrailScaleY": {
@@ -4022,7 +4034,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorTrailOpacity": {
@@ -4037,7 +4049,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSpeedSize": {
@@ -4052,7 +4064,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingSpeedScale": {
@@ -4064,7 +4076,7 @@
     "description": "Shrink wings when stationary and expand with speed",
     "shortLabel": "Wing Speed Scale",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingScaleMult": {
@@ -4079,7 +4091,7 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorWingOpacityMult": {
@@ -4094,7 +4106,7 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorGrabDisableSpeedScale": {
@@ -4106,7 +4118,7 @@
     "description": "Disable cursor speed-scale growth while left-click dragging",
     "shortLabel": "Grab: No Speed Scale",
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorGrabSlowFactor": {
@@ -4121,7 +4133,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389609,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorGrabBuzzIntensity": {
@@ -4136,7 +4148,7 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorBuzzVolume": {
@@ -4151,7 +4163,7 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorBuzzFadeNear": {
@@ -4166,7 +4178,7 @@
     "max": 50,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorBuzzFadeFar": {
@@ -4181,7 +4193,7 @@
     "max": 200,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDragSpeedCap": {
@@ -4196,7 +4208,7 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDragCutoffDistance": {
@@ -4211,7 +4223,22 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
+    "modifiedBy": "user"
+  },
+  "cursorDragMomentum": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "cursor",
+    "description": "Camera coasting momentum after releasing a right-click drag (0 = no coasting)",
+    "shortLabel": "Drag Momentum",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "persist": true,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorIdleRadius": {
@@ -4226,7 +4253,7 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorIdleSpeed": {
@@ -4241,7 +4268,7 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownSubmergeMs": {
@@ -4256,7 +4283,7 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownUnderwaterMs": {
@@ -4271,7 +4298,7 @@
     "max": 3000,
     "step": 50,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownEmergeMs": {
@@ -4286,7 +4313,7 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownFlyUpMs": {
@@ -4301,7 +4328,7 @@
     "max": 3000,
     "step": 50,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownShakeMs": {
@@ -4316,7 +4343,7 @@
     "max": 4000,
     "step": 100,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownHarumphMs": {
@@ -4331,7 +4358,7 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownShakeAmplitude": {
@@ -4346,7 +4373,7 @@
     "max": 40,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownShakeCycles": {
@@ -4361,7 +4388,7 @@
     "max": 12,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownSubmergeDepth": {
@@ -4376,7 +4403,7 @@
     "max": 100,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorDrownFlyHeight": {
@@ -4391,7 +4418,7 @@
     "max": 80,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedOpacity": {
@@ -4406,7 +4433,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedBrightness": {
@@ -4421,7 +4448,7 @@
     "max": 1.5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedSepia": {
@@ -4436,7 +4463,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedHue": {
@@ -4451,7 +4478,7 @@
     "max": 360,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedSat": {
@@ -4466,7 +4493,7 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedBlur": {
@@ -4481,7 +4508,7 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorSubmergedOverlay": {
@@ -4496,7 +4523,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "cursorUnderwaterSpeed": {
@@ -4511,7 +4538,7 @@
     "max": 0.5,
     "step": 0.005,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "weatherFrontThreshold": {
@@ -4526,7 +4553,7 @@
     "max": 200,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181291,
     "modifiedBy": "user"
   },
   "weatherSymbolCutoff": {
@@ -4541,7 +4568,7 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "weatherRingScale": {
@@ -4556,7 +4583,7 @@
     "max": 8,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "weatherSpawnRadius": {
@@ -4571,7 +4598,7 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "weatherSpawnCount": {
@@ -4586,7 +4613,7 @@
     "max": 30,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "climateAgentCount": {
@@ -4601,7 +4628,7 @@
     "max": 500,
     "step": 10,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "weatherMoveScale": {
@@ -4616,7 +4643,7 @@
     "max": 4,
     "step": 0.25,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
   "weatherSampleCount": {
@@ -4631,121 +4658,226 @@
     "max": 12,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389610,
+    "lastModified": 1779670181292,
     "modifiedBy": "user"
   },
-  "blurEnabled": {
-    "value": false,
+  "fogPlaneEnabled": {
+    "value": true,
     "defaultValue": false,
     "userOverridden": true,
     "type": "boolean",
-    "category": "blur",
-    "description": "Enable shader-based distance blur",
-    "shortLabel": "Blur",
+    "category": "environment",
+    "description": "Enable fog plane",
+    "shortLabel": "Fog Plane",
     "persist": true,
-    "lastModified": 1779634389611,
+    "rebuildCategory": true,
+    "lastModified": 1779670181293,
     "modifiedBy": "user"
   },
-  "blurStart": {
-    "value": 20,
-    "defaultValue": 20,
+  "fogPlaneHeight": {
+    "value": -1.9,
+    "defaultValue": 0.5,
     "userOverridden": true,
     "type": "number",
-    "category": "blur",
-    "description": "Distance where blur begins",
-    "shortLabel": "Blur Start",
-    "min": 5,
-    "max": 100,
-    "step": 1,
+    "category": "environment",
+    "description": "Fog plane height above water",
+    "shortLabel": "Height",
+    "min": -2,
+    "max": 10,
+    "step": 0.1,
     "persist": true,
-    "lastModified": 1779634389611,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670529252,
     "modifiedBy": "user"
   },
-  "blurEnd": {
-    "value": 60,
+  "fogPlaneRadius": {
+    "value": 55.27499999999997,
+    "defaultValue": 80,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Fog plane outer circular mask radius",
+    "shortLabel": "Radius",
+    "min": 10,
+    "max": 300,
+    "step": 5,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneInnerRadius": {
+    "value": 85.65,
     "defaultValue": 60,
     "userOverridden": true,
     "type": "number",
-    "category": "blur",
-    "description": "Distance where blur is full strength",
-    "shortLabel": "Blur End",
-    "min": 10,
-    "max": 200,
-    "step": 1,
-    "persist": true,
-    "lastModified": 1779634389611,
-    "modifiedBy": "user"
-  },
-  "blurStrength": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": true,
-    "type": "number",
-    "category": "blur",
-    "description": "Blur desaturation / softening strength",
-    "shortLabel": "Blur Strength",
-    "min": 0,
-    "max": 3,
-    "step": 0.1,
-    "persist": true,
-    "lastModified": 1779634389611,
-    "modifiedBy": "user"
-  },
-  "mipBiasEnabled": {
-    "value": false,
-    "defaultValue": false,
-    "userOverridden": true,
-    "type": "boolean",
-    "category": "blur",
-    "description": "Enable mipmap distance bias on textures",
-    "shortLabel": "Mip Bias",
-    "persist": true,
-    "lastModified": 1779634389611,
-    "modifiedBy": "user"
-  },
-  "mipBiasStart": {
-    "value": 15,
-    "defaultValue": 15,
-    "userOverridden": true,
-    "type": "number",
-    "category": "blur",
-    "description": "Distance where mip bias begins",
-    "shortLabel": "Mip Start",
+    "category": "environment",
+    "description": "Fog plane inner radius where circular fade begins",
+    "shortLabel": "Inner Radius",
     "min": 5,
-    "max": 80,
-    "step": 1,
+    "max": 280,
+    "step": 5,
     "persist": true,
-    "lastModified": 1779634389611,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
     "modifiedBy": "user"
   },
-  "mipBiasEnd": {
-    "value": 50,
+  "fogPlaneNearDist": {
+    "value": 14.200000000000003,
+    "defaultValue": 10,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Near distance for alpha ramp (transparent)",
+    "shortLabel": "Near Dist",
+    "min": 1,
+    "max": 100,
+    "step": 1,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneFarDist": {
+    "value": 60.57999999999999,
     "defaultValue": 50,
     "userOverridden": true,
     "type": "number",
-    "category": "blur",
-    "description": "Distance where mip bias is maximum",
-    "shortLabel": "Mip End",
-    "min": 10,
-    "max": 150,
+    "category": "environment",
+    "description": "Far distance for alpha ramp (opaque)",
+    "shortLabel": "Far Dist",
+    "min": 5,
+    "max": 200,
     "step": 1,
     "persist": true,
-    "lastModified": 1779634389611,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
     "modifiedBy": "user"
   },
-  "mipBiasStrength": {
-    "value": 2,
-    "defaultValue": 2,
+  "fogPlaneDensity": {
+    "value": 2.0080000000000005,
+    "defaultValue": 1,
     "userOverridden": true,
     "type": "number",
-    "category": "blur",
-    "description": "Maximum mip level bias (higher = blurrier textures)",
-    "shortLabel": "Mip Strength",
+    "category": "environment",
+    "description": "Overall fog density multiplier",
+    "shortLabel": "Density",
     "min": 0,
-    "max": 4,
-    "step": 0.1,
+    "max": 3,
+    "step": 0.05,
     "persist": true,
-    "lastModified": 1779634389611,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneWindFade": {
+    "value": 0.13150000000000003,
+    "defaultValue": 0.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "How much wind blows fog away",
+    "shortLabel": "Wind Fade",
+    "min": 0,
+    "max": 2,
+    "step": 0.05,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneNoiseScale": {
+    "value": 0.05244000000000007,
+    "defaultValue": 0.05,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Noise UV scale for fog splatter pattern",
+    "shortLabel": "Noise Scale",
+    "min": 0.001,
+    "max": 0.5,
+    "step": 0.001,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670509348,
+    "modifiedBy": "user"
+  },
+  "fogPlaneSpeed": {
+    "value": 0.01,
+    "defaultValue": 0.3,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Fog animation speed",
+    "shortLabel": "Anim Speed",
+    "min": 0,
+    "max": 3,
+    "step": 0.05,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneColor": {
+    "value": "#808080",
+    "defaultValue": "#cccccc",
+    "userOverridden": true,
+    "type": "color",
+    "category": "environment",
+    "description": "Fog color",
+    "shortLabel": "Color",
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
+    "modifiedBy": "user"
+  },
+  "fogPlaneDiurnalAmp": {
+    "value": 0.15,
+    "defaultValue": 0.15,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Diurnal temperature amplitude (±range)",
+    "shortLabel": "Diurnal Amp",
+    "min": 0,
+    "max": 0.5,
+    "step": 0.01,
+    "persist": true,
+    "showIf": {
+      "param": "fogPlaneEnabled",
+      "value": true
+    },
+    "lastModified": 1779670181293,
     "modifiedBy": "user"
   },
   "lightingRig": {

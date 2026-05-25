@@ -13,6 +13,7 @@ class TextureBlendingSystem {
         this.debugForceSpherical = false;
         this.fadeEnabled = true;
         this.checkerFadeStrength = 1.0;
+        this.checkerboardEnabled = true;
         this.curvatureScale = 1.0;
         this.deformStartHeight = 10;
         this.deformEndHeight = 100;
@@ -722,6 +723,7 @@ class TextureBlendingSystem {
 
                 vec4 mvPosition = viewMatrix * vec4(finalWorld, 1.0);
                 gl_Position = projectionMatrix * mvPosition;
+                vec3 transformedNormal = normalMatrix * normal;
                 #include <fog_vertex>
             }
         `;
@@ -765,6 +767,7 @@ class TextureBlendingSystem {
         uniform float uFadeEnabled;
         uniform float uCheckerScale;
         uniform float uCheckerFadeStrength;
+        uniform float uCheckerboardEnabled;
         uniform vec3 uPlanetCenter;
         uniform float uSphereRadius;
         uniform sampler2D uForestMaskTexture;
@@ -826,18 +829,6 @@ class TextureBlendingSystem {
         uniform vec3 uCliffMossColor;
         uniform float uCliffMossAmount;
         uniform float uCliffDebug;
-
-        // Distance blur uniforms
-        uniform float uBlurEnabled;
-        uniform float uBlurStart;
-        uniform float uBlurEnd;
-        uniform float uBlurStrength;
-
-        // Mipmap bias uniforms
-        uniform float uMipBiasEnabled;
-        uniform float uMipBiasStart;
-        uniform float uMipBiasEnd;
-        uniform float uMipBiasStrength;
 
         // Custom fog uniforms
         uniform float uFogGradientEnabled;
@@ -1026,31 +1017,36 @@ class TextureBlendingSystem {
             float distance = length(uCursorPos - vWorldPosition);
 
             // Blend factor: 0 = checkerboard (near cursor), 1 = biome (far from cursor)
-            float blendFactor = 0.0;
-            if (distance <= uStartDistance) {
-                blendFactor = 0.0;  // Full checkerboard near cursor
-            } else if (distance >= uEndDistance) {
-                blendFactor = 1.0;  // Full biome far from cursor
-            } else {
-                blendFactor = (distance - uStartDistance) / (uEndDistance - uStartDistance);
+            float blendFactor = 1.0;
+            if (uCheckerboardEnabled > 0.5) {
+                if (distance <= uStartDistance) {
+                    blendFactor = 0.0;  // Full checkerboard near cursor
+                } else if (distance >= uEndDistance) {
+                    blendFactor = 1.0;  // Full biome far from cursor
+                } else {
+                    blendFactor = (distance - uStartDistance) / (uEndDistance - uStartDistance);
+                }
             }
 
-            // Generate planar checkerboard from original undeformed world position
-            float planarCheckerX = floor(vOriginalWorldPosition.x * uCheckerScale);
-            float planarCheckerZ = floor(vOriginalWorldPosition.z * uCheckerScale);
-            float planarChecker = mod(planarCheckerX + planarCheckerZ, 2.0);
+            vec3 chessboardColor = vec3(0.0);
+            if (uCheckerboardEnabled > 0.5) {
+                // Generate planar checkerboard from original undeformed world position
+                float planarCheckerX = floor(vOriginalWorldPosition.x * uCheckerScale);
+                float planarCheckerZ = floor(vOriginalWorldPosition.z * uCheckerScale);
+                float planarChecker = mod(planarCheckerX + planarCheckerZ, 2.0);
 
-            // Generate spherical checkerboard by projecting onto planet sphere surface
-            vec3 toPlanet = vOriginalWorldPosition - uPlanetCenter;
-            vec3 sphereDir = normalize(toPlanet);
-            vec3 sphereSurface = uPlanetCenter + uSphereRadius * sphereDir;
-            float sphericalCheckerX = floor(sphereSurface.x * uCheckerScale);
-            float sphericalCheckerZ = floor(sphereSurface.z * uCheckerScale);
-            float sphericalChecker = mod(sphericalCheckerX + sphericalCheckerZ, 2.0);
+                // Generate spherical checkerboard by projecting onto planet sphere surface
+                vec3 toPlanet = vOriginalWorldPosition - uPlanetCenter;
+                vec3 sphereDir = normalize(toPlanet);
+                vec3 sphereSurface = uPlanetCenter + uSphereRadius * sphereDir;
+                float sphericalCheckerX = floor(sphereSurface.x * uCheckerScale);
+                float sphericalCheckerZ = floor(sphereSurface.z * uCheckerScale);
+                float sphericalChecker = mod(sphericalCheckerX + sphericalCheckerZ, 2.0);
 
-            // Blend between planar and spherical checkerboard based on deformation factor
-            float checker = mix(planarChecker, sphericalChecker, vDeformFactor * vDeformFactor);
-            vec3 chessboardColor = vec3(checker);
+                // Blend between planar and spherical checkerboard based on deformation factor
+                float checker = mix(planarChecker, sphericalChecker, vDeformFactor * vDeformFactor);
+                chessboardColor = vec3(checker);
+            }
 
             // Add subtle variation to biome color
             float variation = sin(vWorldPosition.x * 0.2 + uTime * 0.5)
@@ -1078,7 +1074,7 @@ class TextureBlendingSystem {
             biomeColor = clamp(biomeColor, 0.0, 1.0);
 
             // Blend between checkerboard (near) and biome (far) with adjustable checker visibility
-            float attenuatedBlend = mix(1.0, blendFactor, clamp(uCheckerFadeStrength, 0.0, 1.0));
+            float attenuatedBlend = uCheckerboardEnabled > 0.5 ? mix(1.0, blendFactor, clamp(uCheckerFadeStrength, 0.0, 1.0)) : 1.0;
             vec3 finalColor = mix(chessboardColor, biomeColor, attenuatedBlend);
 
             // ==================== CLIFF SYSTEM ====================
@@ -1209,13 +1205,7 @@ class TextureBlendingSystem {
                     float forestNoise = fbm(vWorldPosition.xz * uForestNoiseScale);
                     forestFactor *= mix(0.7, 1.0, forestNoise);
                     vec2 forestUv = vWorldPosition.xz * uForestTexScale;
-                    // Mipmap distance bias (simulated via multi-tap blur — no WebGL extension needed)
                     float blurOffset = 0.0;
-                    if (uMipBiasEnabled > 0.5) {
-                        float forestDist = length(vWorldPosition.xz - cameraPosition.xz);
-                        float mipLevel = smoothstep(uMipBiasStart, uMipBiasEnd, forestDist) * uMipBiasStrength;
-                        blurOffset = mipLevel * 0.015;
-                    }
                     vec3 forestColor;
                     if (blurOffset > 0.0001) {
                         forestColor  = texture2D(uForestFloorTexture, forestUv + vec2( blurOffset,  blurOffset)).rgb;
@@ -1231,15 +1221,10 @@ class TextureBlendingSystem {
             }
             // ==================== END FOREST FLOOR SYSTEM ====================
 
-            // Distance blur / softening
+            // Distance-based desaturation softening (subtle, always active)
             float camDist = length(cameraPosition - vWorldPosition);
-            float blurFactor = 0.0;
-            if (uBlurEnabled > 0.5) {
-                blurFactor = smoothstep(uBlurStart, uBlurEnd, camDist) * uBlurStrength;
-            }
-            // Legacy distance softening (always active, now scaled by blur params when enabled)
             float legacySoft = smoothstep(40.0, 80.0, camDist);
-            float softenFactor = max(blurFactor, legacySoft * 0.3);
+            float softenFactor = legacySoft * 0.3;
 
             vec3 gray = vec3(dot(finalColor, vec3(0.299, 0.587, 0.114)));
             finalColor = mix(finalColor, gray, softenFactor * 0.55);
@@ -1344,6 +1329,7 @@ class TextureBlendingSystem {
                 uFadeOuterRadius: { value: 31.0 },
                 uFadeEnabled: { value: 1.0 },
                 uCheckerFadeStrength: { value: this.checkerFadeStrength },
+                uCheckerboardEnabled: { value: this.checkerboardEnabled ? 1.0 : 0.0 },
                 // Dynamic checker scale
                 uCheckerScale: { value: 1.0 },
                 // Planet center for spherical checkerboard wrapping
@@ -1394,16 +1380,6 @@ class TextureBlendingSystem {
                 uEnvPressure: { value: 0.5 },
                 uEnvHumidity: { value: 0.5 },
                 uEnvTemperature: { value: 0.5 },
-                // Distance blur uniforms
-                uBlurEnabled: { value: 0.0 },
-                uBlurStart: { value: 20.0 },
-                uBlurEnd: { value: 60.0 },
-                uBlurStrength: { value: 1.0 },
-                // Mipmap bias uniforms
-                uMipBiasEnabled: { value: 0.0 },
-                uMipBiasStart: { value: 15.0 },
-                uMipBiasEnd: { value: 50.0 },
-                uMipBiasStrength: { value: 2.0 },
                 // Custom fog uniforms
                 uFogGradientEnabled: { value: 0.0 },
                 uFogGradientExponent: { value: 2.0 },
@@ -1450,6 +1426,9 @@ class TextureBlendingSystem {
         }
         if (mat.uCheckerFadeStrength) {
             mat.uCheckerFadeStrength.value = this.checkerFadeStrength ?? 1.0;
+        }
+        if (mat.uCheckerboardEnabled) {
+            mat.uCheckerboardEnabled.value = (this.checkerboardEnabled !== false) ? 1.0 : 0.0;
         }
         // Dynamic circular fade: diameter fits inside terrain mesh, fade starts at 98% of radius
         if (mat.uFadeInnerRadius && mat.uFadeOuterRadius) {
@@ -1610,14 +1589,6 @@ class TextureBlendingSystem {
                     }
                 }
             };
-            sync('uBlurEnabled', 'blurEnabled');
-            sync('uBlurStart', 'blurStart');
-            sync('uBlurEnd', 'blurEnd');
-            sync('uBlurStrength', 'blurStrength');
-            sync('uMipBiasEnabled', 'mipBiasEnabled');
-            sync('uMipBiasStart', 'mipBiasStart');
-            sync('uMipBiasEnd', 'mipBiasEnd');
-            sync('uMipBiasStrength', 'mipBiasStrength');
             sync('uFogGradientEnabled', 'fogGradientEnabled');
             sync('uFogGradientExponent', 'fogGradientExponent');
             sync('uFogGradientBias', 'fogGradientBias');

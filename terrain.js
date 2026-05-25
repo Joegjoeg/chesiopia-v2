@@ -536,7 +536,23 @@ class TerrainGenerator {
         return this.simplexNoise(x * scale + seed, z * scale + seed * 2.0);
     }
 
+    setGroundwaterSystem(groundwaterSystem) {
+        this.groundwaterSystem = groundwaterSystem;
+    }
+
     getBiomeType(height, x, z) {
+        // Check for local water pools first (dynamic biome)
+        if (this.groundwaterSystem && x !== undefined && z !== undefined) {
+            const surfaceWater = this.groundwaterSystem.getSurfaceWater(x, z);
+            if (surfaceWater > 0.3) {
+                return 'deep_water';
+            } else if (surfaceWater > 0.1) {
+                return 'shallow_water';
+            } else if (surfaceWater > 0.02) {
+                return 'beach'; // dynamic beach around pool edge
+            }
+        }
+
         // Height-based biome classification with optional patch noise
         let effectiveHeight = height;
         if (this.biomePatchStrength > 0 && x !== undefined && z !== undefined) {
