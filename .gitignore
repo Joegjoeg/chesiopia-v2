@@ -5,3 +5,8 @@ node_modules/
 world-data.json
 world-data-v2.json
 world-data.json.backup
+temp_*
+*.bak
+test-tools/
+test_*.js
+
