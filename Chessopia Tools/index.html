@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chessopia Shadow Baker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Chessopia Shadow Baker</h1>
+            <span class="subtitle">Baked geometry shadows for procedural &amp; imported models</span>
+        </header>
+
+        <div id="main-layout">
+            <!-- Left Panel: Controls -->
+            <aside id="control-panel">
+                <!-- Model Section -->
+                <div class="panel-section">
+                    <h2>Model</h2>
+                    <select id="modelSelect">
+                        <option value="procedural-tree">Procedural Tree</option>
+                        <option value="simple-tree">Simple Tree</option>
+                        <option value="upload-glb">Upload GLB...</option>
+                    </select>
+                    <input type="file" id="glbUpload" accept=".glb,.gltf" style="display:none;">
+                    <div id="uploadLabel" class="upload-hint">or drag &amp; drop a GLB file</div>
+                    <button id="regenerateTree">Regenerate Tree</button>
+                </div>
+
+                <!-- Sun Controls -->
+                <div class="panel-section">
+                    <h2>Sun Position</h2>
+                    <div class="slider-group">
+                        <label for="sunAzimuth">Azimuth <span id="azimuthVal">0&deg;</span></label>
+                        <input type="range" id="sunAzimuth" min="0" max="360" value="45" step="1">
+                    </div>
+                    <div class="slider-group">
+                        <label for="sunElevation">Elevation <span id="elevationVal">45&deg;</span></label>
+                        <input type="range" id="sunElevation" min="0" max="90" value="45" step="1">
+                    </div>
+                    <div class="check-row">
+                        <input type="checkbox" id="autoRotateSun">
+                        <label for="autoRotateSun">Auto-rotate sun</label>
+                    </div>
+                    <div class="slider-group">
+                        <label for="sunSpeed">Speed</label>
+                        <input type="range" id="sunSpeed" min="1" max="60" value="10" step="1">
+                    </div>
+                </div>
+
+                <!-- Bake Settings -->
+                <div class="panel-section">
+                    <h2>Bake Settings</h2>
+                    <div class="slider-group">
+                        <label for="gridResolution">Grid Resolution <span id="gridResVal">32</span></label>
+                        <input type="range" id="gridResolution" min="8" max="128" value="32" step="8">
+                    </div>
+                    <div class="slider-group">
+                        <label for="gridWorldSize">World Size <span id="worldSizeVal">3.0</span></label>
+                        <input type="range" id="gridWorldSize" min="1" max="10" value="3" step="0.5">
+                    </div>
+                    <div class="slider-group">
+                        <label for="numAngles">Number of Angles <span id="numAnglesVal">12</span></label>
+                        <input type="range" id="numAngles" min="4" max="32" value="12" step="2">
+                    </div>
+                    <div class="slider-group">
+                        <label for="sunHeight">Light Height <span id="sunHeightVal">50</span></label>
+                        <input type="range" id="sunHeight" min="10" max="200" value="50" step="5">
+                    </div>
+                    <div class="check-row">
+                        <input type="checkbox" id="includeTerrain" checked>
+                        <label for="includeTerrain">Conform to terrain</label>
+                    </div>
+                    <div class="check-row">
+                        <input type="checkbox" id="showGridOverlay">
+                        <label for="showGridOverlay">Show grid overlay</label>
+                    </div>
+                    <div class="check-row">
+                        <input type="checkbox" id="shadowWireframe">
+                        <label for="shadowWireframe">Shadow wireframe</label>
+                    </div>
+                </div>
+
+                <!-- Wind Preview -->
+                <div class="panel-section">
+                    <h2>Wind Preview</h2>
+                    <div class="slider-group">
+                        <label for="windStrength">Strength <span id="windStrVal">0.0</span></label>
+                        <input type="range" id="windStrength" min="0" max="1" value="0" step="0.01">
+                    </div>
+                    <div class="slider-group">
+                        <label for="windDirection">Direction <span id="windDirVal">0&deg;</span></label>
+                        <input type="range" id="windDirection" min="0" max="360" value="0" step="1">
+                    </div>
+                    <div class="check-row">
+                        <input type="checkbox" id="animateWind">
+                        <label for="animateWind">Animate wind</label>
+                    </div>
+                </div>
+
+                <!-- Bake Actions -->
+                <div class="panel-section actions">
+                    <button id="bakeSingle" class="btn-secondary">Bake Current Angle</button>
+                    <button id="bakeAll" class="btn-primary">Bake All Angles</button>
+                    <div id="bakeProgress"></div>
+                    <button id="exportSet" class="btn-export" disabled>Export ShadowSet</button>
+                </div>
+
+                <!-- Stats -->
+                <div class="panel-section stats">
+                    <h2>Stats</h2>
+                    <div id="statsDisplay">
+                        <span>Vertices per shadow: <b id="statVerts">--</b></span>
+                        <span>Angles baked: <b id="statAngles">--</b></span>
+                        <span>Total data: <b id="statData">--</b></span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Viewport -->
+            <main id="viewport-container">
+                <canvas id="previewCanvas"></canvas>
+                <div id="viewport-overlay">
+                    <div id="angleIndicator">Sun: 45&deg; / 45&deg;</div>
+                    <div id="shadowInfo">No shadow baked</div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="js/tree-generator.js"></script>
+    <script src="js/preview-scene.js"></script>
+    <script src="js/baker-core.js"></script>
+    <script src="js/exporter.js"></script>
+    <script src="js/ui-controls.js"></script>
+</body>
+</html>

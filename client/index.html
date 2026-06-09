@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chessopia - 3D Infinite Chess</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="uiOverlay">
+            <!-- Player Info -->
+            <div id="playerInfo" class="ui-panel" style="display: none;">
+                <h3>Player Info</h3>
+                <div id="playerName">Guest</div>
+                <div id="playerPoints">Points: 0</div>
+                <div id="playerPieces">Pieces: 0</div>
+            </div>
+            
+            <!-- Server Errors -->
+            <div id="serverErrors" class="ui-panel" style="display: none;">
+                <h3 style="color: #ff0000;">Server Errors</h3>
+                <div id="errorList" style="font-family: monospace; font-size: 12px; color: #ff6666;">
+                    <div>No server errors...</div>
+                </div>
+                <button id="clearErrorsBtn" class="dev-btn" style="background: #cc0000; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin: 2px; font-size: 11px;">
+                    Clear Errors
+                </button>
+            </div>
+            
+            
+            <!-- Shop Modal (hidden by default) -->
+            <div id="shopModal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Chess Shop</h2>
+                        <button id="closeShop" class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="shopPoints">Points: 0</div>
+                        <div id="shopItems" class="shop-grid">
+                            <div class="shop-item" data-piece="pawn">
+                                <h3>Pawn</h3>
+                                <div class="cost">2 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="knight">
+                                <h3>Knight</h3>
+                                <div class="cost">6 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="bishop">
+                                <h3>Bishop</h3>
+                                <div class="cost">6 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="rook">
+                                <h3>Rook</h3>
+                                <div class="cost">10 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                            <div class="shop-item" data-piece="queen">
+                                <h3>Queen</h3>
+                                <div class="cost">18 pts</div>
+                                <button class="buy-btn">Buy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Connection Status (Hidden) -->
+            <div id="connectionStatus" style="display: none;">
+                <div class="connection-status">
+                    <span id="statusText">Disconnected</span>
+                    <div id="connectionDebug" style="margin-top: 5px; font-size: 12px; color: #ff9999;"></div>
+                </div>
+            </div>
+            
+            <script>
+                // Immediately hide connection status on page load
+                document.addEventListener('DOMContentLoaded', () => {
+                    const statusEl = document.getElementById('connectionStatus');
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                        console.log('🔇 Connection status element hidden');
+                    }
+                });
+                
+                // Also hide it after a delay in case other scripts show it
+                setTimeout(() => {
+                    const statusEl = document.getElementById('connectionStatus');
+                    if (statusEl) {
+                        statusEl.style.display = 'none';
+                    }
+                }, 1000);
+            </script>
+        </div>
+    </div>
+    
+                
+    <!-- Loading Screen -->
+    <div id="loadingScreen">
+        <div class="loading-content">
+            <h1>CHESSIA</h1>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+            <div class="loading-text">Loading 3D World...</div>
+            <div id="loadingLog" style="margin-top:12px;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;color:#ccc;background:rgba(0,0,0,0.5);border-radius:6px;padding:8px;text-align:left;line-height:1.4;"></div>
+        </div>
+    </div>
+
+    <!-- Navi cursor overlay -->
+    <div id="naviCursor" aria-hidden="true">
+        <div class="navi-cursor-trail"></div>
+        <div class="navi-cursor-wing is-left"></div>
+        <div class="navi-cursor-wing is-right"></div>
+        <div class="navi-cursor-core"></div>
+    </div>
+    
+    <!-- Mobile debug logger: mirror console to the loading screen -->
+    <script>
+        (function() {
+            const logEl = document.getElementById('loadingLog');
+            if (!logEl) return;
+            const MAX_LINES = 60;
+            function pushLine(type, args) {
+                const line = document.createElement('div');
+                const text = args.map(a => {
+                    try { return (typeof a === 'object') ? JSON.stringify(a) : String(a); }
+                    catch (e) { return String(a); }
+                }).join(' ');
+                line.textContent = '> ' + text;
+                line.style.color = type === 'error' ? '#ff6b6b' : type === 'warn' ? '#ffcc00' : '#ccc';
+                line.style.wordBreak = 'break-word';
+                logEl.appendChild(line);
+                while (logEl.childElementCount > MAX_LINES) {
+                    logEl.removeChild(logEl.firstChild);
+                }
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+            const origLog = console.log;
+            const origWarn = console.warn;
+            const origErr = console.error;
+            console.log = function(...args) { origLog.apply(console, args); pushLine('log', args); };
+            console.warn = function(...args) { origWarn.apply(console, args); pushLine('warn', args); };
+            console.error = function(...args) { origErr.apply(console, args); pushLine('error', args); };
+        })();
+    </script>
+
+    <!-- Three.js and dependencies - using multiple CDN sources with local fallbacks -->
+    <script>
+        function loadScriptWithFallback(sources, label) {
+            return new Promise((resolve, reject) => {
+                function tryLoad(index) {
+                    if (index >= sources.length) {
+                        reject(new Error(`${label} failed to load from all sources`));
+                        return;
+                    }
+                    const source = sources[index];
+                    const script = document.createElement('script');
+                    script.src = source;
+                    script.async = false;
+                    script.onload = () => {
+                        console.log(`${label} loaded from ${source}`);
+                        resolve();
+                    };
+                    script.onerror = () => {
+                        console.warn(`${label} failed to load from ${source}, trying next source...`);
+                        script.remove();
+                        tryLoad(index + 1);
+                    };
+                    document.head.appendChild(script);
+                }
+                tryLoad(0);
+            });
+        }
+
+        // Load THREE.js with fallback
+        function loadThreeJS() {
+            const sources = [
+                'https://unpkg.com/three@0.155.0/build/three.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js',
+                'three.min.js'
+            ];
+            return loadScriptWithFallback(sources, 'THREE.js');
+        }
+        
+        // Create simple GLTF loader that works in script context
+        function loadGLTFLoader() {
+            console.log('Creating simple GLTF loader...');
+            
+            // Ensure THREE object exists
+            if (typeof window.THREE === 'undefined') {
+                console.error('THREE.js not loaded yet!');
+                return;
+            }
+            
+            // Attach GLTFLoader to THREE object
+            window.THREE.GLTFLoader = class SimpleGLTFLoader {
+                constructor() {
+                    console.log('SimpleGLTFLoader constructor called');
+                    this._materialCache = new Map();
+                    this._textureCache = new Map();
+                }
+                loadAsync(url) {
+                    // Clear caches from previous loads so a reused loader doesn't leak
+                    this._materialCache.clear();
+                    this._textureCache.clear();
+                    return new Promise((resolve, reject) => {
+                        console.log('Loading GLB model:', url);
+                        
+                        // Use fetch to load the GLB file
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+                                return response.arrayBuffer();
+                            })
+                            .then(arrayBuffer => {
+                                console.log('GLB file loaded, size:', arrayBuffer.byteLength);
+                                
+                                // Try to parse GLB directly
+                                try {
+                                    const gltf = this.parseGLB(arrayBuffer);
+                                    if (gltf) {
+                                        console.log('GLTF parsed successfully:', gltf);
+                                        resolve({ scene: gltf });
+                                    } else {
+                                        console.log('GLTF parsing failed, using fallback');
+                                        this.createFallbackScene(resolve);
+                                    }
+                                } catch (e) {
+                                    console.error('GLTF parsing failed:', e);
+                                    this.createFallbackScene(resolve);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Failed to load GLB:', error);
+                                reject(error);
+                            });
+                    });
+                }
+                
+                parseGLB(arrayBuffer) {
+                    try {
+                        console.log('Parsing GLB data...');
+                        const dataView = new DataView(arrayBuffer);
+                        
+                        // Check GLB magic number
+                        const magic = dataView.getUint32(0, true);
+                        if (magic !== 0x46546C67) { // "glTF" in little endian
+                            throw new Error('Not a valid GLB file');
+                        }
+                        
+                        const version = dataView.getUint32(4, true);
+                        const totalLength = dataView.getUint32(8, true);
+                        
+                        console.log(`GLB file: version=${version}, length=${totalLength}`);
+                        
+                        // Parse chunks
+                        let offset = 12; // Start after header
+                        let jsonChunk = null;
+                        let binaryChunk = null;
+                        
+                        while (offset < totalLength) {
+                            const chunkLength = dataView.getUint32(offset, true);
+                            const chunkType = dataView.getUint32(offset + 4, true);
+                            const chunkData = arrayBuffer.slice(offset + 8, offset + 8 + chunkLength);
+                            
+                            if (chunkType === 0x4E4F534A) { // "JSON"
+                                jsonChunk = chunkData;
+                            } else if (chunkType === 0x004E4942) { // "BIN"
+                                binaryChunk = chunkData;
+                            }
+                            
+                            offset += 8 + chunkLength;
+                        }
+                        
+                        if (!jsonChunk) {
+                            throw new Error('No JSON chunk found in GLB file');
+                        }
+                        
+                        // Parse JSON chunk
+                        const jsonText = new TextDecoder().decode(jsonChunk);
+                        const gltf = JSON.parse(jsonText);
+                        
+                        console.log('GLTF JSON loaded:', gltf);
+                        console.log('Meshes:', gltf.meshes?.length || 0);
+                        console.log('Accessors:', gltf.accessors?.length || 0);
+                        console.log('BufferViews:', gltf.bufferViews?.length || 0);
+                        
+                        // Create scene from GLTF data
+                        const scene = new THREE.Group();
+                        
+                        // First, create all meshes and store them for later
+                        const meshMap = new Map();
+                        if (gltf.meshes && gltf.meshes.length > 0) {
+                            console.log('=== PARSING ACTUAL GLTF MESHES ===');
+
+                            // Parse all meshes
+                            for (let i = 0; i < gltf.meshes.length; i++) {
+                                const mesh = gltf.meshes[i];
+                                console.log('Parsing mesh:', mesh);
+
+                                // Create mesh from GLTF data
+                                const threeMesh = this.createMeshFromGLTF(mesh, gltf, binaryChunk);
+                                if (threeMesh) {
+                                    // Preserve the mesh name from GLTF
+                                    threeMesh.name = mesh.name || '';
+                                    threeMesh.castShadow = true;
+                                    threeMesh.receiveShadow = true;
+                                    meshMap.set(i, threeMesh);
+                                    console.log(`Actual GLTF mesh "${mesh.name}" created successfully!`);
+                                } else {
+                                    console.log(`Failed to parse GLTF mesh ${i}, skipping`);
+                                }
+                            }
+
+                            // Now parse nodes and apply transforms
+                            if (gltf.nodes && gltf.nodes.length > 0) {
+                                console.log('=== APPLYING NODE TRANSFORMS ===');
+
+                                for (let i = 0; i < gltf.nodes.length; i++) {
+                                    const node = gltf.nodes[i];
+                                    console.log('Processing node:', node);
+
+                                    if (node.mesh !== undefined && meshMap.has(node.mesh)) {
+                                        const threeMesh = meshMap.get(node.mesh).clone();
+
+                                        // Apply translation
+                                        if (node.translation) {
+                                            threeMesh.position.set(node.translation[0], node.translation[1], node.translation[2]);
+                                            console.log(`Applied translation to "${threeMesh.name}":`, node.translation);
+                                        }
+
+                                        // Apply rotation (quaternion)
+                                        if (node.rotation) {
+                                            threeMesh.rotation.setFromQuaternion(new THREE.Quaternion(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]));
+                                            console.log(`Applied rotation to "${threeMesh.name}":`, node.rotation);
+                                        }
+
+                                        // Apply scale
+                                        if (node.scale) {
+                                            threeMesh.scale.set(node.scale[0], node.scale[1], node.scale[2]);
+                                            console.log(`Applied scale to "${threeMesh.name}":`, node.scale);
+                                        }
+
+                                        scene.add(threeMesh);
+                                    }
+                                }
+                            } else {
+                                // Fallback: add meshes directly if no nodes
+                                console.log('No nodes found, adding meshes directly');
+                                meshMap.forEach((mesh) => {
+                                    scene.add(mesh);
+                                });
+                            }
+                        } else {
+                            console.log('No meshes found in GLTF, creating placeholder');
+                            this.createPlaceholder(scene);
+                        }
+                        
+                        console.log('GLB parsed successfully');
+                        return scene;
+                        
+                    } catch (error) {
+                        console.error('GLB parsing failed:', error);
+                        return null;
+                    }
+                }
+                
+                createMeshFromGLTF(mesh, gltf, binaryChunk) {
+                    try {
+                        console.log('Creating mesh from GLTF data...');
+                        
+                        // Get first primitive
+                        const primitive = mesh.primitives[0];
+                        if (!primitive) {
+                            console.log('No primitive found in mesh');
+                            return null;
+                        }
+                        
+                        console.log('Primitive:', primitive);
+                        
+                        // Get accessors
+                        const positionAccessor = gltf.accessors[primitive.attributes.POSITION];
+                        const normalAccessor = gltf.accessors[primitive.attributes.NORMAL];
+                        const uvAccessor = gltf.accessors[primitive.attributes.TEXCOORD_0];
+                        const indexAccessor = gltf.accessors[primitive.indices];
+                        
+                        if (!positionAccessor) {
+                            console.log('No position accessor found');
+                            return null;
+                        }
+                        
+                        console.log('Position accessor:', positionAccessor);
+                        
+                        // Get buffer views
+                        const positionBufferView = gltf.bufferViews[positionAccessor.bufferView];
+                        const normalBufferView = normalAccessor ? gltf.bufferViews[normalAccessor.bufferView] : null;
+                        const uvBufferView = uvAccessor ? gltf.bufferViews[uvAccessor.bufferView] : null;
+                        const indexBufferView = indexAccessor ? gltf.bufferViews[indexAccessor.bufferView] : null;
+                        
+                        console.log('Position buffer view:', positionBufferView);
+                        
+                        // Extract geometry data
+                        const positionData = this.extractAccessorData(positionAccessor, positionBufferView, binaryChunk);
+                        const normalData = normalAccessor ? this.extractAccessorData(normalAccessor, normalBufferView, binaryChunk) : null;
+                        const uvData = uvAccessor ? this.extractAccessorData(uvAccessor, uvBufferView, binaryChunk) : null;
+                        const indexData = indexAccessor ? this.extractAccessorData(indexAccessor, indexBufferView, binaryChunk) : null;
+                        
+                        if (!positionData) {
+                            console.log('Failed to extract position data');
+                            return null;
+                        }
+                        
+                        console.log('Position data length:', positionData.length);
+                        console.log('Normal data length:', normalData ? normalData.length : 'none');
+                        console.log('UV data length:', uvData ? uvData.length : 'none');
+                        console.log('Index data length:', indexData ? indexData.length : 'none');
+                        
+                        // Calculate vertex count
+                        const vertexCount = positionData ? positionData.length / 3 : 0;
+                        const triangleCount = indexData ? indexData.length / 3 : vertexCount / 3;
+                        console.log('=== GEOMETRY ANALYSIS ===');
+                        console.log('Vertex count:', vertexCount);
+                        console.log('Triangle count:', triangleCount);
+                        console.log('Position data size:', positionData ? (positionData.length * 4) : 0, 'bytes');
+                        console.log('Normal data size:', normalData ? (normalData.length * 4) : 0, 'bytes');
+                        console.log('Index data size:', indexData ? (indexData.length * 2) : 0, 'bytes');
+                        
+                        // Create Three.js geometry
+                        const geometry = new THREE.BufferGeometry();
+                        
+                        // Set position attributes
+                        const positionArray = new Float32Array(positionData);
+                        geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+                        
+                        // Set normal attributes if available
+                        if (normalData) {
+                            const normals = new Float32Array(normalData);
+                            geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+                        } else {
+                            geometry.computeVertexNormals();
+                        }
+                        
+                        // Set UV attributes if available - CRITICAL for texture mapping
+                        if (uvData) {
+                            const uvs = new Float32Array(uvData);
+                            geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                            console.log('*** UV COORDINATES APPLIED TO GEOMETRY ***');
+                            console.log('UV count:', uvData.length / 2);
+                        } else {
+                            console.log('*** NO UV COORDINATES FOUND - TEXTURE MAPPING WILL FAIL ***');
+                        }
+                        
+                        // Set indices if available
+                        if (indexData) {
+                            const indices = new Uint16Array(indexData);
+                            geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+                        }
+                        
+                        // Try to preserve original materials from GLB
+                        let material;
+                        const matIndex = primitive.material != null ? primitive.material : 0;
+                        if (gltf.materials && gltf.materials.length > matIndex) {
+                            // Reuse cached material if available
+                            if (this._materialCache.has(matIndex)) {
+                                material = this._materialCache.get(matIndex);
+                                console.log('Reusing cached GLB material for index', matIndex);
+                            } else {
+                                // Use correct material from GLB primitive
+                                const gltfMaterial = gltf.materials[matIndex];
+                                console.log('Using GLB material:', gltfMaterial);
+
+                                material = new THREE.MeshStandardMaterial({
+                                    color: gltfMaterial.pbrMetallicRoughness?.baseColorFactor || 0xffffff,
+                                    metalness: gltfMaterial.pbrMetallicRoughness?.metallicFactor || 0.1,
+                                    roughness: gltfMaterial.pbrMetallicRoughness?.roughnessFactor || 0.8
+                                });
+
+                                // Try to load texture if available
+                                if (gltfMaterial.pbrMetallicRoughness?.baseColorTexture) {
+                                    const textureInfo = gltfMaterial.pbrMetallicRoughness.baseColorTexture;
+                                    const texIndex = textureInfo.index;
+
+                                    if (this._textureCache.has(texIndex)) {
+                                        material.map = this._textureCache.get(texIndex);
+                                        material.needsUpdate = true;
+                                        material.color.setHex(0xffffff);
+                                        console.log('Reusing cached texture for index', texIndex);
+                                    } else {
+                                        console.log('Loading base color texture from GLB');
+                                        console.log('Texture info:', textureInfo);
+
+                                        // Try to extract texture from GLB binary data
+                                        if (gltf.images && gltf.images[texIndex]) {
+                                            const image = gltf.images[texIndex];
+                                            console.log('=== TEXTURE ANALYSIS ===');
+                                            console.log('Found image data:', image);
+                                            console.log('Image mimeType:', image.mimeType);
+                                            console.log('Image bufferView:', image.bufferView);
+                                            console.log('Image name:', image.name);
+
+                                            // Create texture from image data
+                                            if (image.bufferView !== undefined) {
+                                                const bufferView = gltf.bufferViews[image.bufferView];
+                                                const textureData = binaryChunk.slice(bufferView.byteOffset, bufferView.byteOffset + bufferView.byteLength);
+
+                                                console.log('=== FILE SIZE ANALYSIS ===');
+                                                console.log('Texture data size:', textureData.length, 'bytes');
+                                                console.log('Texture data size (KB):', (textureData.length / 1024).toFixed(2), 'KB');
+                                                console.log('Texture data size (MB):', (textureData.length / 1024 / 1024).toFixed(2), 'MB');
+                                                console.log('BufferView byteOffset:', bufferView.byteOffset);
+                                                console.log('BufferView byteLength:', bufferView.byteLength);
+
+                                                // Create blob and texture
+                                                const blob = new Blob([textureData], { type: image.mimeType || 'image/png' });
+                                                const imageUrl = URL.createObjectURL(blob);
+
+                                                const texture = new THREE.TextureLoader().load(imageUrl, function () {
+                                                    URL.revokeObjectURL(imageUrl);
+                                                });
+                                                texture.flipY = false;
+                                                texture.colorSpace = THREE.SRGBColorSpace;
+                                                texture.wrapS = THREE.RepeatWrapping;
+                                                texture.wrapT = THREE.RepeatWrapping;
+                                                texture.anisotropy = 4;
+
+                                                this._textureCache.set(texIndex, texture);
+                                                material.map = texture;
+                                                material.needsUpdate = true;
+                                                material.color.setHex(0xffffff);
+                                                console.log('Texture loaded and applied to material');
+                                            }
+                                        }
+                                    }
+                                }
+
+                                this._materialCache.set(matIndex, material);
+                            }
+                        } else {
+                            // Fallback material
+                            material = new THREE.MeshStandardMaterial({
+                                color: 0xcccccc,
+                                metalness: 0.3,
+                                roughness: 0.7
+                            });
+                        }
+                        
+                        // Create mesh
+                        const threeMesh = new THREE.Mesh(geometry, material);
+                        
+                        console.log('Three.js mesh created successfully');
+                        return threeMesh;
+                        
+                    } catch (error) {
+                        console.error('Error creating mesh from GLTF:', error);
+                        return null;
+                    }
+                }
+                
+                extractAccessorData(accessor, bufferView, binaryChunk) {
+                    try {
+                        const byteOffset = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
+                        const byteLength = accessor.count * this.getComponentSize(accessor);
+                        
+                        console.log(`Extracting data: offset=${byteOffset}, length=${byteLength}, type=${accessor.type}, componentType=${accessor.componentType}`);
+                        
+                        // Extract relevant slice from binary chunk
+                        const dataSlice = binaryChunk.slice(byteOffset, byteOffset + byteLength);
+                        
+                        // Convert based on component type
+                        switch (accessor.componentType) {
+                            case 5126: // FLOAT
+                                return new Float32Array(dataSlice);
+                            case 5123: // UNSIGNED_SHORT
+                                return new Uint16Array(dataSlice);
+                            case 5121: // UNSIGNED_BYTE
+                                return new Uint8Array(dataSlice);
+                            case 5125: // UNSIGNED_INT
+                                return new Uint32Array(dataSlice);
+                            default:
+                                console.log('Unsupported component type:', accessor.componentType);
+                                return null;
+                        }
+                    } catch (error) {
+                        console.error('Error extracting accessor data:', error);
+                        return null;
+                    }
+                }
+                
+                getComponentSize(accessor) {
+                    const typeSizes = {
+                        'SCALAR': 1,
+                        'VEC2': 2,
+                        'VEC3': 3,
+                        'VEC4': 4,
+                        'MAT2': 4,
+                        'MAT3': 9,
+                        'MAT4': 16
+                    };
+                    
+                    const componentTypeSizes = {
+                        5120: 1,  // BYTE
+                        5121: 1,  // UNSIGNED_BYTE
+                        5122: 2,  // SHORT
+                        5123: 2,  // UNSIGNED_SHORT
+                        5125: 4,  // UNSIGNED_INT
+                        5126: 4   // FLOAT
+                    };
+                    
+                    const typeSize = typeSizes[accessor.type] || 1;
+                    const componentSize = componentTypeSizes[accessor.componentType] || 1;
+                    
+                    return typeSize * componentSize;
+                }
+                
+                createPlaceholder(scene) {
+                    // Create a better placeholder that looks more like a chess piece
+                    const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 8);
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0xcccccc,
+                        metalness: 0.3,
+                        roughness: 0.7
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+                    
+                    // Add a simple crown
+                    const crownGeometry = new THREE.BoxGeometry(0.6, 0.3, 0.6);
+                    const crown = new THREE.Mesh(crownGeometry, material);
+                    crown.position.y = 0.9;
+                    crown.castShadow = true;
+                    scene.add(crown);
+                    
+                    // Add cross on top
+                    const crossGeometry = new THREE.BoxGeometry(0.1, 0.4, 0.1);
+                    const cross = new THREE.Mesh(crossGeometry, material);
+                    cross.position.y = 1.3;
+                    cross.castShadow = true;
+                    scene.add(cross);
+                    
+                    console.log('Created chess piece placeholder');
+                }
+                
+                createFallbackScene(resolve) {
+                    console.log('Creating fallback scene');
+                    const scene = new THREE.Group();
+                    const geometry = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 8);
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0xcccccc,
+                        metalness: 0.3,
+                        roughness: 0.7
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+                    resolve({ scene });
+                }
+            };
+            
+            // Verify GLTFLoader is properly attached
+            console.log('Verifying GLTFLoader attachment...');
+            console.log('THREE.GLTFLoader:', window.THREE.GLTFLoader);
+            console.log('typeof THREE.GLTFLoader:', typeof window.THREE.GLTFLoader);
+            
+            if (typeof window.THREE.GLTFLoader !== 'undefined') {
+                console.log('Simple GLTF loader created successfully');
+            } else {
+                console.error('Failed to create GLTFLoader!');
+            }
+        }
+        
+        // Load Socket.IO with fallback
+        function loadSocketIO() {
+            const sources = [
+                'https://unpkg.com/socket.io-client@4.7.0/dist/socket.io.min.js',
+                'https://cdn.socket.io/4.7.0/socket.io.min.js',
+                'socket.io.min.js'
+            ];
+            return loadScriptWithFallback(sources, 'Socket.IO');
+        }
+    </script>
+    
+    <!-- Game modules -->
+    <script>
+        const dependencyTimeoutMs = 20000; // Fail fast after 20s instead of looping forever
+        
+        function loadGameModules() {
+            // Load auth modules first
+            const authScripts = [
+                'authApi.js',
+                'authState.js',
+                'authOverlay.js'
+            ];
+            
+            function loadAuthScript(index, callback) {
+                if (index >= authScripts.length) {
+                    callback();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = authScripts[index];
+                script.onload = () => {
+                    console.log(`Loaded auth module ${authScripts[index]}`);
+                    loadAuthScript(index + 1, callback);
+                };
+                script.onerror = () => {
+                    console.error(`Failed to load auth module ${authScripts[index]}`);
+                    loadAuthScript(index + 1, callback);
+                };
+                document.body.appendChild(script);
+            }
+            
+            // Initialize auth overlay after auth modules load
+            function initAuthAndGame() {
+                if (typeof window.authOverlay === 'undefined') {
+                    console.error('[Auth] Auth overlay not loaded, continuing without auth');
+                    startGameLoading();
+                    return;
+                }
+                
+                window.authOverlay.init((user) => {
+                    console.log('[Auth] User authenticated:', user.username, '(' + user.role + ')');
+                    startGameLoading();
+                });
+            }
+            
+            function startGameLoading() {
+                // Load game modules in order
+                const scripts = [
+                    'gameState.js?v=' + Date.now(),
+                    'network.js?v=' + Date.now(),
+                    'consoleManager.js?v=' + Date.now(),
+                    'serverErrorDisplay.js?v=' + Date.now(),
+                    'terrain-new.js?v=' + Date.now(),
+                    'textureAtlasGenerator.js?v=' + Date.now(),
+                    'planetMapping.js?v=' + Date.now(),
+                    'groundwaterSystem.js?v=' + Date.now(),
+                    'RollingTerrainMesh.js?v=' + Date.now(),
+                    'TerrainOuterRing.js?v=' + Date.now(),
+                    'waterReflectionManager.js?v=' + Date.now(),
+                    'skyShaderSystem.js?v=' + Date.now(),
+                    'zodiacConstellationSystem.js?v=' + Date.now(),
+                    'board_clean.js?v=' + Date.now(),
+                    'camera.js?v=' + Date.now(),
+                    'soundManager.js?v=' + Date.now(),
+                    'pieces3d.js?v=' + Date.now(),
+                    '/moveValidator.js?v=' + Date.now(),
+                    'movementBridge.js?v=' + Date.now(),
+                    'coveringSystem.js?v=' + Date.now(),
+                    'visualFeedback.js?v=' + Date.now(),
+                    'growingTreeSystem.js?v=' + Date.now(),
+                    'terrainTreeSystem.js?v=' + Date.now(),
+                    'poplarTreeSystem.js?v=' + Date.now(),
+                    'cherryTreeSystem.js?v=' + Date.now(),
+                    'billboardTreeSystem.js?v=' + Date.now(),
+                    'realisticTreeSystem.js?v=' + Date.now(),
+                    'hybridTreeManager.js?v=' + Date.now(),
+                    'terrainTreeIntegration.js?v=' + Date.now(),
+                    'debugTreeSystem.js?v=' + Date.now(),
+                    'shadowSystem.js?v=' + Date.now(),
+                    'celShaderSimple.js?v=' + Date.now(),
+                    'grassSystem.js?v=' + Date.now(),
+                    'materialRegistry.js?v=' + Date.now(),
+                    'textureSetLoader.js?v=' + Date.now(),
+                    'textureBlendingSystem.js?v=' + Date.now(),
+                    'fogPlaneSystem.js?v=' + Date.now(),
+                    'decorativeVisuals.js?v=' + Date.now(),
+                    'naviCursor.js?v=' + Date.now(),
+                    'settlementData.js?v=' + Date.now(),
+                    'settlementSystem.js?v=' + Date.now(),
+                    'buildingSystem.js?v=' + Date.now(),
+                    'roadSystem.js?v=' + Date.now(),
+                    'villagerSystem.js?v=' + Date.now(),
+                    'knightSystem.js?v=' + Date.now(),
+                    'tournamentSystem.js?v=' + Date.now(),
+                    'tomeUI.js?v=' + Date.now(),
+                    'minimapOverlay.js?v=' + Date.now(),
+                    'performanceManager.js?v=' + Date.now(),
+                    'weatherDirector.js?v=' + Date.now(),
+                    'voxelCloudSystem.js?v=' + Date.now(),
+                    'distanceManager.js?v=' + Date.now(),
+                    'validationTests.js?v=' + Date.now(),
+                    'modifierStack.js?v=' + Date.now(),
+                    'parameterSystem.js?v=' + Date.now(),
+                    'devInterface.js?v=' + Date.now(),
+                    'memoryProfiler.js?v=' + Date.now(),
+                    'resourceGuard.js?v=' + Date.now(),
+                    'lodManager.js?v=' + Date.now(),
+                    'jesusSummonTriggerSystem.js?v=' + Date.now(),
+                    'jesusSummonSystem.js?v=' + Date.now(),
+                    'temporalAASystem.js?v=' + Date.now(),
+                    'crashDump.js?v=' + Date.now(),
+                    'multiPieceSelector.js?v=' + Date.now(),
+                    'formationPathfinding.js?v=' + Date.now(),
+                    'moveReservation.js?v=' + Date.now(),
+                    'groupMoveExecutor.js?v=' + Date.now(),
+                    'game.js?v=' + Date.now()
+                ];
+                
+                function loadScript(index) {
+                    if (index >= scripts.length) {
+                        // All scripts loaded, initialize game
+                        console.log('All game modules loaded, initializing game...');
+                        if (typeof initializeGame === 'function') {
+                            setTimeout(initializeGame, 100);
+                        } else {
+                            console.error('initializeGame function not found');
+                        }
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = scripts[index];
+                    script.onload = () => {
+                        console.log(`Loaded ${scripts[index]}`);
+                        loadScript(index + 1);
+                    };
+                    script.onerror = () => {
+                        console.error(`Failed to load ${scripts[index]}`);
+                        loadScript(index + 1); // Continue loading other scripts
+                    };
+                    document.body.appendChild(script);
+                }
+                
+                loadScript(0);
+            }
+            
+            // Start by loading auth modules
+            loadAuthScript(0, initAuthAndGame);
+        }
+        
+        function showError(message) {
+            const loadingScreen = document.getElementById('loadingScreen');
+            if (loadingScreen) {
+                const content = loadingScreen.querySelector('.loading-content');
+                if (content) {
+                    // Replace content but keep the log area
+                    const logEl = document.getElementById('loadingLog');
+                    content.innerHTML = `
+                        <h1>CHESSIA</h1>
+                        <div style="color: #ff6b6b; margin: 20px 0; text-align: center;">
+                            ${message}
+                        </div>
+                        <button onclick="location.reload()" style="
+                            background: #4CAF50;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        ">Refresh Page</button>
+                    `;
+                    if (logEl) content.appendChild(logEl);
+                }
+            }
+        }
+        
+        // Test if JavaScript is working
+        console.log('[HTML] JavaScript is running!');
+        window.testJS = true;
+        
+        const dependenciesReady = Promise.all([
+            loadThreeJS().then(() => {
+                if (typeof window.THREE === 'undefined') {
+                    throw new Error('THREE.js global missing after script load');
+                }
+                loadGLTFLoader();
+            }),
+            loadSocketIO().then(() => {
+                if (typeof window.io === 'undefined') {
+                    throw new Error('Socket.IO global missing after script load');
+                }
+            })
+        ]);
+
+        Promise.race([
+            dependenciesReady,
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Dependency loading timed out')), dependencyTimeoutMs);
+            })
+        ])
+            .then(() => {
+                console.log('Dependencies loaded, starting game module pipeline...');
+                loadGameModules();
+            })
+            .catch((error) => {
+                console.error(error);
+                showError('Failed to load required libraries. Please check your internet connection and refresh the page.');
+            });
+    </script>
+</body>
+</html>

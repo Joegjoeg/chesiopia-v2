@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chessopia Test</title>
+</head>
+<body>
+    <h1>Chessopia Library Test</h1>
+    <div id="status">Loading...</div>
+    
+    <script src="three.min.js"></script>
+    <script src="socket.io.min.js"></script>
+    <script>
+        const status = document.getElementById('status');
+        
+        if (typeof THREE !== 'undefined') {
+            status.innerHTML += '<br>THREE.js: LOADED';
+        } else {
+            status.innerHTML += '<br>THREE.js: FAILED';
+        }
+        
+        if (typeof io !== 'undefined') {
+            status.innerHTML += '<br>Socket.IO: LOADED';
+        } else {
+            status.innerHTML += '<br>Socket.IO: FAILED';
+        }
+        
+        if (typeof THREE !== 'undefined' && typeof io !== 'undefined') {
+            status.innerHTML += '<br><br><strong>READY TO PLAY!</strong>';
+            status.innerHTML += '<br><a href="index.html">Open Chessopia Game</a>';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,2306 @@
+{
+  "waterLevel": {
+    "value": -3.0124999999999953,
+    "defaultValue": -3.0124999999999953,
+    "userOverridden": true,
+    "type": "number",
+    "category": "terrain",
+    "description": "Water plane Y position",
+    "min": -10,
+    "max": 10,
+    "step": 0.1,
+    "lastModified": 1778860008364,
+    "modifiedBy": "user"
+  },
+  "beachWidth": {
+    "value": 4,
+    "defaultValue": 4,
+    "userOverridden": true,
+    "type": "number",
+    "category": "terrain",
+    "description": "Beach width (regen)",
+    "min": 1,
+    "max": 20,
+    "step": 1,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "chunkSize": {
+    "value": 16,
+    "defaultValue": 16,
+    "userOverridden": true,
+    "type": "number",
+    "category": "terrain",
+    "description": "Chunk size (regen)",
+    "min": 4,
+    "max": 32,
+    "step": 1,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "meshMultiplier": {
+    "value": 24,
+    "defaultValue": 24,
+    "userOverridden": true,
+    "type": "number",
+    "category": "terrain",
+    "description": "Mesh density",
+    "min": 4,
+    "max": 72,
+    "step": 1,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "terrainOpacity": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "terrain",
+    "description": "Overall terrain mesh transparency",
+    "shortLabel": "Terrain Opacity",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "lodHighDistance": {
+    "value": 15,
+    "defaultValue": 15,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lod",
+    "description": "High LOD distance",
+    "min": 5,
+    "max": 30,
+    "step": 1,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "lodMediumDistance": {
+    "value": 30,
+    "defaultValue": 30,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lod",
+    "description": "Medium LOD distance",
+    "min": 15,
+    "max": 45,
+    "step": 1,
+    "lastModified": 1778860008365,
+    "modifiedBy": "user"
+  },
+  "lodLowDistance": {
+    "value": 45,
+    "defaultValue": 45,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lod",
+    "description": "Low LOD distance",
+    "min": 30,
+    "max": 60,
+    "step": 1,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "lodVeryLowDistance": {
+    "value": 60,
+    "defaultValue": 60,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lod",
+    "description": "Very-low LOD distance",
+    "min": 45,
+    "max": 100,
+    "step": 1,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "planetSphereRadius": {
+    "value": 180,
+    "defaultValue": 180,
+    "userOverridden": true,
+    "type": "number",
+    "category": "planet",
+    "description": "Planet sphere radius for deformation",
+    "shortLabel": "Sphere R",
+    "min": 5,
+    "max": 5000,
+    "step": 10,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "planetWrapRadius": {
+    "value": 128,
+    "defaultValue": 128,
+    "userOverridden": true,
+    "type": "number",
+    "category": "planet",
+    "description": "Coordinate wrap radius from planet center",
+    "shortLabel": "Wrap R",
+    "min": 64,
+    "max": 512,
+    "step": 1,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "deformStartHeight": {
+    "value": 10,
+    "defaultValue": 10,
+    "userOverridden": true,
+    "type": "number",
+    "category": "planet",
+    "description": "Camera height where spherical deformation begins",
+    "shortLabel": "Deform Start",
+    "min": 0,
+    "max": 100,
+    "step": 1,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "deformEndHeight": {
+    "value": 100,
+    "defaultValue": 100,
+    "userOverridden": true,
+    "type": "number",
+    "category": "planet",
+    "description": "Camera height where deformation is fully spherical",
+    "shortLabel": "Deform End",
+    "min": 20,
+    "max": 500,
+    "step": 1,
+    "lastModified": 1778860008366,
+    "modifiedBy": "user"
+  },
+  "enablePlanetWrap": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "planet",
+    "description": "Planet wrap",
+    "lastModified": 1778860008367,
+    "modifiedBy": "user"
+  },
+  "enableSpherical": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "planet",
+    "description": "Spherical shader",
+    "lastModified": 1778860008367,
+    "modifiedBy": "user"
+  },
+  "debugForceSpherical": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "planet",
+    "description": "Force spherical",
+    "lastModified": 1778860008367,
+    "modifiedBy": "user"
+  },
+  "curvatureScale": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "planet",
+    "description": "Amplifies spherical curvature drop",
+    "shortLabel": "Curvature",
+    "min": 0.1,
+    "max": 10,
+    "step": 0.1,
+    "lastModified": 1778860008367,
+    "modifiedBy": "user"
+  },
+  "enableTerrainFade": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "planet",
+    "description": "Terrain circular fade",
+    "lastModified": 1778860008368,
+    "modifiedBy": "user"
+  },
+  "sunIntensity": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lighting",
+    "description": "Sun intensity",
+    "min": 0,
+    "max": 3,
+    "step": 0.05,
+    "lastModified": 1778860008368,
+    "modifiedBy": "user"
+  },
+  "moonIntensity": {
+    "value": 0.5,
+    "defaultValue": 0.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lighting",
+    "description": "Moon intensity",
+    "min": 0,
+    "max": 3,
+    "step": 0.05,
+    "lastModified": 1778860008368,
+    "modifiedBy": "user"
+  },
+  "ambientIntensity": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "lighting",
+    "description": "Ambient intensity",
+    "min": 0,
+    "max": 2,
+    "step": 0.02,
+    "lastModified": 1778860008369,
+    "modifiedBy": "user"
+  },
+  "sunColor": {
+    "value": "#ffffff",
+    "defaultValue": "#ffffff",
+    "userOverridden": true,
+    "type": "color",
+    "category": "lighting",
+    "description": "Sun color",
+    "lastModified": 1778860008369,
+    "modifiedBy": "user"
+  },
+  "moonColor": {
+    "value": "#87ceeb",
+    "defaultValue": "#87ceeb",
+    "userOverridden": true,
+    "type": "color",
+    "category": "lighting",
+    "description": "Moon color",
+    "lastModified": 1778860008369,
+    "modifiedBy": "user"
+  },
+  "ambientColor": {
+    "value": "#8b5cf6",
+    "defaultValue": "#8b5cf6",
+    "userOverridden": true,
+    "type": "color",
+    "category": "lighting",
+    "description": "Ambient color",
+    "lastModified": 1778860008370,
+    "modifiedBy": "user"
+  },
+  "dayTime": {
+    "value": 12,
+    "defaultValue": 12,
+    "userOverridden": true,
+    "type": "number",
+    "category": "time",
+    "description": "Time of day",
+    "min": 0,
+    "max": 24,
+    "step": 0.01,
+    "lastModified": 1778860008370,
+    "modifiedBy": "user"
+  },
+  "daySpeed": {
+    "value": 60,
+    "defaultValue": 60,
+    "userOverridden": true,
+    "type": "number",
+    "category": "time",
+    "description": "Day length in seconds",
+    "min": 3,
+    "max": 600,
+    "step": 1,
+    "lastModified": 1778860008370,
+    "modifiedBy": "user"
+  },
+  "yearTime": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "time",
+    "description": "Day of year (0-120)",
+    "min": 0,
+    "max": 120,
+    "step": 0.1,
+    "lastModified": 1778860008371,
+    "modifiedBy": "user"
+  },
+  "month": {
+    "value": "1",
+    "defaultValue": "1",
+    "userOverridden": true,
+    "type": "select",
+    "category": "time",
+    "description": "Month (1-4)",
+    "options": [
+      {
+        "value": "1",
+        "label": "Spring"
+      },
+      {
+        "value": "2",
+        "label": "Summer"
+      },
+      {
+        "value": "3",
+        "label": "Autumn"
+      },
+      {
+        "value": "4",
+        "label": "Winter"
+      }
+    ],
+    "lastModified": 1778860008371,
+    "modifiedBy": "user"
+  },
+  "year": {
+    "value": "1",
+    "defaultValue": "1",
+    "userOverridden": true,
+    "type": "select",
+    "category": "time",
+    "description": "Game year",
+    "options": [
+      {
+        "value": "1",
+        "label": "Year 1"
+      },
+      {
+        "value": "2",
+        "label": "Year 2"
+      },
+      {
+        "value": "3",
+        "label": "Year 3"
+      },
+      {
+        "value": "4",
+        "label": "Year 4"
+      },
+      {
+        "value": "5",
+        "label": "Year 5"
+      },
+      {
+        "value": "6",
+        "label": "Year 6"
+      },
+      {
+        "value": "7",
+        "label": "Year 7"
+      },
+      {
+        "value": "8",
+        "label": "Year 8"
+      },
+      {
+        "value": "9",
+        "label": "Year 9"
+      },
+      {
+        "value": "10",
+        "label": "Year 10"
+      }
+    ],
+    "lastModified": 1778860008371,
+    "modifiedBy": "user"
+  },
+  "windSpeed": {
+    "value": 4.763499999999999,
+    "defaultValue": 4.763499999999999,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Wind speed",
+    "min": 0,
+    "max": 50,
+    "step": 0.1,
+    "lastModified": 1778860008372,
+    "modifiedBy": "user"
+  },
+  "windDirection": {
+    "value": 334.54999999999995,
+    "defaultValue": 334.54999999999995,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Wind direction (degrees)",
+    "min": 0,
+    "max": 360,
+    "step": 1,
+    "lastModified": 1778860008372,
+    "modifiedBy": "user"
+  },
+  "windExposureScale": {
+    "value": 6,
+    "defaultValue": 6,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Terrain exposure wind multiplier (higher = more wind on exposed trees)",
+    "shortLabel": "Exposure",
+    "min": 0,
+    "max": 20,
+    "step": 0.5,
+    "lastModified": 1778860008372,
+    "modifiedBy": "user"
+  },
+  "windShadowStrength": {
+    "value": 1.5,
+    "defaultValue": 1.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Wind shadow strength (leeward vs windward tree multiplier)",
+    "shortLabel": "Wind Shadow",
+    "min": 0,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008373,
+    "modifiedBy": "user"
+  },
+  "windHeightPower": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Wind bend height power (how much tree top bends vs base)",
+    "shortLabel": "Height Power",
+    "min": 0.5,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008373,
+    "modifiedBy": "user"
+  },
+  "fogNear": {
+    "value": 41.80500000000001,
+    "defaultValue": 41.80500000000001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Fog start distance",
+    "min": 1,
+    "max": 100,
+    "step": 1,
+    "lastModified": 1778860008374,
+    "modifiedBy": "user"
+  },
+  "fogFar": {
+    "value": 86.70000000000003,
+    "defaultValue": 86.70000000000003,
+    "userOverridden": true,
+    "type": "number",
+    "category": "environment",
+    "description": "Fog end distance",
+    "min": 20,
+    "max": 400,
+    "step": 1,
+    "lastModified": 1778860008374,
+    "modifiedBy": "user"
+  },
+  "daisiesEnabled": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "environment",
+    "description": "Show daisies",
+    "shortLabel": "Daisies",
+    "lastModified": 1778860008374,
+    "modifiedBy": "user"
+  },
+  "waterVisible": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Show legacy water plane mesh",
+    "shortLabel": "Water Plane",
+    "lastModified": 1778860008374,
+    "modifiedBy": "user"
+  },
+  "waterPlaneOpacity": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Water plane transparency (0 = invisible, 1 = fully opaque)",
+    "shortLabel": "Water Plane Transparency",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008374,
+    "modifiedBy": "user"
+  },
+  "waterCloudSpeed": {
+    "value": 0.02,
+    "defaultValue": 0.02,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Cloud texture scroll speed multiplier on water plane",
+    "shortLabel": "Cloud Speed",
+    "min": 0,
+    "max": 10,
+    "step": 0.1,
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "waterPlaneFadeStartHeight": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Camera height where water plane starts fading out",
+    "shortLabel": "Fade Start Ht",
+    "min": 0,
+    "max": 500,
+    "step": 5,
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "waterPlaneFadeEndHeight": {
+    "value": 349.45,
+    "defaultValue": 349.45,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Camera height where water plane is fully transparent",
+    "shortLabel": "Fade End Ht",
+    "min": 10,
+    "max": 1000,
+    "step": 10,
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "waterShaderEnabled": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Enable water rendering in terrain shader",
+    "shortLabel": "Water Shader",
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "debugWaterState": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Debug: show water state (land/shallow/deep)",
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "debugRadialUp": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Debug: show radial up vectors",
+    "lastModified": 1778860008375,
+    "modifiedBy": "user"
+  },
+  "debugWaveNormals": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Debug: show wave normal map",
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "debugFresnel": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Debug: show fresnel mask",
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "debugFoam": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "water",
+    "description": "Debug: show foam mask",
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "shallowThreshold": {
+    "value": 2.0405,
+    "defaultValue": 2.0405,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Shallow water depth threshold",
+    "min": 0.1,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "foamIntensity": {
+    "value": 1.35925,
+    "defaultValue": 1.35925,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Shoreline foam intensity",
+    "min": 0,
+    "max": 2,
+    "step": 0.05,
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "waveScale": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Master wave size multiplier",
+    "shortLabel": "Wave Scale",
+    "min": 0,
+    "max": 3,
+    "step": 0.05,
+    "lastModified": 1778860008376,
+    "modifiedBy": "user"
+  },
+  "waveAmplitudeSwell": {
+    "value": 7.782,
+    "defaultValue": 7.782,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Large swell wave amplitude",
+    "min": 0,
+    "max": 8,
+    "step": 0.1,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waveAmplitudeWind": {
+    "value": 5,
+    "defaultValue": 5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Wind wave amplitude",
+    "min": 0,
+    "max": 5,
+    "step": 0.05,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waveAmplitudeRipple": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Small ripple amplitude",
+    "min": 0,
+    "max": 2,
+    "step": 0.05,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waterDepthMax": {
+    "value": 13.522500000000006,
+    "defaultValue": 13.522500000000006,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Maximum water depth for colour absorption",
+    "min": 1,
+    "max": 50,
+    "step": 0.5,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waveSwellSpeed": {
+    "value": 5,
+    "defaultValue": 5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Large swell wave animation speed",
+    "shortLabel": "Swell Speed",
+    "min": 0,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waterDetailScale": {
+    "value": 0.7430000000000001,
+    "defaultValue": 0.7430000000000001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Master water scale (lower = smaller condensed waves like a pond, higher = larger ocean waves)",
+    "shortLabel": "Detail Scale",
+    "min": 0.05,
+    "max": 20,
+    "step": 0.05,
+    "lastModified": 1778860008377,
+    "modifiedBy": "user"
+  },
+  "waveWindSpeed": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Medium wind wave animation speed",
+    "shortLabel": "Wind Speed",
+    "min": 0,
+    "max": 10,
+    "step": 0.1,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "waveRippleSpeed": {
+    "value": 8,
+    "defaultValue": 8,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Small ripple animation speed",
+    "shortLabel": "Ripple Speed",
+    "min": 0,
+    "max": 20,
+    "step": 0.5,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "waveSwellFreq": {
+    "value": 4.539000000000001,
+    "defaultValue": 4.539000000000001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Swell wavelength scale (lower = wider waves, higher = tighter waves)",
+    "shortLabel": "Swell Freq",
+    "min": 0.1,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "waveWindFreq": {
+    "value": 4.069500000000001,
+    "defaultValue": 4.069500000000001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Wind wave wavelength scale (lower = wider waves, higher = tighter waves)",
+    "shortLabel": "Wind Freq",
+    "min": 0.1,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "waveRippleFreq": {
+    "value": 0.1,
+    "defaultValue": 0.1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Ripple wavelength scale (lower = wider waves, higher = tighter waves)",
+    "shortLabel": "Ripple Freq",
+    "min": 0.1,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "foamSpeed": {
+    "value": 3.544,
+    "defaultValue": 3.544,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Shoreline foam churn speed",
+    "shortLabel": "Foam Speed",
+    "min": 0,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008378,
+    "modifiedBy": "user"
+  },
+  "foamScale": {
+    "value": 10,
+    "defaultValue": 10,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Foam patch size (smaller = bigger patches)",
+    "shortLabel": "Foam Scale",
+    "min": 0.5,
+    "max": 10,
+    "step": 0.5,
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "foamDepth": {
+    "value": 3,
+    "defaultValue": 3,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "How far from shore foam reaches",
+    "shortLabel": "Foam Depth",
+    "min": 0.1,
+    "max": 3,
+    "step": 0.1,
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "fresnelPower": {
+    "value": 10,
+    "defaultValue": 10,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Water reflectivity sharpness (lower = more mirror-like)",
+    "shortLabel": "Fresnel",
+    "min": 1,
+    "max": 10,
+    "step": 0.5,
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "deepWaterColor": {
+    "value": "#b8a975",
+    "defaultValue": "#b8a975",
+    "userOverridden": true,
+    "type": "color",
+    "category": "water",
+    "description": "Deep water colour",
+    "shortLabel": "Deep Color",
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "shallowWaterColor": {
+    "value": "#998e66",
+    "defaultValue": "#998e66",
+    "userOverridden": true,
+    "type": "color",
+    "category": "water",
+    "description": "Shallow water colour",
+    "shortLabel": "Shallow Color",
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "waterOpacity": {
+    "value": 0.14924999999999983,
+    "defaultValue": 0.14924999999999983,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Water transparency (0 = invisible, 1 = fully opaque)",
+    "shortLabel": "Water Opacity",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008379,
+    "modifiedBy": "user"
+  },
+  "skyReflection": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Fresnel sky reflection strength on water",
+    "shortLabel": "Sky Reflection",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "specularIntensity": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Water specular highlight intensity",
+    "shortLabel": "Specular",
+    "min": 0,
+    "max": 2,
+    "step": 0.05,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "sparkleIntensity": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Micro-glitter sparkle brightness on water",
+    "shortLabel": "Sparkle",
+    "min": 0,
+    "max": 2,
+    "step": 0.05,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "sparkleScale": {
+    "value": 8,
+    "defaultValue": 8,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Sparkle point density (higher = more dense glitter)",
+    "shortLabel": "Sparkle Scale",
+    "min": 1,
+    "max": 64,
+    "step": 1,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "sparkleSpeed": {
+    "value": 3,
+    "defaultValue": 3,
+    "userOverridden": true,
+    "type": "number",
+    "category": "water",
+    "description": "Shimmer animation speed of sparkles",
+    "shortLabel": "Sparkle Speed",
+    "min": 0,
+    "max": 10,
+    "step": 0.5,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "grassUvScale": {
+    "value": 0.4512499999999998,
+    "defaultValue": 0.9681999999999995,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Grass texture UV scale (smaller = finer)",
+    "shortLabel": "Tex Scale",
+    "min": 0.05,
+    "max": 2,
+    "step": 0.01,
+    "lastModified": 1778860008380,
+    "modifiedBy": "user"
+  },
+  "grassWindMultiplier": {
+    "value": 0.43499999999999994,
+    "defaultValue": 0.22299999999999998,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Grass wind displacement strength multiplier (scales global wind)",
+    "shortLabel": "Wind Mult",
+    "min": 0,
+    "max": 3,
+    "step": 0.1,
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassBlendAmount": {
+    "value": 0.5644999999999996,
+    "defaultValue": 0.6159999999999994,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Grass overlay blend amount",
+    "shortLabel": "Blend",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassSharpness": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Grass blade edge sharpness (0 = soft/cloudy, 1 = hard blades)",
+    "shortLabel": "Sharp",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassColorTint": {
+    "value": "#3b690c",
+    "defaultValue": "#31890b",
+    "userOverridden": true,
+    "type": "color",
+    "category": "grass",
+    "description": "Grass colour tint",
+    "shortLabel": "Colour",
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassColorLight": {
+    "value": "#2ad55d",
+    "defaultValue": "#e3fea9",
+    "userOverridden": true,
+    "type": "color",
+    "category": "grass",
+    "description": "Grass highlight colour (light base)",
+    "shortLabel": "Light",
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassWindSpeed": {
+    "value": 3.4034999999999993,
+    "defaultValue": 3.4034999999999993,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Grass wind animation speed (higher = faster waves)",
+    "shortLabel": "Wind Speed",
+    "min": 0,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassPhaseScale": {
+    "value": 1.3050000000000002,
+    "defaultValue": 1.3050000000000002,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Wind spatial wavelength scale (lower = broader waves)",
+    "shortLabel": "Phase Scale",
+    "min": 0.1,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008381,
+    "modifiedBy": "user"
+  },
+  "grassBladeStretchX": {
+    "value": 8.5,
+    "defaultValue": 8.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Horizontal grass blade stretch",
+    "shortLabel": "Stretch X",
+    "min": 0.5,
+    "max": 16,
+    "step": 0.5,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "grassBladeStretchY": {
+    "value": 38.55,
+    "defaultValue": 38.55,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Vertical grass blade stretch (taller blades)",
+    "shortLabel": "Stretch Y",
+    "min": 1,
+    "max": 64,
+    "step": 1,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "grassMicroAmount": {
+    "value": 0.7925,
+    "defaultValue": 0.7925,
+    "userOverridden": true,
+    "type": "number",
+    "category": "grass",
+    "description": "Secondary micro detail layer intensity",
+    "shortLabel": "Micro Detail",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "beachEnabled": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "beach",
+    "description": "Enable beach surface detail rendering",
+    "shortLabel": "Enabled",
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "beachStoneAmount": {
+    "value": 0.4232499999999999,
+    "defaultValue": 0.4232499999999999,
+    "userOverridden": true,
+    "type": "number",
+    "category": "beach",
+    "description": "Amount of stone patches vs pure sand",
+    "shortLabel": "Stone Amt",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "beachStoneScale": {
+    "value": 0.988249999999999,
+    "defaultValue": 0.988249999999999,
+    "userOverridden": true,
+    "type": "number",
+    "category": "beach",
+    "description": "Noise scale for stone/sand variation (smaller = broader patches)",
+    "shortLabel": "Stone Scale",
+    "min": 0.05,
+    "max": 10,
+    "step": 0.05,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "beachWetWidth": {
+    "value": 5,
+    "defaultValue": 5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "beach",
+    "description": "Width of the high-tide wet sand band above water",
+    "shortLabel": "Wet Width",
+    "min": 0,
+    "max": 5,
+    "step": 0.1,
+    "lastModified": 1778860008382,
+    "modifiedBy": "user"
+  },
+  "beachWetIntensity": {
+    "value": 0.7510000000000001,
+    "defaultValue": 0.7510000000000001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "beach",
+    "description": "Darkness of the wet sand high-tide line",
+    "shortLabel": "Wet Intensity",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008383,
+    "modifiedBy": "user"
+  },
+  "beachShrubAmount": {
+    "value": 0.4465000000000003,
+    "defaultValue": 0.4465000000000003,
+    "userOverridden": true,
+    "type": "number",
+    "category": "beach",
+    "description": "Amount of hardy shrubbery at the top of the beach",
+    "shortLabel": "Shrub Amt",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008383,
+    "modifiedBy": "user"
+  },
+  "beachSandColor": {
+    "value": "#3c7830",
+    "defaultValue": "#3c7830",
+    "userOverridden": true,
+    "type": "color",
+    "category": "beach",
+    "description": "Base dry sand colour",
+    "shortLabel": "Sand Colour",
+    "lastModified": 1778860008383,
+    "modifiedBy": "user"
+  },
+  "beachStoneColor": {
+    "value": "#4e802d",
+    "defaultValue": "#4e802d",
+    "userOverridden": true,
+    "type": "color",
+    "category": "beach",
+    "description": "Stone patch colour",
+    "shortLabel": "Stone Colour",
+    "lastModified": 1778860008383,
+    "modifiedBy": "user"
+  },
+  "beachWetColor": {
+    "value": "#9fc176",
+    "defaultValue": "#9fc176",
+    "userOverridden": true,
+    "type": "color",
+    "category": "beach",
+    "description": "Wet sand high-tide line colour",
+    "shortLabel": "Wet Colour",
+    "lastModified": 1778860008383,
+    "modifiedBy": "user"
+  },
+  "beachShrubColor": {
+    "value": "#449bc1",
+    "defaultValue": "#449bc1",
+    "userOverridden": true,
+    "type": "color",
+    "category": "beach",
+    "description": "Hardy shrub colour",
+    "shortLabel": "Shrub Colour",
+    "lastModified": 1778860008384,
+    "modifiedBy": "user"
+  },
+  "debugBeachState": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "beach",
+    "description": "Debug: show beach mask only",
+    "shortLabel": "Debug Mask",
+    "lastModified": 1778860008384,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeA": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "select",
+    "category": "biome",
+    "description": "First biome in the edge pair",
+    "shortLabel": "Biome A",
+    "options": [
+      {
+        "value": 0,
+        "label": "Deep Water"
+      },
+      {
+        "value": 1,
+        "label": "Shallow Water"
+      },
+      {
+        "value": 2,
+        "label": "Beach"
+      },
+      {
+        "value": 3,
+        "label": "Lowland"
+      },
+      {
+        "value": 4,
+        "label": "Grassland"
+      },
+      {
+        "value": 5,
+        "label": "Forest"
+      },
+      {
+        "value": 6,
+        "label": "Mountain"
+      },
+      {
+        "value": 7,
+        "label": "Snow"
+      }
+    ],
+    "lastModified": 1778860008384,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeB": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "select",
+    "category": "biome",
+    "description": "Second biome in the edge pair",
+    "shortLabel": "Biome B",
+    "options": [
+      {
+        "value": 0,
+        "label": "Deep Water"
+      },
+      {
+        "value": 1,
+        "label": "Shallow Water"
+      },
+      {
+        "value": 2,
+        "label": "Beach"
+      },
+      {
+        "value": 3,
+        "label": "Lowland"
+      },
+      {
+        "value": 4,
+        "label": "Grassland"
+      },
+      {
+        "value": 5,
+        "label": "Forest"
+      },
+      {
+        "value": 6,
+        "label": "Mountain"
+      },
+      {
+        "value": 7,
+        "label": "Snow"
+      }
+    ],
+    "lastModified": 1778860008384,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeMode": {
+    "value": 1,
+    "defaultValue": 1,
+    "userOverridden": true,
+    "type": "select",
+    "category": "biome",
+    "description": "Edge blending mode",
+    "shortLabel": "Mode",
+    "options": [
+      {
+        "value": 0,
+        "label": "Blended"
+      },
+      {
+        "value": 1,
+        "label": "Sharp"
+      },
+      {
+        "value": 2,
+        "label": "Custom"
+      }
+    ],
+    "lastModified": 1778860008385,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeScale": {
+    "value": 0.01,
+    "defaultValue": 0.01,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Wiggle noise scale (smaller = broader waves)",
+    "shortLabel": "Wiggle Scale",
+    "min": 0.01,
+    "max": 2,
+    "step": 0.01,
+    "lastModified": 1778860008385,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeStrength": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Wiggle noise displacement strength",
+    "shortLabel": "Wiggle Str",
+    "min": 0,
+    "max": 3,
+    "step": 0.05,
+    "lastModified": 1778860008385,
+    "modifiedBy": "user"
+  },
+  "biomeSplatterScale": {
+    "value": 0.01,
+    "defaultValue": 0.01,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Splatter patch size (smaller = bigger patches)",
+    "shortLabel": "Splatter Scale",
+    "min": 0.01,
+    "max": 3,
+    "step": 0.01,
+    "lastModified": 1778860008385,
+    "modifiedBy": "user"
+  },
+  "biomeSplatterAmount": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Splatter mask intensity",
+    "shortLabel": "Splatter Amt",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008385,
+    "modifiedBy": "user"
+  },
+  "biomeEdgeSplatterMix": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Blend between wiggly edge (0) and splatter mask (1)",
+    "shortLabel": "Edge/Splat",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008386,
+    "modifiedBy": "user"
+  },
+  "biomeColor0": {
+    "value": "#87a190",
+    "defaultValue": "#87a190",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Deep Water color",
+    "shortLabel": "Deep Water Col",
+    "lastModified": 1778860008386,
+    "modifiedBy": "user"
+  },
+  "biomeColor1": {
+    "value": "#a3a68c",
+    "defaultValue": "#a3a68c",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Shallow Water color",
+    "shortLabel": "Shallow Water Col",
+    "lastModified": 1778860008386,
+    "modifiedBy": "user"
+  },
+  "biomeColor2": {
+    "value": "#678137",
+    "defaultValue": "#678137",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Beach color",
+    "shortLabel": "Beach Col",
+    "lastModified": 1778860008386,
+    "modifiedBy": "user"
+  },
+  "biomeColor3": {
+    "value": "#2e7925",
+    "defaultValue": "#2e7925",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Lowland color",
+    "shortLabel": "Lowland Col",
+    "lastModified": 1778860008386,
+    "modifiedBy": "user"
+  },
+  "biomeColor4": {
+    "value": "#4f561a",
+    "defaultValue": "#4f561a",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Grassland color",
+    "shortLabel": "Grassland Col",
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeColor5": {
+    "value": "#531c5e",
+    "defaultValue": "#531c5e",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Forest color",
+    "shortLabel": "Forest Col",
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeColor6": {
+    "value": "#856148",
+    "defaultValue": "#856148",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Mountain color",
+    "shortLabel": "Mountain Col",
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeColor7": {
+    "value": "#e0e6eb",
+    "defaultValue": "#e0e6eb",
+    "userOverridden": true,
+    "type": "color",
+    "category": "biome",
+    "description": "Snow color",
+    "shortLabel": "Snow Col",
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold0": {
+    "value": -1.5,
+    "defaultValue": -1.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Deep Water-Shallow Water boundary",
+    "shortLabel": "Deep Water Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold1": {
+    "value": -1,
+    "defaultValue": -1,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Shallow Water-Beach boundary",
+    "shortLabel": "Shallow Water Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008387,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold2": {
+    "value": 2.5,
+    "defaultValue": 2.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Beach-Lowland boundary",
+    "shortLabel": "Beach Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold3": {
+    "value": 4.5,
+    "defaultValue": 4.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Lowland-Grassland boundary",
+    "shortLabel": "Lowland Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold4": {
+    "value": 11.5,
+    "defaultValue": 11.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Grassland-Forest boundary",
+    "shortLabel": "Grassland Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold5": {
+    "value": 19.5,
+    "defaultValue": 19.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Forest-Mountain boundary",
+    "shortLabel": "Forest Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "biomeThreshold6": {
+    "value": 26.5,
+    "defaultValue": 26.5,
+    "userOverridden": true,
+    "type": "number",
+    "category": "biome",
+    "description": "Mountain-Snow boundary",
+    "shortLabel": "Mountain Th",
+    "min": -50,
+    "max": 100,
+    "step": 0.1,
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "biomeModifierStack": {
+    "value": {
+      "layers": [
+        {
+          "id": "lyr_edge_wiggle",
+          "name": "Edge Wiggle",
+          "enabled": true,
+          "noiseType": "voronoi",
+          "targetBiomeLow": 3,
+          "targetBiomeHigh": 4,
+          "blendOp": "add",
+          "params": {
+            "scale": 0.3,
+            "strength": 1,
+            "octaves": 4,
+            "lacunarity": 2,
+            "gain": 0.5,
+            "offset": 0,
+            "contrast": 1
+          }
+        },
+        {
+          "id": "lyr_splatter",
+          "name": "Splatter",
+          "enabled": true,
+          "noiseType": "fbm",
+          "targetBiomeLow": 3,
+          "targetBiomeHigh": 4,
+          "blendOp": "mix",
+          "params": {
+            "scale": 0.73,
+            "strength": 0.75,
+            "octaves": 8,
+            "lacunarity": 2.5,
+            "gain": 0.8,
+            "offset": 0.5,
+            "contrast": 1.4
+          }
+        }
+      ],
+      "globalBlend": 0.5,
+      "globalScale": 1,
+      "version": 1
+    },
+    "defaultValue": {
+      "layers": [
+        {
+          "id": "lyr_edge_wiggle",
+          "name": "Edge Wiggle",
+          "enabled": true,
+          "noiseType": "voronoi",
+          "targetBiomeLow": 3,
+          "targetBiomeHigh": 4,
+          "blendOp": "add",
+          "params": {
+            "scale": 0.3,
+            "strength": 1,
+            "octaves": 4,
+            "lacunarity": 2,
+            "gain": 0.5,
+            "offset": 0,
+            "contrast": 1
+          }
+        },
+        {
+          "id": "lyr_splatter",
+          "name": "Splatter",
+          "enabled": true,
+          "noiseType": "fbm",
+          "targetBiomeLow": 3,
+          "targetBiomeHigh": 4,
+          "blendOp": "mix",
+          "params": {
+            "scale": 0.73,
+            "strength": 0.75,
+            "octaves": 8,
+            "lacunarity": 2.5,
+            "gain": 0.8,
+            "offset": 0.5,
+            "contrast": 1.4
+          }
+        }
+      ],
+      "globalBlend": 0.5,
+      "globalScale": 1,
+      "version": 1
+    },
+    "userOverridden": true,
+    "type": "modifierStack",
+    "category": "modifier",
+    "description": "Layered noise modifiers for biome surface edges",
+    "shortLabel": "Modifier Stack",
+    "lastModified": 1778860008388,
+    "modifiedBy": "user"
+  },
+  "dontRenderTrees": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "environment",
+    "description": "Dont render trees",
+    "shortLabel": "No Trees",
+    "lastModified": 1778860008389,
+    "modifiedBy": "user"
+  },
+  "shadowMapSize": {
+    "value": 1024,
+    "defaultValue": 1024,
+    "userOverridden": true,
+    "type": "number",
+    "category": "graphics",
+    "description": "Shadow map size",
+    "min": 512,
+    "max": 4096,
+    "step": 512,
+    "lastModified": 1778860008389,
+    "modifiedBy": "user"
+  },
+  "shadowCameraSize": {
+    "value": 400,
+    "defaultValue": 400,
+    "userOverridden": true,
+    "type": "number",
+    "category": "graphics",
+    "description": "Shadow camera size",
+    "min": 50,
+    "max": 800,
+    "step": 25,
+    "lastModified": 1778860008390,
+    "modifiedBy": "user"
+  },
+  "treeType": {
+    "value": "default",
+    "defaultValue": "default",
+    "userOverridden": true,
+    "type": "select",
+    "category": "tree",
+    "description": "Override all trees to one type",
+    "shortLabel": "Type",
+    "options": [
+      {
+        "value": "default",
+        "label": "Default"
+      },
+      {
+        "value": "poplar",
+        "label": "Poplar"
+      },
+      {
+        "value": "terrain",
+        "label": "Canopy"
+      },
+      {
+        "value": "growing",
+        "label": "Growing"
+      },
+      {
+        "value": "cherry",
+        "label": "Cherry"
+      }
+    ],
+    "lastModified": 1778860008390,
+    "modifiedBy": "user"
+  },
+  "treeWindSensitivity": {
+    "value": 2.0365,
+    "defaultValue": 2.0365,
+    "userOverridden": true,
+    "type": "number",
+    "category": "tree",
+    "description": "How much trees react to global wind speed (multiplier)",
+    "shortLabel": "Wind Sens",
+    "min": 0,
+    "max": 3,
+    "step": 0.1,
+    "lastModified": 1778860008390,
+    "modifiedBy": "user"
+  },
+  "treeSwayMult": {
+    "value": 0.010499999999999992,
+    "defaultValue": 0.010499999999999992,
+    "userOverridden": true,
+    "type": "number",
+    "category": "tree",
+    "description": "Poplar sway multiplier",
+    "shortLabel": "Sway",
+    "min": 0,
+    "max": 3,
+    "step": 0.1,
+    "lastModified": 1778860008390,
+    "modifiedBy": "user"
+  },
+  "treeLODEnabled": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "tree",
+    "description": "Enable LOD animation throttling",
+    "shortLabel": "LOD",
+    "lastModified": 1778860008390,
+    "modifiedBy": "user"
+  },
+  "treeCullDistance": {
+    "value": 120,
+    "defaultValue": 120,
+    "userOverridden": true,
+    "type": "number",
+    "category": "tree",
+    "description": "Tree cull distance",
+    "shortLabel": "Cull Dist",
+    "min": 50,
+    "max": 300,
+    "step": 10,
+    "lastModified": 1778860008391,
+    "modifiedBy": "user"
+  },
+  "treeMaxVisible": {
+    "value": 1000,
+    "defaultValue": 1000,
+    "userOverridden": true,
+    "type": "number",
+    "category": "tree",
+    "description": "Max visible trees",
+    "shortLabel": "Max Vis",
+    "min": 100,
+    "max": 2000,
+    "step": 100,
+    "lastModified": 1778860008391,
+    "modifiedBy": "user"
+  },
+  "maxRenderDistance": {
+    "value": 80,
+    "defaultValue": 80,
+    "userOverridden": true,
+    "type": "number",
+    "category": "performance",
+    "description": "Maximum tile render distance",
+    "min": 20,
+    "max": 300,
+    "step": 5,
+    "lastModified": 1778860008391,
+    "modifiedBy": "user"
+  },
+  "vertexReduction": {
+    "value": 0.8,
+    "defaultValue": 0.8,
+    "userOverridden": true,
+    "type": "number",
+    "category": "performance",
+    "description": "Max vertex reduction (adaptive mesh)",
+    "min": 0,
+    "max": 0.95,
+    "step": 0.05,
+    "lastModified": 1778860008391,
+    "modifiedBy": "user"
+  },
+  "targetFps": {
+    "value": 30,
+    "defaultValue": 30,
+    "userOverridden": true,
+    "type": "number",
+    "category": "performance",
+    "description": "Target FPS for performance manager",
+    "min": 15,
+    "max": 120,
+    "step": 1,
+    "lastModified": 1778860008391,
+    "modifiedBy": "user"
+  },
+  "scrollEffectStartHeight": {
+    "value": 0,
+    "defaultValue": 0,
+    "userOverridden": true,
+    "type": "number",
+    "category": "camera",
+    "description": "Height above terrain where drag-speed scaling begins",
+    "shortLabel": "Start Ht",
+    "min": 0,
+    "max": 200,
+    "step": 0.1,
+    "lastModified": 1778860008392,
+    "modifiedBy": "user"
+  },
+  "scrollBaseDragSpeed": {
+    "value": 0.04,
+    "defaultValue": 0.04,
+    "userOverridden": true,
+    "type": "number",
+    "category": "camera",
+    "description": "Base right-click / touch drag pan speed",
+    "shortLabel": "Base Speed",
+    "min": 0.001,
+    "max": 0.5,
+    "step": 0.001,
+    "lastModified": 1778860008392,
+    "modifiedBy": "user"
+  },
+  "scrollHeightMultiplier": {
+    "value": 0.001,
+    "defaultValue": 0.001,
+    "userOverridden": true,
+    "type": "number",
+    "category": "camera",
+    "description": "Extra drag speed per world unit above start height",
+    "shortLabel": "Ht Multiplier",
+    "min": 0,
+    "max": 0.05,
+    "step": 0.0001,
+    "lastModified": 1778860008392,
+    "modifiedBy": "user"
+  },
+  "wheelSensitivity": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": false,
+    "type": "number",
+    "category": "camera",
+    "description": "Mouse wheel zoom sensitivity multiplier",
+    "shortLabel": "Wheel Sens",
+    "min": 0.5,
+    "max": 10,
+    "step": 0.5,
+    "lastModified": 1778859429418,
+    "modifiedBy": "init"
+  },
+  "isometricMode": {
+    "value": false,
+    "defaultValue": false,
+    "userOverridden": false,
+    "type": "boolean",
+    "category": "camera",
+    "description": "Enable isometric camera mode",
+    "shortLabel": "Isometric",
+    "lastModified": 1778859429418,
+    "modifiedBy": "init"
+  },
+  "starType": {
+    "value": "dense",
+    "defaultValue": "dense",
+    "userOverridden": true,
+    "type": "select",
+    "category": "stars",
+    "description": "Star field preset type",
+    "shortLabel": "Star Type",
+    "options": [
+      {
+        "value": "default",
+        "label": "Default"
+      },
+      {
+        "value": "dense",
+        "label": "Dense"
+      },
+      {
+        "value": "bright",
+        "label": "Bright"
+      },
+      {
+        "value": "subtle",
+        "label": "Subtle"
+      },
+      {
+        "value": "cinematic",
+        "label": "Cinematic"
+      },
+      {
+        "value": "twinkling",
+        "label": "Twinkling"
+      },
+      {
+        "value": "distant_galaxy",
+        "label": "Distant Galaxy"
+      }
+    ],
+    "lastModified": 1778860008392,
+    "modifiedBy": "user"
+  },
+  "skyFadeStartHeight": {
+    "value": 50,
+    "defaultValue": 50,
+    "userOverridden": true,
+    "type": "number",
+    "category": "sky",
+    "description": "Camera height where stars start appearing",
+    "shortLabel": "Fade Start",
+    "min": 0,
+    "max": 500,
+    "step": 5,
+    "lastModified": 1778860008393,
+    "modifiedBy": "user"
+  },
+  "skyFadeEndHeight": {
+    "value": 120,
+    "defaultValue": 120,
+    "userOverridden": true,
+    "type": "number",
+    "category": "sky",
+    "description": "Camera height where stars are fully visible",
+    "shortLabel": "Fade End",
+    "min": 10,
+    "max": 1000,
+    "step": 10,
+    "lastModified": 1778860008393,
+    "modifiedBy": "user"
+  },
+  "skyStarDensity": {
+    "value": 100,
+    "defaultValue": 100,
+    "userOverridden": true,
+    "type": "number",
+    "category": "stars",
+    "description": "Star field density",
+    "shortLabel": "Density",
+    "min": 100,
+    "max": 5000,
+    "step": 100,
+    "lastModified": 1778860008393,
+    "modifiedBy": "user"
+  },
+  "skyStarBrightness": {
+    "value": 1.2,
+    "defaultValue": 1.2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "stars",
+    "description": "Overall star brightness",
+    "shortLabel": "Brightness",
+    "min": 0,
+    "max": 3,
+    "step": 0.1,
+    "lastModified": 1778860008393,
+    "modifiedBy": "user"
+  },
+  "skyShimmerSpeed": {
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "stars",
+    "description": "Twinkle animation speed",
+    "shortLabel": "Shimmer Speed",
+    "min": 0,
+    "max": 10,
+    "step": 0.5,
+    "lastModified": 1778860008394,
+    "modifiedBy": "user"
+  },
+  "skyShimmerIntensity": {
+    "value": 0.2,
+    "defaultValue": 0.2,
+    "userOverridden": true,
+    "type": "number",
+    "category": "stars",
+    "description": "Twinkle intensity variation",
+    "shortLabel": "Shimmer Int",
+    "min": 0,
+    "max": 1,
+    "step": 0.05,
+    "lastModified": 1778860008394,
+    "modifiedBy": "user"
+  },
+  "skyStarColor": {
+    "value": "#ffffff",
+    "defaultValue": "#ffffff",
+    "userOverridden": true,
+    "type": "color",
+    "category": "stars",
+    "description": "Star color tint",
+    "shortLabel": "Star Color",
+    "lastModified": 1778860008394,
+    "modifiedBy": "user"
+  },
+  "skyEnabled": {
+    "value": true,
+    "defaultValue": true,
+    "userOverridden": true,
+    "type": "boolean",
+    "category": "sky",
+    "description": "Enable starfield shader (disable to use canvas sky)",
+    "shortLabel": "Enabled",
+    "lastModified": 1778860008394,
+    "modifiedBy": "user"
+  },
+  "lightingRig": {
+    "enabled": true,
+    "lights": {
+      "sun": [
+        {
+          "time": 0,
+          "color": "#0a0a20",
+          "intensity": 0
+        },
+        {
+          "time": 5,
+          "color": "#ff4500",
+          "intensity": 0.15
+        },
+        {
+          "time": 7,
+          "color": "#ffaa00",
+          "intensity": 0.8
+        },
+        {
+          "time": 10,
+          "color": "#fff5e6",
+          "intensity": 1.1
+        },
+        {
+          "time": 14,
+          "color": "#ffffff",
+          "intensity": 1.2
+        },
+        {
+          "time": 14,
+          "color": "#ffffff",
+          "intensity": 1.2
+        },
+        {
+          "time": 18,
+          "color": "#ff7744",
+          "intensity": 0.6
+        },
+        {
+          "time": 20,
+          "color": "#220044",
+          "intensity": 0.08
+        },
+        {
+          "time": 24,
+          "color": "#0a0a20",
+          "intensity": 0
+        }
+      ],
+      "moon": [
+        {
+          "time": 0,
+          "color": "#ddeeff",
+          "intensity": 0.6
+        },
+        {
+          "time": 6,
+          "color": "#000000",
+          "intensity": 0
+        },
+        {
+          "time": 14,
+          "color": "#374554",
+          "intensity": 0.1
+        },
+        {
+          "time": 18,
+          "color": "#445566",
+          "intensity": 0.15
+        },
+        {
+          "time": 22,
+          "color": "#c0d0e0",
+          "intensity": 0.5
+        },
+        {
+          "time": 24,
+          "color": "#ddeeff",
+          "intensity": 0.6
+        }
+      ],
+      "ambient": [
+        {
+          "time": 0,
+          "color": "#1a1040",
+          "intensity": 0.04
+        },
+        {
+          "time": 5,
+          "color": "#6644aa",
+          "intensity": 0.12
+        },
+        {
+          "time": 7,
+          "color": "#ffddaa",
+          "intensity": 0.3
+        },
+        {
+          "time": 12,
+          "color": "#e8f0ff",
+          "intensity": 0.3
+        },
+        {
+          "time": 14,
+          "color": "#f0e5e8",
+          "intensity": 0.29
+        },
+        {
+          "time": 18,
+          "color": "#ffccaa",
+          "intensity": 0.28
+        },
+        {
+          "time": 20,
+          "color": "#6644aa",
+          "intensity": 0.12
+        },
+        {
+          "time": 24,
+          "color": "#1a1040",
+          "intensity": 0.04
+        }
+      ],
+      "nightAmbient": [
+        {
+          "time": 0,
+          "color": "#223355",
+          "intensity": 0.15
+        },
+        {
+          "time": 5,
+          "color": "#1a2a44",
+          "intensity": 0.08
+        },
+        {
+          "time": 7,
+          "color": "#2a3a5a",
+          "intensity": 0
+        },
+        {
+          "time": 14,
+          "color": "#2a3a5a",
+          "intensity": 0
+        },
+        {
+          "time": 17,
+          "color": "#2a3a5a",
+          "intensity": 0
+        },
+        {
+          "time": 20,
+          "color": "#1a2a44",
+          "intensity": 0.08
+        },
+        {
+          "time": 24,
+          "color": "#223355",
+          "intensity": 0.15
+        }
+      ]
+    }
+  }
+}

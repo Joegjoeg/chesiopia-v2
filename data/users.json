@@ -1,0 +1,20 @@
+{
+  "dev@chesiopia.local": {
+    "id": "ba28e05f-7c0a-42c0-8f48-d98df07dcfcd",
+    "email": "dev@chesiopia.local",
+    "username": "Dev",
+    "passwordHash": "$2b$10$xEIS4Zt9Zm.Tlc3o9DbsFeWEtCR8j6R1KiMysk8RL1W1GOcIEiW9O",
+    "verifiedAt": "2026-05-28T13:19:19.135Z",
+    "role": "dev",
+    "createdAt": "2026-05-28T13:19:19.135Z"
+  },
+  "joe@chesiopia.local": {
+    "id": "5d6826fe-57ba-4dc7-ac4d-6ce5ef7e9fc4",
+    "email": "joe@chesiopia.local",
+    "username": "Joe",
+    "passwordHash": "$2b$10$QHwIcNO0MXNZEbPG47nwXO4XkJoT7tF8SBMVTGbXvY699ncWHVSSW",
+    "verifiedAt": "2026-05-28T13:19:19.207Z",
+    "role": "dev",
+    "createdAt": "2026-05-28T13:19:19.207Z"
+  }
+}

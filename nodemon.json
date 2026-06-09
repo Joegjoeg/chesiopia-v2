@@ -1,0 +1,29 @@
+{
+  "watch": [
+    "server.js",
+    "auth.js",
+    "gameState.js",
+    "moveValidator.js",
+    "terrain.js",
+    "environmentalSimulation.js",
+    "climateInference.js",
+    "emailService.js",
+    "server/**/*.js"
+  ],
+  "ignore": [
+    "client/**/*",
+    "data/**/*",
+    "node_modules/**/*",
+    "screenshots/**/*",
+    "test-tools/**/*",
+    "*.json",
+    "*.txt",
+    "*.html",
+    "*.md",
+    "server_log.txt",
+    "client_console_dump.json",
+    "world-data*.json"
+  ],
+  "ext": "js",
+  "delay": 500
+}
