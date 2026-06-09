@@ -1,7 +1,7 @@
 {
-  "name": "chessopia-server",
+  "name": "privateer-server",
   "version": "1.0.0",
-  "description": "Chessopia multiplayer chess server",
+  "description": "Privateer voice-controlled sailing game server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -27,11 +27,12 @@
     "nodemon": "^3.0.0"
   },
   "keywords": [
-    "chess",
+    "sailing",
+    "voice-control",
     "multiplayer",
     "3d",
     "game"
   ],
-  "author": "Chessopia Team",
+  "author": "Privateer Team",
   "license": "MIT"
 }
