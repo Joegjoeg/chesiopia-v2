@@ -14,14 +14,24 @@ class HybridTreeManager {
             growing: GrowingTreeSystem,
             poplar: PoplarTreeSystem,
             cherry: CherryTreeSystem,
-            billboard: BillboardTreeSystem
+            billboard: BillboardTreeSystem,
+            realistic: RealisticTreeSystem
         };
         this._systems = {
             terrain: null,
             growing: null,
             poplar: null,
             cherry: null,
-            billboard: null
+            billboard: null,
+            realistic: null
+        };
+        this._lodGroupMap = {
+            terrain: 'terrainTrees',
+            growing: 'growingTrees',
+            poplar: 'poplarTrees',
+            cherry: 'cherryTrees',
+            billboard: 'billboardTrees',
+            realistic: 'realisticTrees'
         };
         this._systemOrder = Object.keys(this._systems);
         this._defineSystemAccessors();
@@ -36,9 +46,12 @@ class HybridTreeManager {
         this.treeTypeOverride = 'default';
         this.lodEnabled = true;
         this._isRepopulating = false;
+        this._isPopulating = false;
         this._treeAnimationEnabled = true;
         this._treeMaxRenderDistance = null;
         this._treeLodLevel = null;
+        this._lastBoundaryCleanup = 0;
+        this._boundaryCleanupIntervalMs = 750;
 
         // Register LOD groups if manager available
         if (this.lodManager) {
@@ -105,7 +118,8 @@ class HybridTreeManager {
             growing: 'growingTreeSystem',
             poplar: 'poplarTreeSystem',
             cherry: 'cherryTreeSystem',
-            billboard: 'billboardTreeSystem'
+            billboard: 'billboardTreeSystem',
+            realistic: 'realisticTreeSystem'
         };
         Object.entries(propMap).forEach(([key, prop]) => {
             Object.defineProperty(this, prop, {
@@ -137,6 +151,8 @@ class HybridTreeManager {
                 return 'cherry';
             case 'billboard':
                 return 'billboard';
+            case 'realistic':
+                return 'realistic';
             case 'poplar':
             default:
                 return 'poplar';
@@ -258,6 +274,16 @@ class HybridTreeManager {
             onCull: (tree, id) => this._setTreeInstanceVisibleByName('billboard', id, false),
             onVisible: (tree, id) => this._setTreeInstanceVisibleByName('billboard', id, true)
         });
+        lm.registerGroup('realisticTrees', {
+            levels: [{ name: 'full', distance: 0 }],
+            cullDistance: 120,
+            frustumCull: true,
+            getPosition: posFn,
+            getBoundsRadius: radiusFn,
+            maxVisible: 500,
+            onCull: (tree, id) => this._setTreeInstanceVisibleByName('realistic', id, false),
+            onVisible: (tree, id) => this._setTreeInstanceVisibleByName('realistic', id, true)
+        });
     }
 
     _setTreeInstanceVisible(system, index, visible) {
@@ -295,6 +321,7 @@ class HybridTreeManager {
                 case 'growing': return this._ensureSystem('growing');
                 case 'cherry':  return this._ensureSystem('cherry');
                 case 'billboard': return this._ensureSystem('billboard');
+                case 'realistic': return this._ensureSystem('realistic');
                 case 'poplar':
                 default:        return this._ensureSystem('poplar');
             }
@@ -311,6 +338,7 @@ class HybridTreeManager {
                     case 'poplar':    return this._ensureSystem('poplar');
                     case 'cherry':    return this._ensureSystem('cherry');
                     case 'billboard': return this._ensureSystem('billboard');
+                    case 'realistic': return this._ensureSystem('realistic');
                 }
             }
         }
@@ -341,9 +369,7 @@ class HybridTreeManager {
         console.log('[HybridTreeManager] Switching tree type to:', type);
         this.treeTypeOverride = type;
 
-        // Clear existing trees
         this._isRepopulating = true;
-        this.clear();
 
         // If switching to 'none', just hide everything without repopulating
         if (type === 'none') {
@@ -372,8 +398,12 @@ class HybridTreeManager {
      * Optional metadata (biome, maxScale, growthRate, species) biases visuals.
      */
     addTree(worldX, worldZ, terrainHeight, metadata = {}) {
-        const system = this._getTreeSystemForPosition(worldX, worldZ, metadata);
+        const systemKey = this._getActiveKey() || 'billboard';
+        const system = this._ensureSystem(systemKey);
         if (!system) return -1;
+        if (!this._isWithinOuterRing(worldX, worldZ)) {
+            return -1;
+        }
         const key = `${Math.floor(worldX)},${Math.floor(worldZ)}`;
 
         // Guard against duplicate placement
@@ -382,32 +412,10 @@ class HybridTreeManager {
         let result = system.addTree(worldX, worldZ, terrainHeight, metadata);
         if (result === -1) return -1;
 
-        // Track in registry
-        if (system === this.terrainTreeSystem) {
-            this.treeRegistry.set(key, 'terrain');
-            if (this.lodManager) {
-                this.lodManager.add('terrainTrees', system.treeData[result], result);
-            }
-        } else if (system === this.growingTreeSystem) {
-            this.treeRegistry.set(key, 'growing');
-            if (this.lodManager) {
-                this.lodManager.add('growingTrees', system.treeData[result], result);
-            }
-        } else if (system === this.poplarTreeSystem) {
-            this.treeRegistry.set(key, 'poplar');
-            if (this.lodManager) {
-                this.lodManager.add('poplarTrees', system.treeData[result], result);
-            }
-        } else if (system === this.billboardTreeSystem) {
-            this.treeRegistry.set(key, 'billboard');
-            if (this.lodManager) {
-                this.lodManager.add('billboardTrees', system.treeData[result], result);
-            }
-        } else {
-            this.treeRegistry.set(key, 'cherry');
-            if (this.lodManager) {
-                this.lodManager.add('cherryTrees', system.treeData[result], result);
-            }
+        this.treeRegistry.set(key, systemKey);
+        if (this.lodManager) {
+            const group = this._lodGroupMap[systemKey];
+            if (group) this.lodManager.add(group, system.treeData[result], result);
         }
 
         return result;
@@ -417,11 +425,22 @@ class HybridTreeManager {
      * Populate trees from server, distributing between systems based on chunk pattern
      */
     async populateFromServer() {
+        if (this._isPopulating) {
+            if (!this._populateSkipLogged) {
+                console.log('[HybridTreeManager] populateFromServer already in progress, skipping');
+                this._populateSkipLogged = true;
+            }
+            return;
+        }
+        this._populateSkipLogged = false;
+        this._isPopulating = true;
+        this.clear();
         return new Promise(async (resolve, reject) => {
             try {
                 const response = await fetch('/api/trees');
                 if (!response.ok) {
                     console.warn('[HybridTreeManager] /api/trees returned ' + response.status);
+                    this._isPopulating = false;
                     resolve();
                     return;
                 }
@@ -432,30 +451,24 @@ class HybridTreeManager {
                 const board = window.game && window.game.boardSystem;
                 if (!board || typeof board.getUnifiedTerrainHeight !== 'function') {
                     console.warn('[HybridTreeManager] boardSystem.getUnifiedTerrainHeight not ready; aborting populate');
+                    this._isPopulating = false;
                     resolve();
                     return;
                 }
 
-                // If billboard is the active type, wait for async atlas generation first
-                if (this.treeTypeOverride === 'billboard') {
-                    const billboardSystem = this._ensureSystem('billboard');
-                    if (billboardSystem && typeof billboardSystem.whenReady === 'function') {
-                        await billboardSystem.whenReady();
-                    }
-                }
-
                 const waterCutoff = (board.waterLevel != null ? board.waterLevel : -1.5) + 0.05;
+
+                const systemKey = this._getActiveKey() || 'billboard';
+                const system = this._ensureSystem(systemKey);
+                if (system && typeof system.whenReady === 'function') {
+                    await system.whenReady();
+                }
 
                 let placed = 0;
                 let underwater = 0;
-                let terrainTrees = 0;
-                let growingTrees = 0;
-                let poplarTrees = 0;
-                let cherryTrees = 0;
-                let billboardTrees = 0;
 
                 // Process trees in batches to keep the main thread responsive
-                const BATCH_SIZE = 50;
+                const BATCH_SIZE = 100;
                 let idx = 0;
 
                 const processBatch = () => {
@@ -474,40 +487,29 @@ class HybridTreeManager {
                             growthRate: t.growthRate,
                             species: t.species
                         };
-                        const system = this._getTreeSystemForPosition(wx, wz, meta);
                         const result = this.addTree(wx + 0.5, wz + 0.5, height, meta);
-                        if (result !== -1) {
-                            if (system === this.terrainTreeSystem) terrainTrees++;
-                            else if (system === this.growingTreeSystem) growingTrees++;
-                            else if (system === this.poplarTreeSystem) poplarTrees++;
-                            else if (system === this.billboardTreeSystem) billboardTrees++;
-                            else cherryTrees++;
-                            placed++;
-                        }
+                        if (result !== -1) placed++;
                     }
 
                     if (idx < list.length) {
                         requestAnimationFrame(processBatch);
                     } else {
-                        // console.log('[HybridTreeManager] Placed ' + placed + ' trees (' + underwater + ' skipped underwater)');
-                        // console.log('[HybridTreeManager] Distribution: ' + terrainTrees + ' terrain, ' + growingTrees + ' growing, ' + poplarTrees + ' poplar, ' + cherryTrees + ' cherry, ' + billboardTrees + ' billboard');
+                        console.log('[HybridTreeManager] Placed ' + placed + '/' + list.length + ' trees (' + underwater + ' skipped underwater, ' + (list.length - placed - underwater) + ' other rejects)');
 
-                        // Compute wind field for all instantiated systems
-                        this._forEachSystem((sys, name) => {
-                            if (typeof sys.computeWindField === 'function' && sys.treeCount > 0) {
-                                // console.log(`[HybridTreeManager] Computing wind field for ${name} trees...`);
-                                sys.computeWindField();
-                            }
-                        });
-                        // console.log('[HybridTreeManager] Wind field computed for available systems');
+                        // Compute wind field for billboard system
+                        if (system && typeof system.computeWindField === 'function' && system.treeCount > 0) {
+                            system.computeWindField();
+                        }
+                        this._isPopulating = false;
                         resolve();
                     }
                 };
 
                 processBatch();
             } catch (err) {
-                console.error('[HybridTreeManager] populateFromServer failed:', err);
-                reject(err);
+                this._isPopulating = false;
+                console.warn('[HybridTreeManager] populateFromServer failed (offline?), skipping:', err.message || err);
+                resolve();
             }
         });
     }
@@ -571,16 +573,9 @@ class HybridTreeManager {
      */
     unloadTreesForChunk(chunkX, chunkZ) {
         const chunkSize = this.chunkSize;
-        const groupMap = {
-            terrain: 'terrainTrees',
-            growing: 'growingTrees',
-            poplar: 'poplarTrees',
-            cherry: 'cherryTrees',
-            billboard: 'billboardTrees'
-        };
 
         this._forEachSystem((sys, name) => {
-            const lodGroup = groupMap[name];
+            const lodGroup = this._lodGroupMap[name];
             if (!lodGroup) return;
 
             const indices = [];
@@ -649,6 +644,7 @@ class HybridTreeManager {
      */
     update(timeSec, windStrength, windDirection) {
         const dontRender = window.parameterSystem && window.parameterSystem.getParameter('dontRenderTrees');
+        this._cleanupOuterRingViolations();
         if (dontRender) {
             this.setTreeVisible(false);
             return;
@@ -660,7 +656,8 @@ class HybridTreeManager {
                 growing: this._systems.growing,
                 poplar: this._systems.poplar,
                 cherry: this._systems.cherry,
-                billboard: this._systems.billboard
+                billboard: this._systems.billboard,
+                realistic: this._systems.realistic
             };
 
             if (systems.terrain) {
@@ -697,6 +694,13 @@ class HybridTreeManager {
                 const go = this.lodManager.shouldAnimateGroup('billboardTrees', 1);
                 if (go && typeof systems.billboard.update === 'function') {
                     systems.billboard.update(timeSec, windStrength, windDirection);
+                }
+            }
+
+            if (systems.realistic) {
+                const go = this.lodManager.shouldAnimateGroup('realisticTrees', 1);
+                if (go && typeof systems.realistic.update === 'function') {
+                    systems.realistic.update(timeSec, windStrength, windDirection);
                 }
             }
         } else {
@@ -758,5 +762,120 @@ class HybridTreeManager {
                 sys.setSeason(season);
             }
         });
+    }
+
+    _getTerrainCenter2D() {
+        const board = window.game && window.game.boardSystem;
+        if (!board) return null;
+        if (board.useViewportMesh) {
+            const cam = window.game?.cameraController?.camera;
+            if (cam) {
+                return { x: cam.position.x, z: cam.position.z };
+            }
+        }
+        if (board.meshBounds) {
+            return { x: board.meshBounds.centerX, z: board.meshBounds.centerZ };
+        }
+        return null;
+    }
+
+    _getOuterRingSpawnRadius() {
+        const board = window.game && window.game.boardSystem;
+        if (!board) return null;
+        const ring = board.terrainOuterRing;
+        if (!ring) return null;
+        if (typeof ring.getTreeSpawnRadius === 'function') {
+            return ring.getTreeSpawnRadius();
+        }
+        // Fallback for older TerrainOuterRing versions
+        const gridSize = ring.N || board.rollingTerrain?.N || 0;
+        const cellSize = ring.S || board.rollingTerrain?.S || 1;
+        const innerHalf = Math.max(0, (gridSize - 1) * cellSize * 0.5);
+        const seamReach = (ring.extension || 0) * (ring.radiusScale || 1);
+        const perpReach = this._computePerpExtent(ring);
+        const outward = Math.max(seamReach, perpReach);
+        return innerHalf + outward;
+    }
+
+    _computePerpExtent(ring) {
+        if (!ring?.perpBands?.length) return 0;
+        const scale = ring.radiusScale || 1;
+        let cursor = 0;
+        for (const band of ring.perpBands) {
+            const spacing = (band?.spacing || 0) * scale;
+            const count = band?.count || 0;
+            for (let i = 0; i < count; i++) {
+                cursor += spacing;
+            }
+        }
+        return cursor;
+    }
+
+    _isWithinOuterRing(worldX, worldZ) {
+        const center = this._getTerrainCenter2D();
+        const radius = this._getOuterRingSpawnRadius();
+        if (!center || radius == null) return true;
+        const dx = worldX - center.x;
+        const dz = worldZ - center.z;
+        return (dx * dx + dz * dz) <= (radius * radius);
+    }
+
+    _cleanupOuterRingViolations() {
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - this._lastBoundaryCleanup < this._boundaryCleanupIntervalMs) return;
+        const center = this._getTerrainCenter2D();
+        const radius = this._getOuterRingSpawnRadius();
+        if (!center || radius == null) return;
+        const radiusSq = radius * radius;
+
+        this._forEachSystem((sys, name) => {
+            if (!sys || !sys.treeCount) return;
+            const indices = [];
+            for (let i = 0; i < sys.treeCount; i++) {
+                const tree = sys.treeData[i];
+                if (!tree) continue;
+                const dx = tree.x - center.x;
+                const dz = tree.z - center.z;
+                if ((dx * dx + dz * dz) > radiusSq) {
+                    indices.push(i);
+                }
+            }
+            if (indices.length) {
+                this._bulkRemoveTrees(name, indices);
+                console.log(`[HybridTreeManager] Removed ${indices.length} ${name} trees outside terrain bounds`);
+            }
+        });
+        this._lastBoundaryCleanup = now;
+    }
+
+    _bulkRemoveTrees(systemName, indices) {
+        const sys = this._systems[systemName];
+        if (!sys || !indices.length) return;
+        indices.sort((a, b) => b - a);
+        for (const idx of indices) {
+            this._removeTreeInstance(systemName, idx);
+        }
+    }
+
+    _removeTreeInstance(systemName, index) {
+        const sys = this._systems[systemName];
+        if (!sys || index < 0 || index >= sys.treeCount) return;
+        const lodGroup = this._lodGroupMap[systemName];
+        const lastIndex = sys.treeCount - 1;
+        if (this.lodManager && lodGroup) {
+            this.lodManager.remove(lodGroup, index);
+        }
+        const removed = sys.removeTree(index);
+        if (removed) {
+            const key = `${Math.floor(removed.x)},${Math.floor(removed.z)}`;
+            this.treeRegistry.delete(key);
+        }
+        if (index < lastIndex && this.lodManager && lodGroup) {
+            this.lodManager.remove(lodGroup, lastIndex);
+            const movedTree = sys.treeData[index];
+            if (movedTree) {
+                this.lodManager.add(lodGroup, movedTree, index);
+            }
+        }
     }
 }

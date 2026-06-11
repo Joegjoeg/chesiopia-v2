@@ -148,14 +148,20 @@ class ParameterSystem {
             description: 'Water surface Y position',
             gate: { targetOf: sys => sys, prop: 'waterLevel' },
             apply: (v) => {
-                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
-                if (!rt || !rt.waterMesh) return;
-                const waterY = v + rt.waterOffset;
-                const waterPos = rt.waterMesh.geometry.attributes.position.array;
-                for (let i = 1; i < waterPos.length; i += 3) {
-                    waterPos[i] = waterY;
+                try {
+                    const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                    if (!rt || !rt.waterMesh || !rt.waterMesh.geometry || !rt.waterMesh.geometry.attributes.position) return;
+                    const attr = rt.waterMesh.geometry.attributes.position;
+                    const waterPos = attr.array;
+                    if (!waterPos || !waterPos.length) return;
+                    const waterY = v + rt.waterOffset;
+                    for (let i = 1; i < waterPos.length; i += 3) {
+                        waterPos[i] = waterY;
+                    }
+                    attr.needsUpdate = true;
+                } catch (e) {
+                    // Silently ignore - geometry may not be ready yet
                 }
-                rt.waterMesh.geometry.attributes.position.needsUpdate = true;
             }
         });
         reg('tideAmplitude', {
@@ -244,6 +250,46 @@ class ParameterSystem {
                 this._queueOrbitHeightScaleSync();
             }
         });
+        reg('terrainOuterRingScale', {
+            category: 'terrain', type: 'number', default: 1.0, min: 1.0, max: 4.0, step: 0.1,
+            description: 'Scale the outer terrain ring radius (1=default, 4=4x distance to horizon)',
+            shortLabel: 'Ring Scale',
+            apply: (v) => {
+                const bs = window.boardSystem;
+                if (!bs) return;
+
+                // Respect resource gate: destroy if budget says no, skip creation
+                if (!bs._shouldEnableTerrainOuterRing()) {
+                    if (bs.terrainOuterRing) {
+                        bs._destroyTerrainOuterRing();
+                    }
+                    return;
+                }
+
+                // If ring doesn't exist yet, create it (will pick up the new scale)
+                if (!bs.terrainOuterRing) {
+                    bs._createTerrainOuterRing(v);
+                    return;
+                }
+
+                // Recreate with new scale
+                bs.terrainOuterRing.destroy(bs.scene);
+                bs.terrainOuterRing = new TerrainOuterRing(bs, bs.terrainSystem, {
+                    gridSize: bs.rollingTerrain.N,
+                    cellSize: 1,
+                    material: bs.rollingTerrain.mesh.material,
+                    fullUpdateThreshold: 16,
+                    extension: 64,
+                    radiusScale: v
+                });
+                const rt = bs.rollingTerrain;
+                bs.terrainOuterRing.initAt(rt.originX, rt.originZ);
+                for (const m of bs.terrainOuterRing.meshes) {
+                    bs.scene.add(m);
+                }
+                bs.terrainOuterRing.startFadeIn(3000);
+            }
+        });
 
         // --- Water plane ---
         const _getWaterMesh = () => {
@@ -277,18 +323,22 @@ class ParameterSystem {
             description: 'Height offset above terrain surface',
             shortLabel: 'Offset',
             apply: (v) => {
-                const rt = window.boardSystem && window.boardSystem.rollingTerrain;
-                if (!rt) return;
-                rt.waterOffset = v;
-                const waterPos = rt.waterMesh.geometry.attributes.position.array;
-                const pos = rt.geometry.attributes.position.array;
-                waterPos.set(pos); // copy X/Z from terrain
-                const waterLevel = rt.board.tidalWaterLevel ?? rt.board.waterLevel ?? -1.5;
-                const waterY = waterLevel + v;
-                for (let i = 1; i < waterPos.length; i += 3) {
-                    waterPos[i] = waterY;
+                try {
+                    const rt = window.boardSystem && window.boardSystem.rollingTerrain;
+                    if (!rt || !rt.waterMesh || !rt.waterMesh.geometry || !rt.waterMesh.geometry.attributes.position) return;
+                    const attr = rt.waterMesh.geometry.attributes.position;
+                    const waterPos = attr.array;
+                    if (!waterPos || !waterPos.length) return;
+                    rt.waterOffset = v;
+                    const waterLevel = rt.board.tidalWaterLevel ?? rt.board.waterLevel ?? -1.5;
+                    const waterY = waterLevel + v;
+                    for (let i = 1; i < waterPos.length; i += 3) {
+                        waterPos[i] = waterY;
+                    }
+                    attr.needsUpdate = true;
+                } catch (e) {
+                    // Silently ignore - geometry may not be ready yet
                 }
-                rt.waterMesh.geometry.attributes.position.needsUpdate = true;
             }
         });
         reg('waterRoughness', {
@@ -311,7 +361,7 @@ class ParameterSystem {
         });
         reg('waveEnabled', {
             category: 'water', type: 'boolean', default: true,
-            description: 'Enable toroidal Gerstner wave animation',
+            description: 'Enable water wave animation (shader-based, flat plane)',
             shortLabel: 'Waves',
             apply: (v) => {
                 const rt = window.boardSystem && window.boardSystem.rollingTerrain;
@@ -320,8 +370,8 @@ class ParameterSystem {
         });
         reg('waveAmplitude', {
             category: 'water', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.05,
-            description: 'Wave height multiplier',
-            shortLabel: 'Wave Amp',
+            description: 'Large wave amplitude for normal perturbation',
+            shortLabel: 'Large Waves',
             apply: (v) => {
                 const rt = window.boardSystem && window.boardSystem.rollingTerrain;
                 if (rt) rt.waveConfig.amplitudeScale = v;
@@ -329,8 +379,8 @@ class ParameterSystem {
         });
         reg('waveSpeed', {
             category: 'water', type: 'number', default: 1.5, min: 0.0, max: 3.0, step: 0.1,
-            description: 'Wave animation speed',
-            shortLabel: 'Wave Speed',
+            description: 'Large wave animation speed',
+            shortLabel: 'Large Speed',
             apply: (v) => {
                 const rt = window.boardSystem && window.boardSystem.rollingTerrain;
                 if (rt) rt.waveConfig.speed = v;
@@ -338,8 +388,8 @@ class ParameterSystem {
         });
         reg('waveSteepness', {
             category: 'water', type: 'number', default: 0.3, min: 0.0, max: 1.0, step: 0.05,
-            description: 'Wave crest sharpness (0 = smooth, 1 = sharp)',
-            shortLabel: 'Steepness',
+            description: 'Large wave crest sharpness (0 = smooth, 1 = sharp)',
+            shortLabel: 'Large Shape',
             apply: (v) => {
                 const rt = window.boardSystem && window.boardSystem.rollingTerrain;
                 if (rt) rt.waveConfig.steepness = v;
@@ -376,7 +426,7 @@ class ParameterSystem {
         });
         reg('waveWindFactor', {
             category: 'water', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.1,
-            description: 'How much wind affects both geometry and texture wave speed',
+            description: 'How much wind affects wave texture animation speed',
             shortLabel: 'Wind Factor',
             apply: (v) => {
                 const rt = window.boardSystem && window.boardSystem.rollingTerrain;
@@ -427,33 +477,18 @@ class ParameterSystem {
                 if (board) board.shoreLagTimeConstant = v;
             }
         });
-        reg('waterFalloffEnabled', {
-            category: 'water', type: 'boolean', default: false,
-            description: 'Enable distance-based transparency falloff',
-            shortLabel: 'Falloff',
-            apply: (v) => {
-                const wm = _getWaterMesh();
-                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uFalloffEnabled.value = v ? 1.0 : 0.0;
-            }
-        });
-        reg('waterFalloffDistance', {
-            category: 'water', type: 'number', default: 50.0, min: 10.0, max: 200.0, step: 5.0,
-            description: 'Distance over which water fades out',
-            shortLabel: 'Falloff Distance',
-            apply: (v) => {
-                const wm = _getWaterMesh();
-                if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uFalloffDistance.value = v;
-            }
-        });
-        reg('waterRadius', {
-            category: 'water', type: 'number', default: 25.0, min: 5.0, max: 60.0, step: 1.0,
-            description: 'Radius of geometric water mesh around camera',
-            shortLabel: 'Radius',
+        // Note: Camera-based falloff removed - water now covers full terrain
+        // reg('waterFalloffEnabled', { ... }); // Disabled - water covers full terrain
+        // reg('waterFalloffDistance', { ... }); // Disabled - water covers full terrain
+        reg('waterSize', {
+            category: 'water', type: 'number', default: 63.0, min: 10.0, max: 500.0, step: 1.0,
+            description: 'Water plane size in world units (0.5x terrain grid size)',
+            shortLabel: 'Water Size',
             apply: (v) => {
                 const rt = _getRollingTerrain();
                 if (!rt) return;
                 rt.waterRadius = v;
-                // Rebuild mesh geometry with new radius
+                // Rebuild mesh geometry with new size
                 if (rt.waterMesh && rt.waterMesh.geometry) {
                     const newGeo = rt._createSquareWaterMesh(rt.waterRadius, rt.waterResolution);
                     rt.waterMesh.geometry.dispose();
@@ -462,33 +497,17 @@ class ParameterSystem {
                 }
             }
         });
-        reg('waterFadeRadius', {
-            category: 'water', type: 'number', default: 25.0, min: 5.0, max: 60.0, step: 1.0,
-            description: 'Distance from camera where wave displacement starts fading (default matches mesh radius)',
-            shortLabel: 'Fade Radius',
-            apply: (v) => {
-                const rt = _getRollingTerrain();
-                if (rt && rt.waterUniforms) rt.waterUniforms.uGeoRadius.value = v;
-            }
-        });
-        reg('waterGeoFadeWidth', {
-            category: 'water', type: 'number', default: 5.0, min: 0.0, max: 20.0, step: 0.5,
-            description: 'Width of geometric-to-shader water fade band',
-            shortLabel: 'Fade Width',
-            apply: (v) => {
-                const rt = _getRollingTerrain();
-                if (rt) rt.waterGeoFadeWidth = v;
-                if (rt && rt.waterUniforms) rt.waterUniforms.uGeoFadeWidth.value = v;
-            }
-        });
+        // Note: Camera-based fade params removed - water follows landscape, not camera
+        // reg('waterFadeRadius', { ... }); // Disabled - no camera-based fade
+        // reg('waterGeoFadeWidth', { ... }); // Disabled - no camera-based fade
         reg('waterResolution', {
-            category: 'water', type: 'number', default: 32, min: 8, max: 64, step: 1,
-            description: 'Square water mesh resolution (verts per axis)',
+            category: 'water', type: 'number', default: 64, min: 8, max: 256, step: 1,
+            description: 'Water mesh grid resolution (verts per axis, terrain-matched default)',
             shortLabel: 'Resolution',
             apply: (v) => {
                 const rt = _getRollingTerrain();
                 if (!rt) return;
-                rt.waterResolution = Math.max(8, Math.min(64, v));
+                rt.waterResolution = Math.max(8, Math.min(256, v));
                 // Changing resolution requires rebuilding the water mesh geometry
                 if (rt.waterMesh && rt.waterMesh.geometry) {
                     const newGeo = rt._createSquareWaterMesh(rt.waterRadius, rt.waterResolution);
@@ -550,6 +569,36 @@ class ParameterSystem {
             apply: (v) => {
                 const wm = _getWaterMesh();
                 if (wm && wm.material && wm.material.uniforms) wm.material.uniforms.uWaveNormalEps.value = v;
+            }
+        });
+
+        // --- Shoreline ---
+        reg('shorelineSoundHeader', {
+            category: 'water', type: 'header',
+            shortLabel: 'Shoreline'
+        });
+        reg('shorelineSoundEnabled', {
+            category: 'water', type: 'boolean', default: true,
+            description: 'Enable shoreline wave ambience',
+            shortLabel: 'Sound',
+            apply: (v) => {
+                if (window.soundManager) {
+                    if (!v) window.soundManager.stopShorelineAmbience({ fade: 0.5 });
+                }
+            }
+        });
+        reg('shorelineSoundVolume', {
+            category: 'water', type: 'number', default: 0.25, min: 0.0, max: 1.0, step: 0.05,
+            description: 'Shoreline wave sound volume',
+            shortLabel: 'Volume',
+            apply: (v) => {
+                if (window.soundManager && window.soundManager.shorelineAmbience) {
+                    const ctx = window.soundManager.audioContext;
+                    if (ctx) {
+                        const now = ctx.currentTime;
+                        window.soundManager.shorelineAmbience.masterGain.gain.setTargetAtTime(Math.max(v, 0.0001), now, 0.2);
+                    }
+                }
             }
         });
 
@@ -974,7 +1023,7 @@ class ParameterSystem {
                 // Update instanced tree system shaders
                 const htm = window.game && window.game.hybridTreeManager;
                 if (!htm) return;
-                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem].forEach(sys => {
+                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem, htm.realisticTreeSystem].forEach(sys => {
                     if (!sys || !sys.parts) return;
                     sys.parts.forEach(part => {
                         const mat = part.mesh && part.mesh.material;
@@ -993,6 +1042,69 @@ class ParameterSystem {
                 const game = window.game;
                 if (game && game.decorativeVisuals) game.decorativeVisuals.blusteryWind = v;
             }
+        });
+        reg('windSoundEnabled', {
+            category: 'environment', type: 'boolean', default: true,
+            description: 'Enable wind ambience and gust swoosh audio',
+            shortLabel: 'Wind Audio'
+        });
+        reg('windSoundVolume', {
+            category: 'environment', type: 'number', default: 0.3, min: 0, max: 1, step: 0.05,
+            description: 'Wind audio volume',
+            shortLabel: 'Wind Vol',
+            apply: (v) => {
+                if (window.soundManager && window.soundManager.windAmbience) {
+                    window.soundManager.updateWindIntensity(
+                        window.game?.decorativeVisuals?.windSpeed || 0,
+                        window.game?.decorativeVisuals?.gustIntensity || 1
+                    );
+                }
+            }
+        });
+        reg('windDebrisEnabled', {
+            category: 'environment', type: 'boolean', default: true,
+            description: 'Enable flying leaf/twig/dust debris particles in wind',
+            shortLabel: 'Wind Debris'
+        });
+        reg('windDebrisDensity', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 3, step: 0.1,
+            description: 'Multiplier for wind debris particle count',
+            shortLabel: 'Debris Density'
+        });
+        reg('windParticleSize', {
+            category: 'environment', type: 'number', default: 1.0, min: 0.1, max: 3.0, step: 0.1,
+            description: 'Multiplier for debris particle scale',
+            shortLabel: 'Particle Size'
+        });
+        reg('windParticleColor', {
+            category: 'environment', type: 'color', default: '#8bc34a',
+            description: 'Base color for leaf and dust particles',
+            shortLabel: 'Particle Color'
+        });
+        reg('windParticleGravity', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 2.0, step: 0.1,
+            description: 'Gravity multiplier for debris (0 = weightless, 1 = normal, 2 = heavy)',
+            shortLabel: 'Gravity'
+        });
+        reg('windTwigFrequency', {
+            category: 'environment', type: 'number', default: 0.15, min: 0, max: 1.0, step: 0.05,
+            description: 'Chance of spawning a twig instead of a leaf (0 = none, 1 = all twigs)',
+            shortLabel: 'Twig Freq'
+        });
+        reg('windTwigGravity', {
+            category: 'environment', type: 'number', default: 1.0, min: 0.2, max: 3.0, step: 0.1,
+            description: 'How fast twigs fall relative to leaves (higher = sinks faster)',
+            shortLabel: 'Twig Gravity'
+        });
+        reg('windGravityFactor', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 2.0, step: 0.1,
+            description: 'How much low wind increases gravity (0 = constant gravity, 1 = calm air lets debris fall, 2 = strong drop in calm)',
+            shortLabel: 'Wind Gravity'
+        });
+        reg('windSpinSpeed', {
+            category: 'environment', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.1,
+            description: 'Particle spin/tumble speed multiplier',
+            shortLabel: 'Spin Speed'
         });
 
         // Wind direction state for gradual turning
@@ -1044,41 +1156,65 @@ class ParameterSystem {
             category: 'environment', type: 'boolean', default: false,
             description: 'Enable enhanced fog gradient (custom falloff curve)',
             shortLabel: 'Fog Gradient',
-            rebuildCategory: true
+            rebuildCategory: true,
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs._syncUniformToAllMaterials('uFogGradientEnabled', v ? 1.0 : 0.0);
+            }
         });
         reg('fogGradientExponent', {
             category: 'environment', type: 'number', default: 2.0, min: 0.5, max: 5.0, step: 0.1,
             description: 'Fog falloff curve exponent (1=linear, >1=exponential)',
             shortLabel: 'Fog Exp',
-            showIf: { param: 'fogGradientEnabled', value: true }
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs._syncUniformToAllMaterials('uFogGradientExponent', v);
+            }
         });
         reg('fogGradientBias', {
             category: 'environment', type: 'number', default: 0.0, min: -0.5, max: 0.5, step: 0.05,
             description: 'Fog distance bias (-0.5=nearer, 0.5=farther)',
             shortLabel: 'Fog Bias',
-            showIf: { param: 'fogGradientEnabled', value: true }
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs._syncUniformToAllMaterials('uFogGradientBias', v);
+            }
         });
         reg('fogDensity', {
             category: 'environment', type: 'number', default: 1.0, min: 0.1, max: 3.0, step: 0.1,
             description: 'Global fog density multiplier',
-            shortLabel: 'Fog Density'
+            shortLabel: 'Fog Density',
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs._syncUniformToAllMaterials('uFogDensity', v);
+            }
         });
         reg('fogColorBandCount', {
             category: 'environment', type: 'number', default: 2, min: 2, max: 5, step: 1,
             description: 'Number of fog gradient color bands',
             shortLabel: 'Color Bands',
-            showIf: { param: 'fogGradientEnabled', value: true }
+            showIf: { param: 'fogGradientEnabled', value: true },
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs._syncUniformToAllMaterials('uFogColorCount', Math.floor(v));
+            }
         });
         const fogColorApply = (index) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
-            if (tbs?.shaderMaterial?.uniforms?.uFogColors?.value?.[index]) {
-                tbs.shaderMaterial.uniforms.uFogColors.value[index].set(v);
+            if (tbs) {
+                for (const mat of tbs._getAllTerrainMaterials()) {
+                    if (mat?.uniforms?.uFogColors?.value?.[index]) {
+                        mat.uniforms.uFogColors.value[index].set(v);
+                    }
+                }
             }
         };
         const fogStopApply = (index) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
-            if (tbs?.shaderMaterial?.uniforms?.uFogStops?.value?.[index] !== undefined) {
-                tbs.shaderMaterial.uniforms.uFogStops.value[index] = v;
+            if (tbs) {
+                tbs._syncArrayUniformElementToAllMaterials('uFogStops', index, v);
             }
         };
         reg('fogColor1', {
@@ -1151,25 +1287,6 @@ class ParameterSystem {
             showIf: { param: 'fogGradientEnabled', value: true },
             apply: fogStopApply(4)
         });
-        reg('daisiesEnabled', {
-            category: 'environment', type: 'boolean', default: false,
-            description: 'Show daisies',
-            shortLabel: 'Daisies',
-            apply: (v) => {
-                const game = window.game;
-                if (game && game.decorativeVisuals) {
-                    if (!v) {
-                        for (const [, daisy] of game.decorativeVisuals.daisies) {
-                            game.decorativeVisuals.scene.remove(daisy.group);
-                        }
-                        game.decorativeVisuals.daisies.clear();
-                    } else {
-                        game.decorativeVisuals.spawnInitialDaisies();
-                    }
-                }
-            }
-        });
-
         // --- Grass ---
         const grassUniformApply = (uniformName) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
@@ -1533,11 +1650,21 @@ class ParameterSystem {
             apply: cliffApply('setCliffDebug')
         });
 
-        // --- Biome Edge Blending ---
-        const biomeUniformApply = (uniformName) => (v, sys) => {
+        // --- Biome Edge Blending (per-edge arrays) ---
+        const biomeEdgeUniformApply = (uniformName) => (v, sys) => {
             const tbs = sys.textureBlendingSystem;
             if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
                 tbs.shaderMaterial.uniforms[uniformName].value = v;
+            }
+        };
+        const biomeEdgeArrayApply = (uniformName, index) => (v, sys) => {
+            const tbs = sys.textureBlendingSystem;
+            if (tbs && tbs.shaderMaterial && tbs.shaderMaterial.uniforms[uniformName]) {
+                const arr = tbs.shaderMaterial.uniforms[uniformName].value;
+                if (arr && arr.length > index) {
+                    arr[index] = v;
+                    tbs.shaderMaterial.uniforms[uniformName].needsUpdate = true;
+                }
             }
         };
         const biomeOptions = [
@@ -1552,78 +1679,78 @@ class ParameterSystem {
         ];
         reg('biomeEdgeA', {
             category: 'blending', type: 'select', default: 3,
-            description: 'First biome in the edge pair',
+            description: 'First biome in the edge pair (modifier stack target)',
             shortLabel: 'Biome A',
-            options: biomeOptions,
-            apply: biomeUniformApply('uBiomeEdgeA')
+            options: biomeOptions
         });
         reg('biomeEdgeB', {
             category: 'blending', type: 'select', default: 4,
-            description: 'Second biome in the edge pair',
+            description: 'Second biome in the edge pair (modifier stack target)',
             shortLabel: 'Biome B',
-            options: biomeOptions,
-            apply: biomeUniformApply('uBiomeEdgeB')
+            options: biomeOptions
         });
-        reg('biomeEdgeMode', {
-            category: 'blending', type: 'select', default: 0,
-            description: 'Edge blending mode',
-            shortLabel: 'Mode',
-            options: [
-                { value: 0, label: 'Blended' },
-                { value: 1, label: 'Sharp' },
-                { value: 2, label: 'Custom' }
-            ],
-            apply: biomeUniformApply('uBiomeEdgeMode')
-        });
-        reg('biomeEdgeScale', {
-            category: 'blending', type: 'number', default: 0.3, min: 0.01, max: 2.0, step: 0.01,
-            description: 'Wiggle noise scale (smaller = broader waves)',
-            shortLabel: 'Wiggle Scale',
-            apply: biomeUniformApply('uBiomeEdgeScale')
-        });
-        reg('biomeEdgeStrength', {
-            category: 'blending', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.05,
-            description: 'Wiggle noise displacement strength',
-            shortLabel: 'Wiggle Str',
-            apply: biomeUniformApply('uBiomeEdgeStrength')
-        });
-        reg('biomeSplatterScale', {
-            category: 'blending', type: 'number', default: 0.5, min: 0.01, max: 3.0, step: 0.01,
-            description: 'Splatter patch size (smaller = bigger patches)',
-            shortLabel: 'Splatter Scale',
-            apply: biomeUniformApply('uBiomeSplatterScale')
-        });
-        reg('biomeSplatterAmount', {
-            category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
-            description: 'Splatter mask intensity',
-            shortLabel: 'Splatter Amt',
-            apply: biomeUniformApply('uBiomeSplatterAmount')
-        });
-        reg('biomeEdgeSplatterMix', {
-            category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
-            description: 'Blend between wiggly edge (0) and splatter mask (1)',
-            shortLabel: 'Edge/Splat',
-            apply: biomeUniformApply('uBiomeEdgeSplatterMix')
-        });
+        for (let e = 0; e < 7; e++) {
+            reg(`biomeEdgeMode${e}`, {
+                category: 'blending', type: 'select', default: 0,
+                description: `Edge ${e} blending mode`,
+                shortLabel: `Mode ${e}`,
+                options: [
+                    { value: 0, label: 'Blended' },
+                    { value: 1, label: 'Sharp' },
+                    { value: 2, label: 'Custom' }
+                ],
+                apply: biomeEdgeArrayApply('uBiomeEdgeModes', e)
+            });
+            reg(`biomeEdgeScale${e}`, {
+                category: 'blending', type: 'number', default: 0.3, min: 0.01, max: 2.0, step: 0.01,
+                description: `Edge ${e} wiggle noise scale`,
+                shortLabel: `Wiggle Sc ${e}`,
+                apply: biomeEdgeArrayApply('uBiomeEdgeScales', e)
+            });
+            reg(`biomeEdgeStrength${e}`, {
+                category: 'blending', type: 'number', default: 1.0, min: 0, max: 3.0, step: 0.05,
+                description: `Edge ${e} wiggle displacement strength`,
+                shortLabel: `Wiggle Str ${e}`,
+                apply: biomeEdgeArrayApply('uBiomeEdgeStrengths', e)
+            });
+            reg(`biomeSplatterScale${e}`, {
+                category: 'blending', type: 'number', default: 0.5, min: 0.01, max: 3.0, step: 0.01,
+                description: `Edge ${e} splatter patch size`,
+                shortLabel: `Splat Sc ${e}`,
+                apply: biomeEdgeArrayApply('uBiomeSplatterScales', e)
+            });
+            reg(`biomeSplatterAmount${e}`, {
+                category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
+                description: `Edge ${e} splatter mask intensity`,
+                shortLabel: `Splat Amt ${e}`,
+                apply: biomeEdgeArrayApply('uBiomeSplatterAmounts', e)
+            });
+            reg(`biomeEdgeSplatterMix${e}`, {
+                category: 'blending', type: 'number', default: 0.5, min: 0, max: 1.0, step: 0.05,
+                description: `Edge ${e} wiggle/splatter blend`,
+                shortLabel: `Edge/Splat ${e}`,
+                apply: biomeEdgeArrayApply('uBiomeEdgeSplatterMixes', e)
+            });
+        }
 
         // --- Biome Patch Noise ---
         reg('biomePatchScale', {
             category: 'blending', type: 'number', default: 0.025, min: 0.001, max: 0.1, step: 0.001,
             description: 'Patch noise spatial scale (smaller = bigger patches)',
             shortLabel: 'Patch Scale',
-            apply: biomeUniformApply('uBiomePatchScale')
+            apply: biomeEdgeUniformApply('uBiomePatchScale')
         });
         reg('biomePatchStrength', {
             category: 'blending', type: 'number', default: 0.0, min: 0, max: 6.0, step: 0.1,
             description: 'Patch noise threshold shift strength (0 = off)',
             shortLabel: 'Patch Str',
-            apply: biomeUniformApply('uBiomePatchStrength')
+            apply: biomeEdgeUniformApply('uBiomePatchStrength')
         });
         reg('biomePatchSeed', {
             category: 'blending', type: 'number', default: 123.45, min: 0, max: 999.99, step: 1.0,
             description: 'Patch noise seed offset',
             shortLabel: 'Patch Seed',
-            apply: biomeUniformApply('uBiomePatchSeed')
+            apply: biomeEdgeUniformApply('uBiomePatchSeed')
         });
 
         // --- Biome Palette ---
@@ -1659,6 +1786,71 @@ class ParameterSystem {
             });
         }
 
+        // --- Biome Texture Layers (per-biome 2-layer system via sampler2DArray) ---
+        const textureSetNames = Object.keys(TextureSetLoader.getMapping());
+        const textureSetOptions = textureSetNames.map(name => ({ value: name, label: name }));
+        const noneOption = { value: '', label: 'None' };
+        const layer0Defaults = ['sand-dunes1-bl','sand-dunes1-bl','sand-dunes1-bl','grass1-bl','grass1-bl','mud-with-vegetation-bl','jagged-cliff1-bl','jagged-cliff1-bl'];
+
+        for (let b = 0; b < 8; b++) {
+            reg(`biomeTexLayer0_${b}`, {
+                category: 'blending', type: 'select', default: layer0Defaults[b],
+                description: `${biomeNames[b]} base layer texture`,
+                shortLabel: `${biomeNames[b]} L0 Tex`,
+                options: textureSetOptions,
+                apply: (v, sys) => {
+                    const tbs = sys.textureBlendingSystem;
+                    if (tbs) tbs.setBiomeLayerTexture(b, 0, v);
+                }
+            });
+            reg(`biomeTexLayer1_${b}`, {
+                category: 'blending', type: 'select', default: '',
+                description: `${biomeNames[b]} overlay layer texture`,
+                shortLabel: `${biomeNames[b]} L1 Tex`,
+                options: [noneOption, ...textureSetOptions],
+                apply: (v, sys) => {
+                    const tbs = sys.textureBlendingSystem;
+                    if (tbs) tbs.setBiomeLayerTexture(b, 1, v);
+                }
+            });
+            reg(`biomeTexScale0_${b}`, {
+                category: 'blending', type: 'number', default: 1.0, min: 0.01, max: 5.0, step: 0.01,
+                description: `${biomeNames[b]} base layer UV scale`,
+                shortLabel: `${biomeNames[b]} L0 Scale`,
+                apply: (v, sys) => {
+                    const tbs = sys.textureBlendingSystem;
+                    if (tbs) tbs.setBiomeLayerScale(b, 0, v);
+                }
+            });
+            reg(`biomeTexScale1_${b}`, {
+                category: 'blending', type: 'number', default: 1.0, min: 0.01, max: 5.0, step: 0.01,
+                description: `${biomeNames[b]} overlay layer UV scale`,
+                shortLabel: `${biomeNames[b]} L1 Scale`,
+                apply: (v, sys) => {
+                    const tbs = sys.textureBlendingSystem;
+                    if (tbs) tbs.setBiomeLayerScale(b, 1, v);
+                }
+            });
+            reg(`biomeTexNoiseScale_${b}`, {
+                category: 'blending', type: 'number', default: 1.0, min: 0.01, max: 5.0, step: 0.01,
+                description: `${biomeNames[b]} layer 1 noise mask scale`,
+                shortLabel: `${biomeNames[b]} Noise Sc`,
+                apply: (v, sys) => {
+                    const tbs = sys.textureBlendingSystem;
+                    if (tbs) tbs.setBiomeNoiseScale(b, v);
+                }
+            });
+        }
+        reg('biomeTextureBlend', {
+            category: 'blending', type: 'number', default: 0.7, min: 0.0, max: 1.0, step: 0.01,
+            description: 'How much real PBR biome textures blend into procedural color (0 = procedural only, 1 = full texture)',
+            shortLabel: 'Tex Blend',
+            apply: (v, sys) => {
+                const tbs = sys.textureBlendingSystem;
+                if (tbs) tbs.setBiomeTextureBlend(v);
+            }
+        });
+
         // --- Biome Modifier Stack ---
         reg('biomeModifierStack', {
             category: 'blending', type: 'modifierStack',
@@ -1670,9 +1862,30 @@ class ParameterSystem {
                 if (!tbs || !tbs.shaderMaterial) return;
                 const stack = (v instanceof ModifierStack) ? v : ModifierStack.defaultStack();
                 const legacy = stack.toLegacyUniforms();
+                const edgeIdx = legacy._edgeIndex || 0;
+                const edgeMode = legacy._edgeMode || 0;
+                // Update mode for the target edge
+                if (tbs.shaderMaterial.uniforms.uBiomeEdgeModes) {
+                    const arr = tbs.shaderMaterial.uniforms.uBiomeEdgeModes.value;
+                    if (arr && arr.length > edgeIdx) {
+                        arr[edgeIdx] = edgeMode;
+                        tbs.shaderMaterial.uniforms.uBiomeEdgeModes.needsUpdate = true;
+                    }
+                }
+                // Update other array uniforms for the target edge
                 Object.entries(legacy).forEach(([uniform, val]) => {
-                    if (tbs.shaderMaterial.uniforms[uniform]) {
-                        tbs.shaderMaterial.uniforms[uniform].value = val;
+                    if (uniform.startsWith('_')) return;
+                    const u = tbs.shaderMaterial.uniforms[uniform];
+                    if (u && u.value) {
+                        const arr = u.value;
+                        if (Array.isArray(arr) || arr instanceof Float32Array) {
+                            if (arr.length > edgeIdx) {
+                                arr[edgeIdx] = val;
+                                u.needsUpdate = true;
+                            }
+                        } else {
+                            u.value = val;
+                        }
                     }
                 });
             }
@@ -1787,6 +2000,7 @@ class ParameterSystem {
                     return;
                 }
                 withTemporalAA(taa => {
+                    taa._userDisabled = !v;
                     taa.setEnabled(!!v);
                     if (v) taa.resetHistory('param:enabled');
                 });
@@ -1901,10 +2115,9 @@ class ParameterSystem {
 
         // --- Tree ---
         reg('treeType', {
-            category: 'tree', type: 'select', default: 'none',
+            category: 'tree', type: 'select', default: 'billboard',
             description: 'Override all trees to one type',
             shortLabel: 'Type',
-            persist: false, // Never persist — always start with no trees, load on-demand via devtools
             options: [
                 { value: 'none', label: 'None' },
                 { value: 'default', label: 'Default' },
@@ -1912,6 +2125,7 @@ class ParameterSystem {
                 { value: 'terrain', label: 'Canopy' },
                 { value: 'growing', label: 'Growing' },
                 { value: 'cherry', label: 'Cherry' },
+                { value: 'realistic', label: 'Realistic' },
                 { value: 'billboard', label: 'Illuminated Trees' }
             ],
             apply: (v) => {
@@ -1930,8 +2144,8 @@ class ParameterSystem {
                 const globalWind = ps ? ps.getParameter('windSpeed') : 1.0;
                 const finalWind = globalWind * v;
                 if (!htm) return;
-                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem].forEach((sys, i) => {
-                    const names = ['terrain','growing','poplar','cherry','billboard'];
+                [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem, htm.realisticTreeSystem].forEach((sys, i) => {
+                    const names = ['terrain','growing','poplar','cherry','billboard','realistic'];
                     if (sys && sys.windUniforms && sys.windUniforms.uWindStrength) {
                         sys.windUniforms.uWindStrength.value = finalWind;
                     }
@@ -1946,7 +2160,7 @@ class ParameterSystem {
                 const htm = window.game && window.game.hybridTreeManager;
                 if (!htm) return;
                 let setCount = 0;
-                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem];
+                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem, htm.realisticTreeSystem];
                 systems.forEach(sys => {
                     if (!sys || !sys.parts) return;
                     sys.parts.forEach(part => {
@@ -1966,12 +2180,27 @@ class ParameterSystem {
             apply: (v) => {
                 const htm = window.game && window.game.hybridTreeManager;
                 if (!htm) return;
-                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem];
+                const systems = [htm.terrainTreeSystem, htm.growingTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.billboardTreeSystem, htm.realisticTreeSystem];
                 systems.forEach(sys => {
                     if (sys && typeof sys.setGlobalTreeSizeMult === 'function') {
                         sys.setGlobalTreeSizeMult(v);
                     }
                 });
+            }
+        });
+        reg('foliageSize', {
+            category: 'tree', type: 'number', default: 1.0, min: 0.2, max: 8.0, step: 0.05,
+            description: 'Foliage size multiplier (leaves/canopy only)',
+            shortLabel: 'Foliage',
+            apply: (v) => {
+                const htm = window.game && window.game.hybridTreeManager;
+                if (htm && htm.realisticTreeSystem && typeof htm.realisticTreeSystem.setFoliageSizeMult === 'function') {
+                    htm.realisticTreeSystem.setFoliageSizeMult(v);
+                }
+                const lts = window.game && window.game.localTreeSystem;
+                if (lts && typeof lts.setFoliageSizeMult === 'function') {
+                    lts.setFoliageSizeMult(v);
+                }
             }
         });
         reg('treeLODEnabled', {
@@ -2011,6 +2240,108 @@ class ParameterSystem {
                     lm.setGroupMaxVisible('poplarTrees', v);
                     lm.setGroupMaxVisible('cherryTrees', v);
                     lm.setGroupMaxVisible('billboardTrees', v);
+                }
+            }
+        });
+
+        // --- Tree Population ---
+        const treeBiomeNames = ['deep_water','shallow_water','beach','lowland','grassland','forest','mountain','snow'];
+        const _postBiomeChances = async (chances) => {
+            try {
+                const res = await fetch('/api/biome/tree-chances', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chances })
+                });
+                if (!res.ok) console.warn('[ParameterSystem] POST tree-chances failed:', res.status);
+            } catch (e) { console.warn('[ParameterSystem] POST tree-chances error:', e); }
+        };
+
+        reg('treeDensityMultiplier', {
+            category: 'tree', type: 'number', default: 1.0, min: 0, max: 5.0, step: 0.1,
+            description: 'Global multiplier for all biome tree densities (0 = no trees, 5 = 5x density)',
+            shortLabel: 'Density Mult',
+            apply: async (v) => {
+                console.log('[ParameterSystem] treeDensityMultiplier apply:', v);
+                const chances = {};
+                treeBiomeNames.forEach(b => chances[b] = v);
+                await _postBiomeChances(chances);
+            }
+        });
+
+        for (let i = 0; i < 8; i++) {
+            const biome = treeBiomeNames[i];
+            reg(`biomeTreeChance${i}`, {
+                category: 'tree', type: 'number', default: 1.0, min: 0, max: 5.0, step: 0.05,
+                description: `Tree chance multiplier for ${biome}`,
+                shortLabel: `${biome.substring(0,4)}Ch`,
+                apply: async (v) => {
+                    console.log(`[ParameterSystem] biomeTreeChance${i} (${biome}) apply:`, v);
+                    await _postBiomeChances({ [biome]: v });
+                }
+            });
+        }
+
+        reg('treeMinSlope', {
+            category: 'tree', type: 'number', default: 0, min: 0, max: 10, step: 0.5,
+            description: 'Reduce minimum slope requirement for tree spawning (higher = more flat-land trees)',
+            shortLabel: 'Slope Relax',
+            apply: async (v) => {
+                console.log('[ParameterSystem] treeMinSlope apply:', v);
+                try {
+                    const res = await fetch('/api/biome/tree-chances', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ minSlope: v })
+                    });
+                    if (!res.ok) console.warn('[ParameterSystem] POST minSlope failed:', res.status);
+                } catch (e) { console.warn('[ParameterSystem] POST minSlope error:', e); }
+            }
+        });
+
+        reg('flatTreeDensity', {
+            category: 'tree', type: 'number', default: 0.15, min: 0, max: 1.0, step: 0.05,
+            description: 'Random flat-terrain tree density as fraction of biome density (0 = only slope trees)',
+            shortLabel: 'Flat Dens',
+            apply: async (v) => {
+                console.log('[ParameterSystem] flatTreeDensity apply:', v);
+                try {
+                    const res = await fetch('/api/biome/tree-chances', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ flatTreeDensity: v })
+                    });
+                    if (!res.ok) console.warn('[ParameterSystem] POST flatTreeDensity failed:', res.status);
+                } catch (e) { console.warn('[ParameterSystem] POST flatTreeDensity error:', e); }
+            }
+        });
+
+        reg('treeUpright', {
+            category: 'tree', type: 'boolean', default: false,
+            description: 'Keep trees vertical instead of tilting to terrain normal',
+            shortLabel: 'Upright',
+            apply: (v) => {
+                console.log('[ParameterSystem] treeUpright apply:', v);
+                const htm = window.game && window.game.hybridTreeManager;
+                if (!htm) return;
+                [htm.terrainTreeSystem, htm.billboardTreeSystem, htm.poplarTreeSystem, htm.cherryTreeSystem, htm.growingTreeSystem, htm.realisticTreeSystem].forEach(sys => {
+                    if (!sys) return;
+                    if (typeof sys.updateTreeHeights === 'function') sys.updateTreeHeights();
+                    if (typeof sys.rebuildAllMatrices === 'function') sys.rebuildAllMatrices();
+                    else if (sys.treeCount > 0 && sys.treeData) {
+                        for (let i = 0; i < sys.treeCount; i++) {
+                            if (typeof sys.updateTreeInstanceMatrix === 'function') sys.updateTreeInstanceMatrix(i, sys.treeData[i]);
+                        }
+                    }
+                });
+            }
+        });
+
+        reg('billboardMaxInstances', {
+            category: 'tree', type: 'number', default: 1500, min: 500, max: 10000, step: 500,
+            description: 'Maximum billboard tree instances (recreates mesh)',
+            shortLabel: 'Max Inst',
+            apply: (v) => {
+                const htm = window.game && window.game.hybridTreeManager;
+                if (htm && htm.billboardTreeSystem && typeof htm.billboardTreeSystem.setMaxTrees === 'function') {
+                    htm.billboardTreeSystem.setMaxTrees(v);
                 }
             }
         });
@@ -2212,6 +2543,18 @@ class ParameterSystem {
             }
         });
 
+        // --- Lighting Rig ---
+        reg('lightingRig', {
+            category: 'rig', type: 'object', default: null, persist: true,
+            description: 'Lighting rig configuration (keyframes, enabled, preset)',
+            apply: (v) => {
+                const board = window.boardSystem;
+                if (board && board.lightingRig && v) {
+                    Object.assign(board.lightingRig, JSON.parse(JSON.stringify(v)));
+                }
+            }
+        });
+
         // --- Piece Model Overrides ---
         reg('pieceModelOverrides', {
             category: 'models', type: 'object', default: {}, persist: true,
@@ -2220,6 +2563,61 @@ class ParameterSystem {
                 if (window.game && window.game.piecesSystem) {
                     window.game.piecesSystem.glbModelCache.clear();
                 }
+            }
+        });
+
+        // --- Bridge ---
+        reg('bridgeBrickSize', {
+            category: 'bridge', type: 'number', default: 0.5, min: 0.1, max: 2.0, step: 0.05,
+            description: 'Brick size for bridge pier texture',
+            shortLabel: 'Brick Size',
+            apply: (v) => {
+                if (!window.bridgeSettings) window.bridgeSettings = {};
+                window.bridgeSettings.brickSize = v;
+            }
+        });
+        reg('bridgeBrickColor', {
+            category: 'bridge', type: 'color', default: '#8B4513',
+            description: 'Brick colour for bridge pier texture',
+            shortLabel: 'Brick Color',
+            apply: (v) => {
+                if (!window.bridgeSettings) window.bridgeSettings = {};
+                window.bridgeSettings.brickColor = v;
+            }
+        });
+        reg('bridgeMortarColor', {
+            category: 'bridge', type: 'color', default: '#C0C0C0',
+            description: 'Mortar colour for bridge pier texture',
+            shortLabel: 'Mortar Color',
+            apply: (v) => {
+                if (!window.bridgeSettings) window.bridgeSettings = {};
+                window.bridgeSettings.mortarColor = v;
+            }
+        });
+
+        // --- Shader Uniform Overrides ---
+        reg('shaderUniformOverrides', {
+            category: 'shader', type: 'object', default: {}, persist: true,
+            description: 'Shader uniform overrides by material',
+            apply: (v) => {
+                if (!window.materialRegistry || !v) return;
+                Object.entries(v).forEach(([matName, uniforms]) => {
+                    const entry = window.materialRegistry.materials.get(matName);
+                    if (!entry || !entry.definition || !entry.definition.uniforms) return;
+                    Object.entries(uniforms).forEach(([uName, uValue]) => {
+                        const uInfo = entry.definition.uniforms[uName];
+                        if (!uInfo) return;
+                        uInfo.value = uValue;
+                        const material = window.materialRegistry.createMaterial(matName);
+                        if (material && material.uniforms && material.uniforms[uName]) {
+                            if (Array.isArray(uValue)) {
+                                material.uniforms[uName].value.set(uValue[0], uValue[1], uValue[2]);
+                            } else {
+                                material.uniforms[uName].value = uValue;
+                            }
+                        }
+                    });
+                });
             }
         });
 
@@ -2620,7 +3018,7 @@ class ParameterSystem {
             shortLabel: 'Spawn Count'
         });
         reg('climateAgentCount', {
-            category: 'weather', type: 'number', default: 200, min: 0, max: 500, step: 10,
+            category: 'weather', type: 'number', default: 200, min: 20, max: 500, step: 10,
             description: 'Target number of climate agents in the environmental simulation',
             shortLabel: 'Agent Count',
             apply: (value) => {
@@ -2631,6 +3029,54 @@ class ParameterSystem {
                 }).catch(() => {});
             }
         });
+
+        // --- Weather Layer Toggles ---
+        reg('minimapWeatherPressure', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show pressure layer on minimap',
+            shortLabel: 'Pressure',
+            apply: (v) => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) { mo.weatherLayers.pressure = v; mo.requestRender(); }
+            }
+        });
+        reg('minimapWeatherMoisture', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show moisture layer on minimap',
+            shortLabel: 'Moisture',
+            apply: (v) => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) { mo.weatherLayers.moisture = v; mo.requestRender(); }
+            }
+        });
+        reg('minimapWeatherTemperature', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show temperature layer on minimap',
+            shortLabel: 'Temperature',
+            apply: (v) => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) { mo.weatherLayers.temperature = v; mo.requestRender(); }
+            }
+        });
+        reg('minimapWeatherFronts', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show weather fronts on minimap',
+            shortLabel: 'Fronts',
+            apply: (v) => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) { mo.weatherLayers.fronts = v; mo.requestRender(); }
+            }
+        });
+        reg('minimapWeatherIsobars', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show isobars on minimap',
+            shortLabel: 'Isobars',
+            apply: (v) => {
+                const mo = window.game?.minimapOverlay;
+                if (mo) { mo.weatherLayers.isobars = v; mo.requestRender(); }
+            }
+        });
+
         reg('weatherMoveScale', {
             category: 'weather', type: 'number', default: 1.0, min: 0.25, max: 4.0, step: 0.25,
             description: 'Multiplier for agent movement range. Higher = larger weather patterns',
@@ -2655,9 +3101,148 @@ class ParameterSystem {
                 }).catch(() => {});
             }
         });
+        reg('weatherWetnessIntensity', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 2, step: 0.1,
+            description: 'Multiplier for terrain wetness darkening',
+            shortLabel: 'Wetness Int'
+        });
+        reg('weatherLightBlockingIntensity', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 2, step: 0.1,
+            description: 'Multiplier for terrain light blocking',
+            shortLabel: 'Light Block Int'
+        });
+        reg('weatherFogDensityScale', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 2, step: 0.1,
+            description: 'Multiplier for fog plane density from weather snapshot',
+            shortLabel: 'Fog Scale'
+        });
+        reg('weatherCloudCoverageScale', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 2, step: 0.1,
+            description: 'Multiplier for sky cloud coverage / overcast darkening',
+            shortLabel: 'Cloud Scale'
+        });
+        reg('weatherStormWaveScale', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 3, step: 0.1,
+            description: 'Multiplier for storm-driven wave amplitude',
+            shortLabel: 'Wave Scale'
+        });
+        reg('weatherTreeWindScale', {
+            category: 'weather', type: 'number', default: 1.0, min: 0, max: 2, step: 0.1,
+            description: 'Multiplier for weather-driven tree wind',
+            shortLabel: 'Tree Wind Scale'
+        });
+
+        // --- Voxel Clouds ---
+        const cloudApply = () => (v, sys) => {
+            if (window.game && window.game.voxelCloudSystem) {
+                // Force grid rebuild on parameter change
+                window.game.voxelCloudSystem._lastGridOrigin = { x: Infinity, z: Infinity };
+            }
+        };
+        reg('voxelCloudEnabled', {
+            category: 'weather', type: 'boolean', default: true,
+            description: 'Enable voxel billboard cloud system',
+            shortLabel: 'Clouds',
+            rebuildCategory: true,
+            apply: cloudApply()
+        });
+        reg('voxelCloudQuality', {
+            category: 'weather', type: 'number', default: 2, min: 0, max: 6, step: 1,
+            description: 'Cloud quality level (0=lowest, 6=highest)',
+            shortLabel: 'Cloud Quality',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudBaseHeight', {
+            category: 'weather', type: 'number', default: 45, min: 10, max: 120, step: 5,
+            description: 'Cloud base height above terrain',
+            shortLabel: 'Cloud Height',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudRenderRadius', {
+            category: 'weather', type: 'number', default: 7, min: 3, max: 15, step: 1,
+            description: 'Cloud render radius in grid cells',
+            shortLabel: 'Cloud Radius',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudColor', {
+            category: 'weather', type: 'color', default: '#ffffff',
+            description: 'Cloud tint colour',
+            shortLabel: 'Cloud Color',
+            showIf: { param: 'voxelCloudEnabled', value: true }
+        });
+        reg('voxelCloudDebug', {
+            category: 'weather', type: 'boolean', default: false,
+            description: 'Show cloud position debug markers',
+            shortLabel: 'Cloud Debug',
+            showIf: { param: 'voxelCloudEnabled', value: true }
+        });
+        reg('voxelCloudSize', {
+            category: 'weather', type: 'number', default: 1.0, min: 0.2, max: 3.0, step: 0.1,
+            description: 'Cloud sprite size multiplier',
+            shortLabel: 'Cloud Size',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudDensity', {
+            category: 'weather', type: 'number', default: 1.0, min: 0.0, max: 2.0, step: 0.1,
+            description: 'Cloud spawn density threshold multiplier',
+            shortLabel: 'Cloud Density',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudVoxels', {
+            category: 'weather', type: 'number', default: 24, min: 8, max: 48, step: 2,
+            description: 'Billboards per cloud cluster',
+            shortLabel: 'Cloud Voxels',
+            showIf: { param: 'voxelCloudEnabled', value: true },
+            apply: cloudApply()
+        });
+        reg('voxelCloudRipple', {
+            category: 'weather', type: 'number', default: 1.0, min: 0.0, max: 3.0, step: 0.1,
+            description: 'Wind tearing / ripple strength',
+            shortLabel: 'Cloud Ripple',
+            showIf: { param: 'voxelCloudEnabled', value: true }
+        });
+        reg('voxelCloudJetstream', {
+            category: 'weather', type: 'number', default: 1.0, min: 0.0, max: 5.0, step: 0.1,
+            description: 'Cloud wind speed multiplier (jetstream)',
+            shortLabel: 'Cloud Speed',
+            showIf: { param: 'voxelCloudEnabled', value: true }
+        });
+        reg('voxelCloudProximityFade', {
+            category: 'weather', type: 'number', default: 60.0, min: 0, max: 300, step: 5,
+            description: 'Distance at which cloud billboards fade in from camera',
+            shortLabel: 'Cloud Prox Fade',
+            showIf: { param: 'voxelCloudEnabled', value: true }
+        });
 
         // --- Fog Plane (rolling quad with procedural animated splatter texture) ---
         const fogPlaneApply = () => (v, sys) => {
+            if (window.game && window.game.fogPlaneSystem) {
+                window.game.fogPlaneSystem.updateParameters();
+            }
+        };
+        const fogPlaneRadiusApply = (name) => (v, sys) => {
+            const ps = window.parameterSystem;
+            if (ps) {
+                const otherName = name === 'fogPlaneRadius' ? 'fogPlaneInnerRadius' : 'fogPlaneRadius';
+                const margin = 5;
+                const otherP = ps.params.get(otherName);
+                if (otherP) {
+                    if (name === 'fogPlaneRadius' && v <= otherP.value) {
+                        const newOther = Math.max(otherP.min, v - margin);
+                        otherP.value = newOther;
+                        ps._updateUI(otherName, newOther);
+                    } else if (name === 'fogPlaneInnerRadius' && v >= otherP.value) {
+                        const newOther = Math.min(otherP.max, v + margin);
+                        otherP.value = newOther;
+                        ps._updateUI(otherName, newOther);
+                    }
+                }
+            }
             if (window.game && window.game.fogPlaneSystem) {
                 window.game.fogPlaneSystem.updateParameters();
             }
@@ -2670,7 +3255,7 @@ class ParameterSystem {
             apply: fogPlaneApply()
         });
         reg('fogPlaneHeight', {
-            category: 'environment', type: 'number', default: 0.5, min: -2, max: 10, step: 0.1,
+            category: 'environment', type: 'number', default: 0.5, min: -2, max: 200, step: 0.1,
             description: 'Fog plane height above water',
             shortLabel: 'Height',
             showIf: { param: 'fogPlaneEnabled', value: true },
@@ -2681,14 +3266,14 @@ class ParameterSystem {
             description: 'Fog plane outer circular mask radius',
             shortLabel: 'Radius',
             showIf: { param: 'fogPlaneEnabled', value: true },
-            apply: fogPlaneApply()
+            apply: fogPlaneRadiusApply('fogPlaneRadius')
         });
         reg('fogPlaneInnerRadius', {
             category: 'environment', type: 'number', default: 60, min: 5, max: 280, step: 5,
             description: 'Fog plane inner radius where circular fade begins',
             shortLabel: 'Inner Radius',
             showIf: { param: 'fogPlaneEnabled', value: true },
-            apply: fogPlaneApply()
+            apply: fogPlaneRadiusApply('fogPlaneInnerRadius')
         });
         reg('fogPlaneNearDist', {
             category: 'environment', type: 'number', default: 10, min: 1, max: 100, step: 1,
@@ -3236,7 +3821,6 @@ class ParameterSystem {
             // Update defaultValue so reset brings you back here, not to hardcoded
             p.defaultValue = value;
             p.value = value;
-            p.userOverridden = true;
             p.lastModified = Date.now();
             p.modifiedBy = sourceLabel;
             if (this._debug) console.log(`[ParameterSystem._applySavedDefaults] ${name}: applying value=${value}`);

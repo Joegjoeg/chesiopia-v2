@@ -7,7 +7,9 @@ class NetworkManager {
         this.reconnectDelay = 1000;
         this.eventHandlers = new Map();
         this.consoleManager = null;
-        
+        this._qualityMonitorInterval = null;
+        this._pendingPongHandler = null;
+
         // Connection status
         this.status = {
             connected: false,
@@ -45,7 +47,7 @@ class NetworkManager {
             // Connect to server
             this.socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
-                timeout: 10000,
+                timeout: 20000,
                 forceNew: true,
                 auth: {
                     token: authToken
@@ -59,10 +61,10 @@ class NetworkManager {
             
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    console.error('[Network] Connection timeout after 10 seconds');
+                    console.error('[Network] Connection timeout after 20 seconds');
                     this.updateConnectionDebug('Connection timeout - server not responding');
                     reject(new Error('Connection timeout'));
-                }, 10000);
+                }, 20000);
                 
                 this.socket.on('connect', () => {
                     console.log('[Network] Socket.IO connected successfully!');
@@ -229,6 +231,29 @@ class NetworkManager {
             console.log('[Network] Server requested console logs');
             if (this.consoleManager) {
                 this.consoleManager.sendConsoleLogs();
+            }
+        });
+
+        // Remote terrain test runner
+        this.socket.on('runTerrainTests', () => {
+            console.log('[Network] Server requested terrain visual tests');
+            let results = null;
+            if (typeof runTerrainVisualTests === 'function') {
+                results = runTerrainVisualTests();
+            } else {
+                console.warn('[Network] runTerrainVisualTests not available');
+            }
+            // Send structured results back immediately
+            if (results) {
+                this.socket.emit('terrainTestResults', {
+                    passed: results.passed,
+                    failed: results.failed,
+                    total: results.total,
+                    failures: results.results.filter(r => !r.passed).map(r => `${r.category}/${r.test}: ${r.details}`)
+                });
+            }
+            if (this.consoleManager) {
+                setTimeout(() => this.consoleManager.sendConsoleLogs({ reason: 'terrain_tests' }), 500);
             }
         });
         
@@ -465,18 +490,34 @@ class NetworkManager {
     // Latency measurement
     measureLatency() {
         if (!this.connected) return null;
-        
+
+        // Remove any previously orphaned pong handler
+        if (this._pendingPongHandler) {
+            this.socket.off('pong', this._pendingPongHandler);
+            this._pendingPongHandler = null;
+        }
+
         const startTime = Date.now();
         this.emit('ping', { timestamp: startTime });
-        
-        // Listen for pong response
+
+        // Listen for pong response — always clean up after a timeout
         const onPong = (data) => {
-            const latency = Date.now() - data.timestamp;
             this.socket.off('pong', onPong);
+            this._pendingPongHandler = null;
+            const latency = Date.now() - data.timestamp;
             return latency;
         };
-        
+
+        this._pendingPongHandler = onPong;
         this.socket.on('pong', onPong);
+
+        // Failsafe: remove the handler if no pong arrives within 10s
+        setTimeout(() => {
+            if (this._pendingPongHandler === onPong) {
+                this.socket.off('pong', onPong);
+                this._pendingPongHandler = null;
+            }
+        }, 10000);
     }
     
     // Room management (for future multiplayer rooms)
@@ -537,12 +578,13 @@ class NetworkManager {
     // Connection quality monitoring
     startQualityMonitoring() {
         if (!this.connected) return;
-        
-        setInterval(() => {
+        if (this._qualityMonitorInterval) return; // already running
+
+        this._qualityMonitorInterval = setInterval(() => {
             const latency = this.measureLatency();
             if (latency) {
                 console.log(`Latency: ${latency}ms`);
-                
+
                 // Update connection quality indicator
                 if (latency < 100) {
                     this.updateStatus('Connected (Good)', true);
@@ -565,17 +607,27 @@ class NetworkManager {
     
     // Cleanup
     cleanup() {
+        if (this._qualityMonitorInterval) {
+            clearInterval(this._qualityMonitorInterval);
+            this._qualityMonitorInterval = null;
+        }
+
+        if (this._pendingPongHandler && this.socket) {
+            this.socket.off('pong', this._pendingPongHandler);
+            this._pendingPongHandler = null;
+        }
+
         if (this.consoleManager) {
             this.consoleManager.restoreConsole();
             this.consoleManager = null;
         }
-        
+
         if (this.socket) {
             this.socket.removeAllListeners();
             this.socket.disconnect();
             this.socket = null;
         }
-        
+
         this.eventHandlers.clear();
         this.connected = false;
         this.updateStatus('Disconnected', false);
