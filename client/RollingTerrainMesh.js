@@ -7,10 +7,11 @@
 //  No per-frame geometry recreation. No dynamic arrays. Minimal GC.
 
 class RollingTerrainMesh {
-    constructor(boardSystem, terrainSystem, options = {}) {
-        this.board    = boardSystem;
+    constructor(terrainSystem, options = {}) {
         this.terrain  = terrainSystem;
-        this.groundwaterSystem = null; // set externally
+        this._getHeightFn = options.getHeight || ((x, z) => this.terrain ? this.terrain.getHeight(x, z) : 0);
+        this._getColorFn  = options.getColor  || (() => ({ r: 1, g: 1, b: 1 }));
+        this._waterLevel  = options.waterLevel ?? -1.5;
         this.N        = options.gridSize        || 64;   // vertices per axis
         this.S        = options.cellSize        || 1;    // world units per cell
         this.threshold = options.thresholdCells || 12;  // safe-zone margin
@@ -32,7 +33,7 @@ class RollingTerrainMesh {
                 positions[i * 3 + 0] = x * this.S;
                 positions[i * 3 + 1] = 0;
                 positions[i * 3 + 2] = z * this.S;
-                // White — the shader generates checkerboard from world position
+                // Default white — will be overwritten by biome colors in initAt
                 colors[i * 3 + 0] = 1.0;
                 colors[i * 3 + 1] = 1.0;
                 colors[i * 3 + 2] = 1.0;
@@ -57,10 +58,45 @@ class RollingTerrainMesh {
         this.geometry.setAttribute('uv',       new THREE.BufferAttribute(uvs, 2));
         this.geometry.setAttribute('terrainCliff', new THREE.BufferAttribute(new Float32Array(vertCount), 1));
         this.geometry.setIndex(indices);
+        this.geometry.computeVertexNormals();
 
-        const material = options.material || new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            vertexColors: true,
+        const terrainVertexShader = `
+            attribute vec3 color;
+            varying vec3 vColor;
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            void main() {
+                vColor = color;
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vWorldPos = worldPos.xyz;
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+        `;
+        const terrainFragmentShader = `
+            varying vec3 vColor;
+            varying vec3 vNormal;
+            varying vec3 vWorldPos;
+            uniform float uWaterLevel;
+            uniform vec3 uLightDir;
+            void main() {
+                if (vWorldPos.y < uWaterLevel + 0.05) discard;
+                vec3 normal = normalize(vNormal);
+                vec3 light = normalize(uLightDir);
+                float diff = max(dot(normal, light), 0.0);
+                vec3 ambient = vColor * 0.4;
+                vec3 diffuse = vColor * diff * 0.6;
+                gl_FragColor = vec4(ambient + diffuse, 1.0);
+            }
+        `;
+        const terrainUniforms = {
+            uWaterLevel: { value: this._waterLevel },
+            uLightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() }
+        };
+        const material = options.material || new THREE.ShaderMaterial({
+            vertexShader: terrainVertexShader,
+            fragmentShader: terrainFragmentShader,
+            uniforms: terrainUniforms,
             side: THREE.DoubleSide
         });
 
@@ -71,7 +107,7 @@ class RollingTerrainMesh {
 
         // Water plane — match terrain size exactly (quad aligned with terrain grid)
         const terrainSize = (this.N - 1) * this.S;
-        this.waterRadius = terrainSize * 0.5; // half-size for the square mesh function
+        this.waterRadius = terrainSize * 1.5; // 3x terrain diameter so ocean extends well beyond islands
         this.waterGeoFadeWidth = options.waterGeoFadeWidth || 5.0;
         this.waterResolution = this.N; // match terrain grid resolution
         const waterGeometry = this._createSquareWaterMesh(this.waterRadius, this.waterResolution);
@@ -84,7 +120,7 @@ class RollingTerrainMesh {
             uReflectionEnabled: { value: 0.0 },
             uTextureMatrix:     { value: new THREE.Matrix4() },
             uWaterColor:        { value: new THREE.Color(0x3388cc) },
-            uOpacity:           { value: 0.45 },
+            uOpacity:           { value: 0.7 },
             uRoughness:         { value: 0.05 },
             uMetalness:         { value: 0.7 },
             uTime:              { value: 0.0 },
@@ -103,7 +139,7 @@ class RollingTerrainMesh {
             fogColor:           { value: new THREE.Color(0x808080) },
             fogNear:            { value: 20 },
             fogFar:             { value: 60 },
-            fogEnabled:         { value: 1.0 },
+            fogEnabled:         { value: 0.0 },
             // Unified Gerstner wave parameters (single source of truth)
             uWaveK:             { value: new Float32Array(10) },     // 5 harmonics × 2
             uWaveAmp:           { value: new Float32Array(5) },
@@ -310,16 +346,8 @@ class RollingTerrainMesh {
                 float sparkle = pow(max(dot(normal, normalize(lightDir + vec3(0.0, 0.3, 0.0))), 0.0), 64.0);
                 color += vec3(0.8, 0.9, 1.0) * sparkle * uWaveSparkle * (1.0 - uRoughness);
 
-                if (uReflectionEnabled > 0.5) {
-                    vec2 reflectionUv = vReflectionUv.xy / vReflectionUv.w;
-                    reflectionUv.y = 1.0 - reflectionUv.y;
-                    vec3 reflectionColor = texture(uReflectionMap, reflectionUv).rgb;
-
-                    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), uWaveFresnelPower);
-                    fresnel = clamp(fresnel, 0.0, 1.0);
-
-                    color = mix(color, reflectionColor, fresnel * uReflectionEnabled);
-                }
+                // Reflections disabled — skip texture() to avoid WebGL 1.0
+                // uniform-dependent-branch compilation error
 
                 // Full terrain coverage - no edge fade needed
                 float finalOpacity = uOpacity;
@@ -343,7 +371,7 @@ class RollingTerrainMesh {
         });
         this.waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
         this.waterMesh.name = 'waterPlane';
-        this.waterMesh.renderOrder = 1; // after terrain, before transparent trees
+        this.waterMesh.renderOrder = -1; // render before terrain so it shows through discarded underwater fragments
         this.waterMesh.receiveShadow = true;
         this.waterMesh.castShadow    = false;
         this.waterOffset = options.waterOffset ?? 0.03;
@@ -384,6 +412,7 @@ class RollingTerrainMesh {
             heights: new Float32Array(this.N * this.N),
             depths:  new Float32Array(this.N * this.N),
             cliffs:  new Float32Array(this.N * this.N),
+            colors:  new Float32Array(this.N * this.N * 3),
         };
 
         // Throttled logging
@@ -466,12 +495,11 @@ class RollingTerrainMesh {
     }
 
     _height(worldX, worldZ) {
-        return this.board.getUnifiedTerrainHeight(worldX, worldZ);
+        return this._getHeightFn(worldX, worldZ);
     }
 
     _currentWaterLevel() {
-        const boardLevel = (this.board && (this.board.tidalWaterLevel ?? this.board.waterLevel));
-        return boardLevel ?? -1.5;
+        return this._waterLevel;
     }
 
     _updateWaterBaseUniform() {
@@ -537,6 +565,7 @@ class RollingTerrainMesh {
 
         const pos = this.geometry.attributes.position.array;
         const waterLevel = this._currentWaterLevel();
+        const col = this.geometry.attributes.color.array;
         for (let zW = 0; zW < this.N; zW++) {
             for (let xW = 0; xW < this.N; xW++) {
                 const idx = this._bIndex(xW, zW);
@@ -545,9 +574,14 @@ class RollingTerrainMesh {
                 const h = this._height(wX, wZ);
                 pos[idx * 3 + 1] = h;
                 this.terrainHeights[idx] = h;
+                const c = this._getColorFn(wX, wZ);
+                col[idx * 3 + 0] = c.r;
+                col[idx * 3 + 1] = c.g;
+                col[idx * 3 + 2] = c.b;
             }
         }
         this.geometry.attributes.position.needsUpdate = true;
+        this.geometry.attributes.color.needsUpdate = true;
 
         // Sync water plane — flat at water level
         const waterPos = this.waterMesh.geometry.attributes.position.array;
@@ -575,20 +609,7 @@ class RollingTerrainMesh {
         // Sync camera height to water shader for spherical deformation
         this.waterUniforms.uCameraHeight.value = cameraPos.y;
 
-        // Sync spherical deformation params from texture blending system (if available)
-        const tbs = this.board && this.board.textureBlendingSystem;
-        if (tbs) {
-            const mat = tbs.shaderMaterial;
-            if (mat && mat.uniforms) {
-                const src = mat.uniforms;
-                if (src.uSphereRadius) this.waterUniforms.uSphereRadius.value = src.uSphereRadius.value;
-                if (src.uDeformStartHeight) this.waterUniforms.uDeformStartHeight.value = src.uDeformStartHeight.value;
-                if (src.uDeformEndHeight) this.waterUniforms.uDeformEndHeight.value = src.uDeformEndHeight.value;
-                if (src.uEnableSpherical) this.waterUniforms.uEnableSpherical.value = src.uEnableSpherical.value;
-                if (src.uCurvatureScale) this.waterUniforms.uCurvatureScale.value = src.uCurvatureScale.value;
-                if (src.uPlanetCenter) this.waterUniforms.uPlanetCenter.value.copy(src.uPlanetCenter.value);
-            }
-        }
+        // Spherical deformation params removed with texture blending system
 
         // Position water mesh centered on terrain center (follows landscape, not camera)
         if (this.waterMesh) {
@@ -674,6 +695,7 @@ class RollingTerrainMesh {
         if (localMinX > localMaxX || localMinZ > localMaxZ) return 0;
 
         const pos = this.geometry.attributes.position.array;
+        const col = this.geometry.attributes.color.array;
         const waterLevel = this._currentWaterLevel();
         let touched = 0;
         for (let zW = localMinZ; zW <= localMaxZ; zW++) {
@@ -684,11 +706,16 @@ class RollingTerrainMesh {
                 const h = this._height(wX, wZ);
                 pos[idx * 3 + 1] = h;
                 this.terrainHeights[idx] = h;
+                const c = this._getColorFn(wX, wZ);
+                col[idx * 3 + 0] = c.r;
+                col[idx * 3 + 1] = c.g;
+                col[idx * 3 + 2] = c.b;
                 touched++;
             }
         }
         if (touched > 0) {
             this.geometry.attributes.position.needsUpdate = true;
+            this.geometry.attributes.color.needsUpdate = true;
             // NOTE: skipping computeVertexNormals for small region refreshes —
             // saves ~14ms per call. Normals from init/_roll are close enough
             // for 16×16 chunk patches in a 576×576 mesh.
@@ -768,6 +795,9 @@ class RollingTerrainMesh {
             temp.y[i]       = pos[i * 3 + 1];
             temp.heights[i] = this.terrainHeights[i];
             temp.cliffs[i]  = this.geometry.attributes.terrainCliff.array[i];
+            temp.colors[i * 3 + 0] = this.geometry.attributes.color.array[i * 3 + 0];
+            temp.colors[i * 3 + 1] = this.geometry.attributes.color.array[i * 3 + 1];
+            temp.colors[i * 3 + 2] = this.geometry.attributes.color.array[i * 3 + 2];
         }
 
         // Move origin (mesh stays at origin in world space)
@@ -793,18 +823,26 @@ class RollingTerrainMesh {
                     pos[newIdx * 3 + 1] = temp.y[oldIdx];
                     this.terrainHeights[newIdx] = temp.heights[oldIdx];
                     this.geometry.attributes.terrainCliff.array[newIdx] = temp.cliffs[oldIdx];
+                    this.geometry.attributes.color.array[newIdx * 3 + 0] = temp.colors[oldIdx * 3 + 0];
+                    this.geometry.attributes.color.array[newIdx * 3 + 1] = temp.colors[oldIdx * 3 + 1];
+                    this.geometry.attributes.color.array[newIdx * 3 + 2] = temp.colors[oldIdx * 3 + 2];
                 } else {
-                    // Newly exposed edge: sample terrain height
+                    // Newly exposed edge: sample terrain height and biome color
                     const wX = this.originX + xW;
                     const wZ = this.originZ + zW;
                     const h = this._height(wX, wZ);
                     pos[newIdx * 3 + 1] = h;
                     this.terrainHeights[newIdx] = h;
+                    const c = this._getColorFn(wX, wZ);
+                    this.geometry.attributes.color.array[newIdx * 3 + 0] = c.r;
+                    this.geometry.attributes.color.array[newIdx * 3 + 1] = c.g;
+                    this.geometry.attributes.color.array[newIdx * 3 + 2] = c.b;
                 }
             }
         }
 
         this.geometry.attributes.position.needsUpdate = true;
+        this.geometry.attributes.color.needsUpdate = true;
         this._computeCliffMasks();
 
         // Sync water plane — flat at water level (X/Z are static, only Y changes)
@@ -827,9 +865,7 @@ class RollingTerrainMesh {
         // const camStr = cameraPos ? `camera(${cameraPos.x.toFixed(1)},${cameraPos.z.toFixed(1)}) ` : '';
         // this._log('roll', `dx=${dx} dz=${dz} origin=(${this.originX},${this.originZ}) ${camStr}corners NW${c.nw} NE${c.ne} SW${c.sw} SE${c.se}`);
 
-        if (typeof this.board.onTerrainRolled === 'function') {
-            this.board.onTerrainRolled(dx, dz, this.originX, this.originZ);
-        }
+        // Terrain rolled callback removed with board system
     }
 
     // Average world position of the four corner vertices.
@@ -943,10 +979,6 @@ class RollingTerrainMesh {
         this.waterUniforms.uWaveSteepness.value = this.waveConfig.steepness;
     }
 
-    setGroundwaterSystem(groundwaterSystem) {
-        this.groundwaterSystem = groundwaterSystem;
-    }
-
     setWeatherSnapshot(snapshot) {
         if (!snapshot) return;
         this.windDir.set(Math.cos(snapshot.windDirection), Math.sin(snapshot.windDirection));
@@ -983,17 +1015,7 @@ class RollingTerrainMesh {
             const wz = worldZ + vz;
             const h = this._height(wx, wz);
 
-            // Check for local groundwater pool
-            let effectiveWaterLevel = waterLevel;
-            if (this.groundwaterSystem) {
-                const surfaceWater = this.groundwaterSystem.getSurfaceWater(wx, wz);
-                if (surfaceWater > 0.02) {
-                    // Pool exists: water surface is at terrain height + pool depth
-                    effectiveWaterLevel = h + surfaceWater;
-                }
-            }
-
-            depths[i] = effectiveWaterLevel - h;
+            depths[i] = waterLevel - h;
 
             if (depths[i] > 0) hasWater = true;
             if (depths[i] < 0) hasLand = true;
@@ -1019,7 +1041,7 @@ class RollingTerrainMesh {
                 { x: 0, z: -sampleDist }
             ];
             for (const d of dirs) {
-                const h = this._height(cameraX + d.x, cameraZ + d.z);
+                const h = this._height(originX + d.x, originZ + d.z);
                 const depth = waterLevel - h;
                 if (hasLand && depth > 0) {
                     closestShorelineDist = sampleDist;

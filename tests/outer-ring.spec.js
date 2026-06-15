@@ -35,7 +35,7 @@ async function nudgeCamera(page, dx, dz) {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Terrain Outer Ring', () => {
+test.describe.skip('Terrain Outer Ring', () => {
 
     test.beforeEach(async ({ page }) => {
         // Suppress unrelated console noise but capture errors

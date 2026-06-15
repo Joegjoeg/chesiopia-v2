@@ -39,17 +39,11 @@ class NetworkManager {
             const serverUrl = this.getServerUrl();
             console.log('[Network] Starting connection to', serverUrl, '...');
             
-            // Get auth token if available
-            const authToken = window.authState ? window.authState.getToken() : null;
-            
             // Connect to server
             this.socket = io(serverUrl, {
                 transports: ['websocket', 'polling'],
                 timeout: 10000,
-                forceNew: true,
-                auth: {
-                    token: authToken
-                }
+                forceNew: true
             });
             
             console.log('[Network] Socket.IO instance created:', this.socket);
@@ -67,7 +61,6 @@ class NetworkManager {
                 this.socket.on('connect', () => {
                     console.log('[Network] Socket.IO connected successfully!');
                     clearTimeout(timeout);
-                    this.onConnected();
                     this.updateConnectionDebug('Connected to server successfully');
                     resolve();
                 });
@@ -75,14 +68,8 @@ class NetworkManager {
                 this.socket.on('connect_error', (error) => {
                     console.error('[Network] Socket.IO connection error:', error);
                     clearTimeout(timeout);
-                    this.onConnectionError(error);
                     this.updateConnectionDebug('Connection error: ' + error.message);
                     reject(error);
-                });
-                
-                this.socket.on('disconnect', (reason) => {
-                    console.log('[Network] Socket.IO disconnected:', reason);
-                    this.updateConnectionDebug('Disconnected: ' + reason);
                 });
             });
             
@@ -128,162 +115,24 @@ class NetworkManager {
             this.onReconnectFailed();
         });
         
-        // Game events - with debug logging
-        this.socket.on('gameState', (data) => {
-            console.log('[Network] === RECEIVED GAME STATE EVENT ===');
-            console.log('[Network] Game state data:', data);
-            this.triggerEvent('gameState', data);
+        // Keep worldRegenerated for terrain reset
+        this.socket.on('worldRegenerated', (data) => {
+            console.log('[Network] Received worldRegenerated:', data);
+            this.triggerEvent('worldRegenerated', data);
         });
-        
-        this.socket.on('pieceMoved', (data) => {
-            console.log('[Network] Received pieceMoved event:', data);
-            this.triggerEvent('pieceMoved', data);
-        });
-        
-        this.socket.on('pieceAdded', (data) => {
-            console.log('[Network] === PIECE ADDED EVENT RECEIVED ===');
-            console.log('[Network] Piece data:', data);
-            console.log('[Network] Socket ID:', this.socket.id);
-            this.triggerEvent('pieceAdded', data);
-        });
-        
-        this.socket.on('piecePurchased', (data) => {
-            console.log('[Network] Received piecePurchased event:', data);
-            this.triggerEvent('piecePurchased', data);
-        });
-        
-        this.socket.on('playerJoined', (data) => {
-            console.log('[Network] Received playerJoined event:', data);
-            this.triggerEvent('playerJoined', data);
-        });
-        
-        // Server error events
-        this.socket.on('server-error', (errorData) => {
-            console.log('[Network] Received server-error event:', errorData);
-            
-            // Forward to server error display if available
-            if (window.serverErrorDisplay) {
-                window.serverErrorDisplay.addError(errorData);
-            }
-            
-            // Also trigger as regular event for other handlers
-            this.triggerEvent('server-error', errorData);
-        });
-        
-        // Client error events (forwarded from client)
-        this.socket.on('client-error', (errorData) => {
-            console.log('[Network] Received client-error event:', errorData);
-            
-            // Forward to server error display if available
-            if (window.serverErrorDisplay) {
-                window.serverErrorDisplay.addError(errorData);
-            }
-            
-            // Also trigger as regular event for other handlers
-            this.triggerEvent('client-error', errorData);
-        });
-        
-        this.socket.on('playerDisconnected', (data) => {
-            console.log('[Network] Received playerDisconnected event:', data);
-            this.triggerEvent('playerDisconnected', data);
-        });
-        
-        this.socket.on('gameOver', (data) => {
-            console.log('[Network] Received gameOver event:', data);
-            this.triggerEvent('gameOver', data);
-        });
-        
-        this.socket.on('moveInvalid', (data) => {
-            console.log('[Network] Received moveInvalid event:', data);
-            this.triggerEvent('moveInvalid', data);
-        });
-        
-        this.socket.on('purchaseFailed', (data) => {
-            console.log('[Network] Received purchaseFailed event:', data);
-            this.triggerEvent('purchaseFailed', data);
-        });
-        
-        this.socket.on('coveringSet', (data) => {
-            console.log('[Network] Received coveringSet event:', data);
-            this.triggerEvent('coveringSet', data);
-        });
-        
-        this.socket.on('coveringFailed', (data) => {
-            console.log('[Network] Received coveringFailed event:', data);
-            this.triggerEvent('coveringFailed', data);
-        });
-        
-        // Game time sync from server
-        this.socket.on('timeSync', (data) => {
-            this.triggerEvent('timeSync', data);
-        });
-        
+
         // Error events
         this.socket.on('error', (error) => {
             console.log('[Network] Received error event:', error);
             this.onError(error);
         });
-        
+
         // Console logs request handler
         this.socket.on('requestConsoleLogs', () => {
             console.log('[Network] Server requested console logs');
             if (this.consoleManager) {
                 this.consoleManager.sendConsoleLogs();
             }
-        });
-
-        // Remote terrain test runner
-        this.socket.on('runTerrainTests', () => {
-            console.log('[Network] Server requested terrain visual tests');
-            let results = null;
-            if (typeof runTerrainVisualTests === 'function') {
-                results = runTerrainVisualTests();
-            } else {
-                console.warn('[Network] runTerrainVisualTests not available');
-            }
-            // Send structured results back immediately
-            if (results) {
-                this.socket.emit('terrainTestResults', {
-                    passed: results.passed,
-                    failed: results.failed,
-                    total: results.total,
-                    failures: results.results.filter(r => !r.passed).map(r => `${r.category}/${r.test}: ${r.details}`)
-                });
-            }
-            if (this.consoleManager) {
-                setTimeout(() => this.consoleManager.sendConsoleLogs({ reason: 'terrain_tests' }), 500);
-            }
-        });
-        
-        // Settlement events (server-authoritative villages)
-        this.socket.on('settlementsReceived', (data) => {
-            // console.log('[Network] settlementsReceived socket event, villages:', data?.villages?.length);
-            this.triggerEvent('settlementsReceived', data);
-        });
-
-        this.socket.on('tomeUpdate', (data) => {
-            this.triggerEvent('tomeUpdate', data);
-        });
-
-        this.socket.on('buildingStarted', (data) => {
-            this.triggerEvent('buildingStarted', data);
-        });
-
-        this.socket.on('terrainModified', (data) => {
-            this.triggerEvent('terrainModified', data);
-        });
-
-        this.socket.on('worldRegenerated', (data) => {
-            console.log('[Network] Received worldRegenerated:', data);
-            this.triggerEvent('worldRegenerated', data);
-        });
-
-        this.socket.on('envAgents', (data) => {
-            this.triggerEvent('envAgents', data);
-        });
-
-        this.socket.on('envFields', (data) => {
-            this.triggerEvent('envFields', data);
         });
 
         console.log('[Network] All socket events set up');
@@ -298,13 +147,10 @@ class NetworkManager {
         // Initialize console manager after connection
         this.initializeConsoleManager();
         
-        // Join game with authenticated user info
-        const user = window.authState ? window.authState.getUser() : null;
+        // Join game — stripped of auth
         const playerData = {
-            name: user ? user.username : this.getPlayerName(),
-            color: this.getPlayerColor(),
-            userId: user ? user.id : null,
-            role: user ? user.role : 'guest'
+            name: this.getPlayerName(),
+            color: this.getPlayerColor()
         };
         console.log('[Network] Emitting joinGame with data:', playerData);
         this.emit('joinGame', playerData);
@@ -403,31 +249,7 @@ class NetworkManager {
     joinGame(playerData) {
         this.emit('joinGame', playerData);
     }
-    
-    movePiece(pieceId, fromX, fromZ, toX, toZ) {
-        this.emit('movePiece', {
-            pieceId: pieceId,
-            fromX: fromX,
-            fromZ: fromZ,
-            toX: toX,
-            toZ: toZ
-        });
-    }
-    
-    purchasePiece(pieceType, playerId) {
-        this.emit('purchasePiece', {
-            pieceType: pieceType,
-            playerId: playerId
-        });
-    }
-    
-    setCovering(coveringPieceId, coveredPieceId) {
-        this.emit('setCovering', {
-            coveringPieceId: coveringPieceId,
-            coveredPieceId: coveredPieceId
-        });
-    }
-    
+
     // Utility methods
     getPlayerName() {
         // Try to get name from localStorage or use default
@@ -519,33 +341,6 @@ class NetworkManager {
         });
     }
     
-    // Spectator mode
-    spectateGame(gameId) {
-        this.emit('spectate', { gameId });
-    }
-    
-    stopSpectating() {
-        this.emit('stopSpectating');
-    }
-    
-    // Game state requests
-    requestGameState() {
-        this.emit('requestGameState');
-    }
-    
-    requestPlayerList() {
-        this.emit('requestPlayerList');
-    }
-    
-    // Temporary reset command
-    resetGame() {
-        console.log('[Network] Requesting game reset from client');
-        console.log('[Network] Socket connected:', this.connected);
-        console.log('[Network] Socket ID:', this.socket?.id);
-        this.emit('resetGame');
-        console.log('[Network] Reset request sent to server');
-    }
-    
     // Error handling
     handleNetworkError(error) {
         console.error('Network error:', error);
@@ -604,3 +399,5 @@ class NetworkManager {
         this.updateStatus('Disconnected', false);
     }
 }
+
+window.NetworkManager = NetworkManager;

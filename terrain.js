@@ -6,9 +6,6 @@ class TerrainGenerator {
         this.maxCacheSize = 10000;
         this.seed = null;
 
-        this.climateMemory = null;
-        this.climateInference = null;
-        
         // Water table constants
         this.waterLevel = -1.5;       // Shallow water: wading allowed
         this.deepWaterLevel = -3.0;   // Deep water: movement blocked
@@ -55,20 +52,6 @@ class TerrainGenerator {
         // Planet mapping for coordinate wrapping
         this.planetMapping = null;
 
-        // Celestial double-pendulum terrain generation (deprecated by climate fields)
-        this.celestialPendulum = {
-            enabled: false,
-            r1: 12,
-            r2: 8,
-            sunAngle: 0,
-            moonAngle: 0,
-            freqX: 0.025,
-            freqZ: 0.018,
-            noiseBlend: 0.25,
-            sunHeightScale: 1.0,
-            moonHeightScale: 1.0
-        };
-
         // Probe system: pre-committed height constraints for blend zones
         this.probes = new Map();
         this.probeInfluenceRadius = 48;
@@ -76,11 +59,6 @@ class TerrainGenerator {
         // Simple noise implementation - will be initialized with seed
         this.permutation = [];
         this.generatePermutation();
-    }
-
-    setClimateMemory(climateMemory, climateInference) {
-        this.climateMemory = climateMemory;
-        this.climateInference = climateInference;
     }
 
     setPlanetMapping(planetMapping) {
@@ -125,56 +103,10 @@ class TerrainGenerator {
         };
     }
     
-    setCelestialAngles(sunAngle, moonAngle) {
-        this.celestialPendulum.sunAngle = sunAngle;
-        this.celestialPendulum.moonAngle = moonAngle;
-    }
-
-    setOrbitHeightScales(sunScale, moonScale) {
-        const clampScale = (value, fallback) => {
-            const num = Number(value);
-            if (!Number.isFinite(num)) return fallback;
-            return Math.max(0, Math.min(4, num));
-        };
-
-        const cp = this.celestialPendulum;
-        const nextSun = clampScale(sunScale, cp.sunHeightScale ?? 1);
-        const nextMoon = clampScale(moonScale, cp.moonHeightScale ?? 1);
-
-        cp.sunHeightScale = nextSun;
-        cp.moonHeightScale = nextMoon;
-
-        console.log(`[TerrainGenerator] Orbit height scales updated: sun=${nextSun}, moon=${nextMoon}`);
-        this.clearCache();
-    }
-
-    getPendulumHeight(x, z) {
-        const cp = this.celestialPendulum;
-        const sunPhase  = cp.sunAngle  + x * cp.freqX + z * cp.freqZ;
-        const moonPhase = cp.moonAngle + x * cp.freqZ * 1.3 - z * cp.freqX * 0.7;
-        const sunScale = cp.sunHeightScale ?? 1;
-        const moonScale = cp.moonHeightScale ?? 1;
-        const h1 = cp.r1 * Math.sin(sunPhase) * sunScale;
-        const h2 = h1 + (cp.r2 * Math.sin(moonPhase) * moonScale);
-        return -h2;
-    }
-
-    getNaturalHeight(x, z) {
-        const pendulum = this.getPendulumHeight(x, z);
-        if (this.celestialPendulum.noiseBlend > 0) {
-            const noise = this.simplexNoise(
-                x * this.noiseScale * 2,
-                z * this.noiseScale * 2
-            ) * this.celestialPendulum.noiseBlend * this.heightScale * 0.5;
-            return pendulum + noise;
-        }
-        return pendulum;
-    }
-
     registerProbe(x, z, options = {}) {
         const key = `${x},${z}`;
         if (this.probes.has(key)) return this.probes.get(key).height;
-        const height = this.getNaturalHeight(x, z);
+        const height = this.getRawHeight(x, z);
         const probe = {
             x, z, height,
             radius: options.radius || this.probeInfluenceRadius,
@@ -198,100 +130,50 @@ class TerrainGenerator {
         return results;
     }
 
-    getRawHeight(x, y) {
-        if (!this.climateMemory || !this.climateInference) {
-            return this._getLegacyHeight(x, y);
-        }
-
-        const climate = this.climateMemory.sampleClimateSmoothed(x, y) || { pressure: 0.5, humidity: 0.5, temperature: 0.5, pressureVariance: 0, sampleCount: 0 };
-        if ((climate.sampleCount ?? 0) < 5) {
-            return this._getLegacyHeight(x, y);
-        }
-
-        const evidence = this.climateInference.infer({
-            pressure: climate.pressure,
-            humidity: climate.humidity,
-            temperature: climate.temperature,
-            pressureVariance: climate.pressureVariance || 0
-        });
-
-        const freqBias = Math.max(0.5, 1 + evidence.mountainEvidence * 0.4 - evidence.basinEvidence * 0.2);
-        const amplitudeScale = Math.max(0.3, 0.6 + evidence.mountainEvidence * 0.8 + evidence.hillEvidence * 0.4 - evidence.basinEvidence * 0.3);
+    getRawHeight(x, z) {
+        // Domain-warped fractal noise — no weather/climate dependency
+        const warpX = this.simplexNoise(x * 0.005 + 100, z * 0.005) * 30;
+        const warpZ = this.simplexNoise(x * 0.005, z * 0.005 + 100) * 30;
 
         let height = 0;
         let amplitude = 1;
         let frequency = 1;
         let maxValue = 0;
 
-        for (let i = 0; i < 4; i++) {
-            height += this.simplexNoise(
-                x * this.noiseScale * frequency * freqBias,
-                y * this.noiseScale * frequency * freqBias
-            ) * amplitude;
+        for (let i = 0; i < 5; i++) {
+            let n = this.simplexNoise(
+                (x + warpX) * this.noiseScale * frequency,
+                (z + warpZ) * this.noiseScale * frequency
+            );
+            // Ridge noise for first 2 octaves (mountain shapes)
+            if (i < 2) {
+                n = 1 - Math.abs(n);
+            }
+            height += n * amplitude;
             maxValue += amplitude;
-            amplitude *= 0.5;
-            frequency *= 2;
-        }
-
-        height = (height / maxValue) * this.heightScale * amplitudeScale;
-
-        // Basins carve downward, mountains push upward via amplitudeScale
-        height -= evidence.basinEvidence * 3.0;
-
-        // Marsh evidence pulls terrain toward water level for flatter wetlands
-        if (evidence.marshEvidence > 0) {
-            const marsh = evidence.marshEvidence;
-            const marshTarget = this.waterLevel - 0.5;
-            height = height * (1 - marsh) + marshTarget * marsh;
-        }
-
-        return height;
-    }
-
-    _getLegacyHeight(x, y) {
-        if (this.celestialPendulum.enabled) {
-            return this.getNaturalHeight(x, y);
-        }
-        let height = 0;
-        let amplitude = 1;
-        let frequency = 1;
-        let maxValue = 0;
-
-        for (let i = 0; i < 4; i++) {
-            height += this.simplexNoise(
-                x * this.noiseScale * frequency,
-                y * this.noiseScale * frequency
-            ) * amplitude;
-            maxValue += amplitude;
-            amplitude *= 0.5;
-            frequency *= 2;
+            amplitude *= 0.45;
+            frequency *= 2.1;
         }
 
         return (height / maxValue) * this.heightScale;
     }
     
     getHeight(x, y) {
-        // Wrap coordinates if planet mapping is active
         const wrapped = this._wrapCoords(x, y);
         x = wrapped.x;
         y = wrapped.z;
-
         const key = `${x},${y}`;
 
-        // Check settlement building overrides first
         if (this.heightModifications.has(key)) {
             return this.heightModifications.get(key);
         }
 
-        const canUseCache = !this.climateMemory;
-
-        // Check cache when climate is static
-        if (canUseCache && this.tileCache.has(key)) {
+        if (this.tileCache.has(key)) {
             return this.tileCache.get(key);
         }
 
         let finalHeight = this.getRawHeight(x, y);
-        
+
         // Blend toward nearby probes for smooth transitions
         const nearby = this.findNearbyProbes(x, y);
         if (nearby.length > 0) {
@@ -313,22 +195,18 @@ class TerrainGenerator {
                 finalHeight = blended;
             }
         }
-        
-        // Cache management
-        if (canUseCache && this.tileCache.size >= this.maxCacheSize) {
+
+        if (this.tileCache.size >= this.maxCacheSize) {
             const keysToDelete = Array.from(this.tileCache.keys()).slice(0, 1000);
             keysToDelete.forEach(k => this.tileCache.delete(k));
         }
-        
-        // Apply river channel carving if this tile is on a river
+
         const riverDepth = this.rivers.get(key);
         if (riverDepth) {
             finalHeight -= riverDepth;
         }
-        
-        if (canUseCache) {
-            this.tileCache.set(key, finalHeight);
-        }
+
+        this.tileCache.set(key, finalHeight);
         return finalHeight;
     }
     
@@ -579,23 +457,7 @@ class TerrainGenerator {
         return this.simplexNoise(x * scale + seed, z * scale + seed * 2.0);
     }
 
-    setGroundwaterSystem(groundwaterSystem) {
-        this.groundwaterSystem = groundwaterSystem;
-    }
-
     getBiomeType(height, x, z) {
-        // Check for local water pools first (dynamic biome)
-        if (this.groundwaterSystem && x !== undefined && z !== undefined) {
-            const surfaceWater = this.groundwaterSystem.getSurfaceWater(x, z);
-            if (surfaceWater > 0.3) {
-                return 'deep_water';
-            } else if (surfaceWater > 0.1) {
-                return 'shallow_water';
-            } else if (surfaceWater > 0.02) {
-                return 'beach'; // dynamic beach around pool edge
-            }
-        }
-
         // Height-based biome classification with optional patch noise
         let effectiveHeight = height;
         if (this.biomePatchStrength > 0 && x !== undefined && z !== undefined) {
@@ -692,11 +554,10 @@ class TerrainGenerator {
                 
                 // Get height directly from noise function
                 const height = this.getHeight(worldX, worldZ);
-                const climate = this.climateMemory ? this.climateMemory.sampleClimate(worldX, worldZ) : null;
                 const isBlocked = this.isTileBlocked(worldX, worldZ);
                 const color = this.getBiomeColor(height, worldX, worldZ);
                 const biomeType = this.getBiomeType(height, worldX, worldZ);
-                
+
                 const waterState = this.getWaterState(height);
                 chunk.push({
                     x: worldX,
@@ -708,9 +569,9 @@ class TerrainGenerator {
                     biome: biomeType,
                     type: biomeType,
                     elevation: height,
-                    moisture: climate ? climate.humidity : this.getMoisture(worldX, worldZ, height),
-                    temperature: climate ? climate.temperature : this.getTemperature(worldX, worldZ, height),
-                    pressure: climate ? climate.pressure : 0.5
+                    moisture: this.getMoisture(worldX, worldZ, height),
+                    temperature: this.getTemperature(worldX, worldZ, height),
+                    pressure: 0.5
                 });
             }
         }

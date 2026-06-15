@@ -9,8 +9,8 @@ class TerrainSystem {
         this.treeSystem = treeSystem;
         this.chunks = new Map();
         this.loadingChunks = new Set(); // Track chunks currently being loaded
-        this.chunkSize = 32;
-        this.loadDistance = 4; // Roughly equivalent to previous 96u coverage
+        this.chunkSize = 16;
+        this.loadDistance = 6; // 6 * 16 = 96 unit coverage
         this.lastCameraChunk = { x: 0, z: 0 };
         this.worldDownloaded = false; // Flag to track if entire world has been downloaded
         this.onChunkLoaded = null; // Callback when a chunk is loaded
@@ -182,53 +182,37 @@ class TerrainSystem {
         // console.log(`[Terrain] Warm cache complete. Total chunks: ${this.chunks.size}`);
     }
     
-    getHeight(x, y) {
-        // If world not downloaded yet, return default height
-        if (!this.worldDownloaded) {
-            return 0; // Default height during world download
-        }
-        
-        // Get height from cached world data
+    _getTile(x, y) {
         const chunkX = Math.floor(x / this.chunkSize);
         const chunkZ = Math.floor(y / this.chunkSize);
         const chunkKey = `${chunkX},${chunkZ}`;
-        
         const chunk = this.chunks.get(chunkKey);
-        if (!chunk || !chunk.data) {
-            // Return default height without triggering chunk loading
-            // Chunk loading should be handled separately, not during height sampling
-            const tk = `${Math.floor(x)},${Math.floor(y)}`;
-            if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
-                this._debugLog('[TerrainDebug] getHeight miss', { world: tk, chunkKey });
-            }
-            return 0; // Default height if chunk not found
-        }
-
-        this._applyPendingDeltasForChunk(chunkKey);
-
-        // Find the specific tile in chunk
+        if (!chunk || !chunk.data) return null;
         const localX = Math.floor(x - (chunkX * this.chunkSize));
         const localZ = Math.floor(y - (chunkZ * this.chunkSize));
         const tileIndex = localZ * this.chunkSize + localX;
-        
-        const tile = chunk.data[tileIndex];
-        const tk = `${Math.floor(x)},${Math.floor(y)}`;
-        if (this.debug.enabled && this.debug.squareWatch.has(tk)) {
-            this._debugLog('[TerrainDebug] getHeight', { world: tk, chunkKey, localX, localZ, tileIndex, hasTile: !!tile });
-        }
-        if (!tile) {
-            return 0; // Default height if tile not found
-        }
+        return chunk.data[tileIndex] || null;
+    }
+
+    getHeight(x, y) {
+        if (!this.worldDownloaded) return 0;
+
+        const tile = this._getTile(x, y);
+        if (!tile) return 0;
+
+        const chunkX = Math.floor(x / this.chunkSize);
+        const chunkZ = Math.floor(y / this.chunkSize);
+        const chunkKey = `${chunkX},${chunkZ}`;
+        this._applyPendingDeltasForChunk(chunkKey);
 
         let height = tile.height || 0;
 
-        // Dynamic edge blending: when a neighbor chunk is loaded, blend the border
-        // tiles so both sides of the boundary have a smooth transition.  This fixes
-        // the C1 discontinuity caused by the server only blending the newly generated
-        // chunk and leaving the previously cached neighbour with raw heights.
+        // Dynamic edge blending
         const blendWidth = 2;
         let blendedHeight = height;
         let totalWeight = 0;
+        const localX = Math.floor(x - (chunkX * this.chunkSize));
+        const localZ = Math.floor(y - (chunkZ * this.chunkSize));
 
         const getNeighborTile = (nk, nx, nz) => {
             const nc = this.chunks.get(nk);
@@ -237,7 +221,7 @@ class TerrainSystem {
             return (idx >= 0 && idx < nc.data.length) ? nc.data[idx] : null;
         };
 
-        // North edge (localZ near 0)
+        // North edge
         if (localZ < blendWidth) {
             const nTile = getNeighborTile(`${chunkX},${chunkZ - 1}`, localX, this.chunkSize - 1 - localZ);
             if (nTile) {
@@ -285,7 +269,16 @@ class TerrainSystem {
 
         return totalWeight > 0 ? blendedHeight : height;
     }
-    
+
+    getColor(x, y) {
+        if (!this.worldDownloaded) return { r: 1, g: 1, b: 1 };
+        const tile = this._getTile(x, y);
+        if (tile && tile.color) {
+            return tile.color;
+        }
+        return { r: 1, g: 1, b: 1 };
+    }
+
     isTileBlocked(x, y) {
         if (!this.worldDownloaded) {
             return false;
@@ -666,3 +659,5 @@ class TerrainSystem {
         return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     }
 }
+
+window.TerrainSystem = TerrainSystem;

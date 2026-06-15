@@ -1,7 +1,7 @@
 {
   "waterLevel": {
-    "value": -2.1055,
-    "defaultValue": -1.5,
+    "value": -0.8279999999999998,
+    "defaultValue": -0.8279999999999998,
     "userOverridden": true,
     "type": "number",
     "category": "terrain",
@@ -10,13 +10,13 @@
     "max": 10,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872898157,
-    "modifiedBy": "user"
+    "lastModified": 1780960311452,
+    "modifiedBy": "server-defaults"
   },
   "tideAmplitude": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Tidal water level range driven by moon phase",
@@ -25,13 +25,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311453,
+    "modifiedBy": "server-defaults"
   },
   "snowLevelSeasonal": {
     "value": 8,
     "defaultValue": 8,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "How much snow line drops in winter (height units)",
@@ -40,13 +40,13 @@
     "max": 30,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311453,
+    "modifiedBy": "server-defaults"
   },
   "beachWidth": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Beach width (regen)",
@@ -54,12 +54,12 @@
     "max": 20,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311453,
+    "modifiedBy": "server-defaults"
   },
   "chunkSize": {
     "value": 16,
-    "defaultValue": 32,
+    "defaultValue": 16,
     "userOverridden": true,
     "type": "number",
     "category": "terrain",
@@ -68,13 +68,13 @@
     "max": 64,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871907252,
-    "modifiedBy": "user"
+    "lastModified": 1780960311453,
+    "modifiedBy": "server-defaults"
   },
   "meshMultiplier": {
     "value": 24,
     "defaultValue": 24,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Mesh density",
@@ -82,13 +82,13 @@
     "max": 72,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "terrainOpacity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Overall terrain mesh transparency",
@@ -97,25 +97,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "useViewportMesh": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "terrain",
     "description": "Use rolling viewport mesh (disable for shoreline subdivision)",
     "shortLabel": "Viewport Mesh",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "shorelineSubdivision": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Subdivide shoreline tiles where angles are steep (0=off, 1=medium, 2=high)",
@@ -124,13 +124,13 @@
     "max": 2,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "terrainSunOrbitScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Multiplier for the primary orbit height influence (sun) when generating terrain",
@@ -139,13 +139,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "terrainMoonOrbitScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Multiplier for the secondary orbit height influence (moon) when generating terrain",
@@ -154,13 +154,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "terrainOuterRingScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "terrain",
     "description": "Scale the outer terrain ring radius (1=default, 4=4x distance to horizon)",
@@ -169,8 +169,8 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311456,
+    "modifiedBy": "server-defaults"
   },
   "waterVisible": {
     "value": true,
@@ -181,12 +181,12 @@
     "description": "Show terrain-following water plane",
     "shortLabel": "Visible",
     "persist": true,
-    "lastModified": 1780872885776,
-    "modifiedBy": "user"
+    "lastModified": 1780960311463,
+    "modifiedBy": "server-defaults"
   },
   "waterOpacity": {
-    "value": 0.30575,
-    "defaultValue": 0.45,
+    "value": 0.7879999999999997,
+    "defaultValue": 0.45825000000000005,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -196,13 +196,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780872913126,
+    "lastModified": 1780964159530,
     "modifiedBy": "user"
   },
   "waterOffset": {
-    "value": 0.03,
+    "value": 0.054299999999999994,
     "defaultValue": 0.03,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Height offset above terrain surface",
@@ -211,13 +211,13 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780963789637,
+    "modifiedBy": "user"
   },
   "waterRoughness": {
-    "value": 0.05,
-    "defaultValue": 0.05,
-    "userOverridden": false,
+    "value": 0.73775,
+    "defaultValue": 0.393,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Water surface roughness",
@@ -226,13 +226,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964017600,
+    "modifiedBy": "user"
   },
   "waterMetalness": {
-    "value": 0.7,
-    "defaultValue": 0.7,
-    "userOverridden": false,
+    "value": 0.58225,
+    "defaultValue": 0.29825,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Water surface metalness",
@@ -241,24 +241,24 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780963830821,
+    "modifiedBy": "user"
   },
   "waveEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "water",
     "description": "Enable water wave animation (shader-based, flat plane)",
     "shortLabel": "Waves",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780963382664,
+    "modifiedBy": "user"
   },
   "waveAmplitude": {
-    "value": 0,
-    "defaultValue": 1,
+    "value": 2,
+    "defaultValue": 2,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -268,12 +268,12 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780872992293,
+    "lastModified": 1780964126177,
     "modifiedBy": "user"
   },
   "waveSpeed": {
-    "value": 0,
-    "defaultValue": 1.5,
+    "value": 2.8180000000000005,
+    "defaultValue": 3,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -283,12 +283,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872988639,
+    "lastModified": 1780964127635,
     "modifiedBy": "user"
   },
   "waveSteepness": {
-    "value": 0,
-    "defaultValue": 0.3,
+    "value": 1,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -298,12 +298,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780872981773,
+    "lastModified": 1780964133368,
     "modifiedBy": "user"
   },
   "waveTexScale": {
-    "value": 0.20100000000000004,
-    "defaultValue": 1,
+    "value": 0.9055000000000003,
+    "defaultValue": 0.571,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -313,12 +313,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872972121,
+    "lastModified": 1780964104084,
     "modifiedBy": "user"
   },
   "waveTexSpeed": {
-    "value": 0.6465000000000001,
-    "defaultValue": 1,
+    "value": 1.592,
+    "defaultValue": 3,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -328,12 +328,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780873010207,
+    "lastModified": 1780964116597,
     "modifiedBy": "user"
   },
   "waveTexNormal": {
-    "value": 1,
-    "defaultValue": 0.35,
+    "value": 0.20350000000000001,
+    "defaultValue": 0.2599999999999999,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -343,13 +343,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780873001751,
+    "lastModified": 1780964034545,
     "modifiedBy": "user"
   },
   "waveWindFactor": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 0,
+    "defaultValue": 1.0549999999999993,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "How much wind affects wave texture animation speed",
@@ -358,13 +358,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964040905,
+    "modifiedBy": "user"
   },
   "waterWindDirX": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Wind direction X component (affects procedural wave flow)",
@@ -373,13 +373,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964043399,
+    "modifiedBy": "user"
   },
   "waterWindDirZ": {
-    "value": 0,
-    "defaultValue": 0,
-    "userOverridden": false,
+    "value": -1,
+    "defaultValue": -0.5000000000000001,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Wind direction Z component (affects procedural wave flow)",
@@ -388,25 +388,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964045034,
+    "modifiedBy": "user"
   },
   "waterColor": {
-    "value": "#241f31",
-    "defaultValue": "#3388cc",
+    "value": "#0d1d19",
+    "defaultValue": "#0e2726",
     "userOverridden": true,
     "type": "color",
     "category": "water",
     "description": "Base water colour",
     "shortLabel": "Water Colour",
     "persist": true,
-    "lastModified": 1780873041807,
+    "lastModified": 1780964170322,
     "modifiedBy": "user"
   },
   "shoreLagTime": {
-    "value": 8,
-    "defaultValue": 8,
-    "userOverridden": false,
+    "value": 30,
+    "defaultValue": 30,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Seconds for shore wet line to catch up to changing water level (higher = slower)",
@@ -415,13 +415,13 @@
     "max": 30,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964048996,
+    "modifiedBy": "user"
   },
   "waterSize": {
-    "value": 63,
-    "defaultValue": 63,
-    "userOverridden": false,
+    "value": 134.23999999999998,
+    "defaultValue": 63.57000000000003,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Water plane size in world units (0.5x terrain grid size)",
@@ -430,13 +430,13 @@
     "max": 500,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780963797803,
+    "modifiedBy": "user"
   },
   "waterResolution": {
-    "value": 64,
-    "defaultValue": 64,
-    "userOverridden": false,
+    "value": 8,
+    "defaultValue": 64.505,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Water mesh grid resolution (verts per axis, terrain-matched default)",
@@ -445,12 +445,12 @@
     "max": 256,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780964056349,
+    "modifiedBy": "user"
   },
   "waveCrestTint": {
     "value": 2,
-    "defaultValue": 1.15,
+    "defaultValue": 2,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -460,12 +460,12 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780873059099,
+    "lastModified": 1780964060942,
     "modifiedBy": "user"
   },
   "waveTroughTint": {
-    "value": 1.5,
-    "defaultValue": 0.85,
+    "value": 1.4204999999999999,
+    "defaultValue": 1.5,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -475,12 +475,12 @@
     "max": 1.5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780873061847,
+    "lastModified": 1780963894260,
     "modifiedBy": "user"
   },
   "waveSparkle": {
-    "value": 1,
-    "defaultValue": 0.3,
+    "value": 0.5142499999999999,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -490,12 +490,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780873063781,
+    "lastModified": 1780964071279,
     "modifiedBy": "user"
   },
   "waveSpecularPower": {
-    "value": 4.7950000000000035,
-    "defaultValue": 32,
+    "value": 80.55499999999998,
+    "defaultValue": 26.600000000000005,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -505,12 +505,12 @@
     "max": 128,
     "step": 1,
     "persist": true,
-    "lastModified": 1780873070284,
+    "lastModified": 1780964009986,
     "modifiedBy": "user"
   },
   "waveFresnelPower": {
-    "value": 2.6710000000000003,
-    "defaultValue": 2,
+    "value": 5,
+    "defaultValue": 5,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -520,12 +520,12 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780873077944,
+    "lastModified": 1780964075869,
     "modifiedBy": "user"
   },
   "waveNormalEps": {
     "value": 0.01,
-    "defaultValue": 0.05,
+    "defaultValue": 0.01,
     "userOverridden": true,
     "type": "number",
     "category": "water",
@@ -535,8 +535,35 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780873088858,
+    "lastModified": 1780964081641,
     "modifiedBy": "user"
+  },
+  "shorelineSoundHeader": {
+    "value": {
+      "userOverridden": false,
+      "type": "header",
+      "category": "water",
+      "shortLabel": "Shoreline",
+      "persist": true,
+      "lastModified": 1780871886969,
+      "modifiedBy": "init"
+    },
+    "defaultValue": {
+      "userOverridden": false,
+      "type": "header",
+      "category": "water",
+      "shortLabel": "Shoreline",
+      "persist": true,
+      "lastModified": 1780871886969,
+      "modifiedBy": "init"
+    },
+    "userOverridden": true,
+    "type": "header",
+    "category": "water",
+    "shortLabel": "Shoreline",
+    "persist": true,
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "shorelineSoundEnabled": {
     "value": true,
@@ -547,13 +574,13 @@
     "description": "Enable shoreline wave ambience",
     "shortLabel": "Sound",
     "persist": true,
-    "lastModified": 1780873117645,
-    "modifiedBy": "user"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "shorelineSoundVolume": {
     "value": 0.25,
     "defaultValue": 0.25,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "Shoreline wave sound volume",
@@ -562,26 +589,26 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "reflectionEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "reflection",
     "description": "Enable planar water reflections",
     "shortLabel": "Enabled",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "reflectionResolution": {
     "value": 512,
     "defaultValue": 512,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "reflection",
     "description": "Reflection texture resolution",
@@ -594,13 +621,13 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "reflectionFresnel": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "reflection",
     "description": "Fresnel blend strength",
@@ -613,13 +640,13 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "reflectionDebug": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "reflection",
     "description": "Show reflection debug preview canvas",
@@ -629,13 +656,13 @@
       "param": "reflectionEnabled",
       "value": true
     },
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "lodHighDistance": {
     "value": 15,
     "defaultValue": 15,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lod",
     "description": "High LOD distance",
@@ -643,13 +670,13 @@
     "max": 30,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "lodMediumDistance": {
     "value": 30,
     "defaultValue": 30,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lod",
     "description": "Medium LOD distance",
@@ -657,13 +684,13 @@
     "max": 45,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "lodLowDistance": {
     "value": 45,
     "defaultValue": 45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lod",
     "description": "Low LOD distance",
@@ -671,13 +698,13 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "lodVeryLowDistance": {
     "value": 60,
     "defaultValue": 60,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lod",
     "description": "Very-low LOD distance",
@@ -685,13 +712,13 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "distanceFogScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "distances",
     "description": "Fog distance multiplier",
@@ -700,13 +727,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "distanceTreeScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "distances",
     "description": "Tree draw distance multiplier",
@@ -715,13 +742,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "distanceLODScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "distances",
     "description": "Terrain LOD distance multiplier",
@@ -730,13 +757,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "planetSphereRadius": {
     "value": 180,
     "defaultValue": 180,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "planet",
     "description": "Planet sphere radius for deformation",
@@ -745,13 +772,13 @@
     "max": 5000,
     "step": 10,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "planetWrapRadius": {
     "value": 128,
     "defaultValue": 128,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "planet",
     "description": "Coordinate wrap radius from planet center",
@@ -760,13 +787,13 @@
     "max": 512,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "deformStartHeight": {
     "value": 10,
     "defaultValue": 10,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "planet",
     "description": "Camera height where spherical deformation begins",
@@ -775,13 +802,13 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "deformEndHeight": {
     "value": 100,
     "defaultValue": 100,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "planet",
     "description": "Camera height where deformation is fully spherical",
@@ -790,46 +817,46 @@
     "max": 500,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311471,
+    "modifiedBy": "server-defaults"
   },
   "enablePlanetWrap": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "planet",
     "description": "Planet wrap",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "enableSpherical": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "planet",
     "description": "Spherical shader",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "debugForceSpherical": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "planet",
     "description": "Force spherical",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "curvatureScale": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "planet",
     "description": "Amplifies spherical curvature drop",
@@ -838,24 +865,24 @@
     "max": 10,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "enableTerrainFade": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "planet",
     "description": "Terrain circular fade",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "sunIntensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lighting",
     "description": "Sun intensity",
@@ -863,13 +890,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "moonIntensity": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "lighting",
     "description": "Moon intensity",
@@ -877,13 +904,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "ambientIntensity": {
     "value": 0,
-    "defaultValue": 0.3,
-    "userOverridden": false,
+    "defaultValue": 0,
+    "userOverridden": true,
     "type": "number",
     "category": "lighting",
     "description": "Ambient intensity",
@@ -891,58 +918,58 @@
     "max": 2,
     "step": 0.02,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "sunColor": {
     "value": "#ffffff",
     "defaultValue": "#ffffff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "lighting",
     "description": "Sun color",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "moonColor": {
     "value": "#87ceeb",
     "defaultValue": "#87ceeb",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "lighting",
     "description": "Moon color",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "ambientColor": {
     "value": "#8b5cf6",
     "defaultValue": "#8b5cf6",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "lighting",
     "description": "Ambient color",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "spotlightEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "spotlight",
     "description": "Enable mouse spotlight",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "spotlightType": {
     "value": "SpotLight",
     "defaultValue": "SpotLight",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "spotlight",
     "description": "Mouse light type",
@@ -961,13 +988,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311472,
+    "modifiedBy": "server-defaults"
   },
   "spotlightHeight": {
     "value": 25,
     "defaultValue": 25,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "spotlight",
     "description": "Height above mouse position",
@@ -975,13 +1002,13 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "spotlightIntensity": {
     "value": 0.4,
     "defaultValue": 0.4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "spotlight",
     "description": "Mouse light brightness",
@@ -989,13 +1016,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "spotlightAngle": {
     "value": 0.19635,
     "defaultValue": 0.19635,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "spotlight",
     "description": "Spotlight cone angle (radians)",
@@ -1003,34 +1030,34 @@
     "max": 1.5708,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "spotlightColor": {
     "value": "#ffffff",
     "defaultValue": "#ffffff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "spotlight",
     "description": "Mouse light color",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "spotlightHelper": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "spotlight",
     "description": "Show light cone helper",
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "daySpeed": {
     "value": 600,
-    "defaultValue": 60,
+    "defaultValue": 600,
     "userOverridden": true,
     "type": "number",
     "category": "time",
@@ -1039,13 +1066,13 @@
     "max": 600,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871974206,
-    "modifiedBy": "user"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "yearTime": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "time",
     "description": "Day of year (0-120)",
@@ -1053,13 +1080,13 @@
     "max": 120,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "month": {
     "value": "1",
     "defaultValue": "1",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "time",
     "description": "Month (1-4)",
@@ -1082,13 +1109,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886969,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "year": {
     "value": "1",
     "defaultValue": "1",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "time",
     "description": "Game year",
@@ -1135,13 +1162,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "windSpeed": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Wind speed",
@@ -1149,13 +1176,13 @@
     "max": 50,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "windDirection": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Wind direction (degrees)",
@@ -1163,13 +1190,13 @@
     "max": 360,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "windExposureScale": {
     "value": 6,
     "defaultValue": 6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Terrain exposure wind multiplier (higher = more wind on exposed trees)",
@@ -1178,13 +1205,13 @@
     "max": 20,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311474,
+    "modifiedBy": "server-defaults"
   },
   "windShadowStrength": {
     "value": 1.5,
     "defaultValue": 1.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Wind shadow strength (leeward vs windward tree multiplier)",
@@ -1193,13 +1220,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windHeightPower": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Wind bend height power (how much tree top bends vs base)",
@@ -1208,13 +1235,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "blusteryWind": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Random blustery wind (0 = calm steady, 10 = changeable direction fluctuating gale force)",
@@ -1223,25 +1250,25 @@
     "max": 10,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windSoundEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "environment",
     "description": "Enable wind ambience and gust swoosh audio",
     "shortLabel": "Wind Audio",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windSoundVolume": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Wind audio volume",
@@ -1250,25 +1277,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windDebrisEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "environment",
     "description": "Enable flying leaf/twig/dust debris particles in wind",
     "shortLabel": "Wind Debris",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962871836,
+    "modifiedBy": "user"
   },
   "windDebrisDensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Multiplier for wind debris particle count",
@@ -1277,13 +1304,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windParticleSize": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Multiplier for debris particle scale",
@@ -1292,25 +1319,25 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windParticleColor": {
     "value": "#8bc34a",
     "defaultValue": "#8bc34a",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Base color for leaf and dust particles",
     "shortLabel": "Particle Color",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windParticleGravity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Gravity multiplier for debris (0 = weightless, 1 = normal, 2 = heavy)",
@@ -1319,13 +1346,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windTwigFrequency": {
     "value": 0.15,
     "defaultValue": 0.15,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Chance of spawning a twig instead of a leaf (0 = none, 1 = all twigs)",
@@ -1334,13 +1361,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windTwigGravity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "How fast twigs fall relative to leaves (higher = sinks faster)",
@@ -1349,13 +1376,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windGravityFactor": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "How much low wind increases gravity (0 = constant gravity, 1 = calm air lets debris fall, 2 = strong drop in calm)",
@@ -1364,13 +1391,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "windSpinSpeed": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Particle spin/tumble speed multiplier",
@@ -1379,13 +1406,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogNear": {
-    "value": 20,
-    "defaultValue": 10,
-    "userOverridden": false,
+    "value": 1,
+    "defaultValue": 20,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog start distance",
@@ -1393,13 +1420,13 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780961735700,
+    "modifiedBy": "user"
   },
   "fogFar": {
-    "value": 60,
-    "defaultValue": 100,
-    "userOverridden": false,
+    "value": 192.95500000000004,
+    "defaultValue": 60,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog end distance",
@@ -1407,26 +1434,26 @@
     "max": 400,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780961729154,
+    "modifiedBy": "user"
   },
   "fogGradientEnabled": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "environment",
     "description": "Enable enhanced fog gradient (custom falloff curve)",
     "shortLabel": "Fog Gradient",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogGradientExponent": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog falloff curve exponent (1=linear, >1=exponential)",
@@ -1439,13 +1466,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogGradientBias": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog distance bias (-0.5=nearer, 0.5=farther)",
@@ -1458,13 +1485,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogDensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Global fog density multiplier",
@@ -1473,13 +1500,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorBandCount": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Number of fog gradient color bands",
@@ -1492,13 +1519,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColor1": {
     "value": "#808080",
     "defaultValue": "#808080",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color at near distance (band 1)",
@@ -1508,13 +1535,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorStop1": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Normalized stop position for near color",
@@ -1527,13 +1554,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColor2": {
     "value": "#606060",
     "defaultValue": "#606060",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color band 2",
@@ -1543,13 +1570,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorStop2": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Normalized stop position for color band 2",
@@ -1562,13 +1589,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColor3": {
     "value": "#404040",
     "defaultValue": "#404040",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color band 3",
@@ -1578,13 +1605,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorStop3": {
     "value": 0.66,
     "defaultValue": 0.66,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Normalized stop position for color band 3",
@@ -1597,13 +1624,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColor4": {
     "value": "#303030",
     "defaultValue": "#303030",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color band 4",
@@ -1613,13 +1640,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorStop4": {
     "value": 0.83,
     "defaultValue": 0.83,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Normalized stop position for color band 4",
@@ -1632,13 +1659,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColor5": {
     "value": "#202020",
     "defaultValue": "#202020",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color band 5 (far)",
@@ -1648,13 +1675,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "fogColorStop5": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Normalized stop position for far color",
@@ -1667,13 +1694,13 @@
       "param": "fogGradientEnabled",
       "value": true
     },
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311475,
+    "modifiedBy": "server-defaults"
   },
   "grassUvScale": {
     "value": 0.15,
     "defaultValue": 0.15,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Grass texture UV scale (smaller = finer)",
@@ -1682,13 +1709,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassWindMultiplier": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Grass wind displacement strength multiplier (scales global wind)",
@@ -1697,13 +1724,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassBlendAmount": {
     "value": 0.55,
     "defaultValue": 0.55,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Grass overlay blend amount",
@@ -1712,13 +1739,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassSharpness": {
     "value": 0.6,
     "defaultValue": 0.6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Grass blade edge sharpness (0 = soft/cloudy, 1 = hard blades)",
@@ -1727,37 +1754,37 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassColorTint": {
     "value": "#3a8c2e",
     "defaultValue": "#3a8c2e",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "landCover",
     "description": "Grass colour tint",
     "shortLabel": "Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassColorLight": {
     "value": "#59a638",
     "defaultValue": "#59a638",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "landCover",
     "description": "Grass highlight colour (light base)",
     "shortLabel": "Light",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassWindSpeed": {
     "value": 1.2,
     "defaultValue": 1.2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Grass wind animation speed (higher = faster waves)",
@@ -1766,13 +1793,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassPhaseScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Wind spatial wavelength scale (lower = broader waves)",
@@ -1781,13 +1808,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassBladeStretchX": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Horizontal grass blade stretch",
@@ -1796,13 +1823,13 @@
     "max": 16,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassBladeStretchY": {
     "value": 16,
     "defaultValue": 16,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Vertical grass blade stretch (taller blades)",
@@ -1811,13 +1838,13 @@
     "max": 64,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassMicroAmount": {
     "value": 0.2,
     "defaultValue": 0.2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "landCover",
     "description": "Secondary micro detail layer intensity",
@@ -1826,13 +1853,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType0": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Deep Water grass profile",
@@ -1864,13 +1891,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType1": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Shallow Water grass profile",
@@ -1902,13 +1929,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType2": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Beach grass profile",
@@ -1940,13 +1967,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType3": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Lowland grass profile",
@@ -1978,13 +2005,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType4": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Grassland grass profile",
@@ -2016,13 +2043,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType5": {
     "value": 3,
     "defaultValue": 3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Forest grass profile",
@@ -2054,13 +2081,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType6": {
     "value": 5,
     "defaultValue": 5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Mountain grass profile",
@@ -2092,13 +2119,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "grassType7": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "landCover",
     "description": "Snow grass profile",
@@ -2130,25 +2157,25 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "forest",
     "description": "Enable biome-dependent forest floor textures under trees",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestBlendMax": {
     "value": 0.65,
     "defaultValue": 0.65,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "Maximum strength of forest floor takeover where trees are dense",
@@ -2157,13 +2184,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestMaskStrength": {
     "value": 1.5,
     "defaultValue": 1.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "How strongly the tree-density mask is emphasized (higher = tighter patches)",
@@ -2172,13 +2199,13 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestBiomeBias": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "Bias toward forest biomes (higher = only strong forest zones get the texture)",
@@ -2187,13 +2214,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestTexScale": {
     "value": 0.18,
     "defaultValue": 0.18,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "Forest floor texture tiling scale (smaller = finer detail)",
@@ -2202,13 +2229,13 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestNoiseScale": {
     "value": 0.08,
     "defaultValue": 0.08,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "Breakup noise scale for mask edges (higher = noisier blend)",
@@ -2217,13 +2244,13 @@
     "max": 0.5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "forestBaseInfluence": {
     "value": 0.2,
     "defaultValue": 0.2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "forest",
     "description": "Baseline forest-floor influence even with sparse trees (helps subtle duff)",
@@ -2232,25 +2259,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachEnabled": {
     "value": false,
-    "defaultValue": true,
+    "defaultValue": false,
     "userOverridden": true,
     "type": "boolean",
     "category": "shoreline",
     "description": "Enable beach surface detail rendering",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780872031855,
-    "modifiedBy": "user"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachStoneAmount": {
     "value": 0.6,
     "defaultValue": 0.6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Amount of stone patches vs pure sand",
@@ -2259,13 +2286,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachStoneScale": {
     "value": 0.4,
     "defaultValue": 0.4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Noise scale for stone/sand variation (smaller = broader patches)",
@@ -2274,13 +2301,13 @@
     "max": 10,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachWetWidth": {
     "value": 1.2,
     "defaultValue": 1.2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Width of the high-tide wet sand band above water",
@@ -2289,13 +2316,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachWetIntensity": {
     "value": 0.7,
     "defaultValue": 0.7,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Darkness of the wet sand high-tide line",
@@ -2304,13 +2331,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "wetFadeDelay": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Distance above water where sand stays fully wet before fading",
@@ -2319,13 +2346,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "wetFadeSpeed": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "water",
     "description": "How quickly wet sand dries out above the plateau zone",
@@ -2334,13 +2361,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachShrubAmount": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Amount of hardy shrubbery at the top of the beach",
@@ -2349,13 +2376,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachBiomeBias": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Bias toward true biome beach weight (higher = only strong beach zones render)",
@@ -2364,13 +2391,13 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachHeightBlend": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "shoreline",
     "description": "Blend additional height-based mask with biome weight (0 = biome only)",
@@ -2379,85 +2406,85 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachSandColor": {
     "value": "#d2c284",
     "defaultValue": "#d2c284",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "shoreline",
     "description": "Base dry sand colour",
     "shortLabel": "Sand Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachStoneColor": {
     "value": "#736b61",
     "defaultValue": "#736b61",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "shoreline",
     "description": "Stone patch colour",
     "shortLabel": "Stone Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachWetColor": {
     "value": "#998d61",
     "defaultValue": "#998d61",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "shoreline",
     "description": "Wet sand high-tide line colour",
     "shortLabel": "Wet Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "beachShrubColor": {
     "value": "#386b26",
     "defaultValue": "#386b26",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "shoreline",
     "description": "Hardy shrub colour",
     "shortLabel": "Shrub Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "debugBeachState": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "shoreline",
     "description": "Debug: show beach mask only",
     "shortLabel": "Debug Mask",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "cliff",
     "description": "Enable cliff material on steep slopes",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffThreshold": {
     "value": 0.45,
     "defaultValue": 0.45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Slope angle where cliff material starts (0=flat, 1=vertical)",
@@ -2466,13 +2493,13 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffBlendWidth": {
     "value": 0.25,
     "defaultValue": 0.25,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Transition band width around threshold",
@@ -2481,13 +2508,13 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffRubbleAmount": {
     "value": 0.65,
     "defaultValue": 0.65,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Loose scree / rubble visibility on cliff faces",
@@ -2496,13 +2523,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffStrataScale": {
     "value": 0.12,
     "defaultValue": 0.12,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Horizontal rock strata banding frequency",
@@ -2511,13 +2538,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffStrataAmount": {
     "value": 0.55,
     "defaultValue": 0.55,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "shortLabel": "Strata Amount",
@@ -2525,13 +2552,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffDarkenAmount": {
     "value": 0.35,
     "defaultValue": 0.35,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Vertical face self-shadowing darkening",
@@ -2540,49 +2567,49 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffBaseColor": {
     "value": "#615c51",
     "defaultValue": "#615c51",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cliff",
     "description": "Base dark rock colour",
     "shortLabel": "Base Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffLightColor": {
     "value": "#948575",
     "defaultValue": "#948575",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cliff",
     "description": "Lighter exposed rock colour",
     "shortLabel": "Light Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffMossColor": {
     "value": "#476138",
     "defaultValue": "#476138",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cliff",
     "description": "Moss / lichen tint colour",
     "shortLabel": "Moss Colour",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffMossAmount": {
     "value": 0.4,
     "defaultValue": 0.4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cliff",
     "description": "Moss coverage on less-vertical cliff faces",
@@ -2591,25 +2618,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "cliffDebug": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "cliff",
     "description": "Debug: show cliff mask only",
     "shortLabel": "Debug Mask",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeA": {
     "value": 3,
     "defaultValue": 3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "First biome in the edge pair (modifier stack target)",
@@ -2649,13 +2676,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeB": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Second biome in the edge pair (modifier stack target)",
@@ -2695,13 +2722,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode0": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Edge 0 blending mode",
@@ -2721,13 +2748,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale0": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 0 wiggle noise scale",
@@ -2736,13 +2763,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength0": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 0 wiggle displacement strength",
@@ -2751,13 +2778,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale0": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 0 splatter patch size",
@@ -2766,13 +2793,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount0": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 0 splatter mask intensity",
@@ -2781,13 +2808,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix0": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 0 wiggle/splatter blend",
@@ -2796,12 +2823,12 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode1": {
-    "value": 1,
-    "defaultValue": 0,
+    "value": 2,
+    "defaultValue": 2,
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -2822,13 +2849,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872242708,
-    "modifiedBy": "user"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale1": {
-    "value": 0.3,
-    "defaultValue": 0.3,
-    "userOverridden": false,
+    "value": 2,
+    "defaultValue": 2,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 1 wiggle noise scale",
@@ -2837,13 +2864,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength1": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 3,
+    "defaultValue": 3,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 1 wiggle displacement strength",
@@ -2852,13 +2879,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale1": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 1 splatter patch size",
@@ -2867,13 +2894,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount1": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 1 splatter mask intensity",
@@ -2882,13 +2909,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix1": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 1 wiggle/splatter blend",
@@ -2897,8 +2924,8 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode2": {
     "value": 0,
@@ -2923,13 +2950,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872224459,
-    "modifiedBy": "user"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale2": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 2 wiggle noise scale",
@@ -2938,13 +2965,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength2": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 2 wiggle displacement strength",
@@ -2953,13 +2980,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale2": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 2 splatter patch size",
@@ -2968,13 +2995,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount2": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 2 splatter mask intensity",
@@ -2983,13 +3010,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix2": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 2 wiggle/splatter blend",
@@ -2998,13 +3025,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode3": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Edge 3 blending mode",
@@ -3024,13 +3051,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale3": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 3 wiggle noise scale",
@@ -3039,13 +3066,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength3": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 3 wiggle displacement strength",
@@ -3054,13 +3081,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale3": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 3 splatter patch size",
@@ -3069,13 +3096,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount3": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 3 splatter mask intensity",
@@ -3084,13 +3111,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix3": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 3 wiggle/splatter blend",
@@ -3099,13 +3126,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode4": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Edge 4 blending mode",
@@ -3125,13 +3152,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale4": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 4 wiggle noise scale",
@@ -3140,13 +3167,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength4": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 4 wiggle displacement strength",
@@ -3155,13 +3182,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale4": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 4 splatter patch size",
@@ -3170,13 +3197,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount4": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 4 splatter mask intensity",
@@ -3185,13 +3212,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix4": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 4 wiggle/splatter blend",
@@ -3200,13 +3227,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode5": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Edge 5 blending mode",
@@ -3226,13 +3253,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale5": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 5 wiggle noise scale",
@@ -3241,13 +3268,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength5": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 5 wiggle displacement strength",
@@ -3256,13 +3283,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale5": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 5 splatter patch size",
@@ -3271,13 +3298,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount5": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 5 splatter mask intensity",
@@ -3286,13 +3313,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix5": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 5 wiggle/splatter blend",
@@ -3301,13 +3328,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeMode6": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Edge 6 blending mode",
@@ -3327,13 +3354,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeScale6": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 6 wiggle noise scale",
@@ -3342,13 +3369,13 @@
     "max": 2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeStrength6": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 6 wiggle displacement strength",
@@ -3357,13 +3384,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterScale6": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 6 splatter patch size",
@@ -3372,13 +3399,13 @@
     "max": 3,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeSplatterAmount6": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 6 splatter mask intensity",
@@ -3387,13 +3414,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeEdgeSplatterMix6": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Edge 6 wiggle/splatter blend",
@@ -3402,13 +3429,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomePatchScale": {
     "value": 0.025,
     "defaultValue": 0.025,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Patch noise spatial scale (smaller = bigger patches)",
@@ -3417,13 +3444,13 @@
     "max": 0.1,
     "step": 0.001,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomePatchStrength": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Patch noise threshold shift strength (0 = off)",
@@ -3432,13 +3459,13 @@
     "max": 6,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomePatchSeed": {
     "value": 123.45,
     "defaultValue": 123.45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Patch noise seed offset",
@@ -3447,108 +3474,108 @@
     "max": 999.99,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311476,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor0": {
-    "value": "#6699e6",
+    "value": "#000000",
     "defaultValue": "#6699e6",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Deep Water color",
     "shortLabel": "Deep Water Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780963271784,
+    "modifiedBy": "user"
   },
   "biomeColor1": {
     "value": "#b3a580",
     "defaultValue": "#b3a580",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Shallow Water color",
     "shortLabel": "Shallow Water Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311477,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor2": {
     "value": "#c2bf6b",
     "defaultValue": "#c2bf6b",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Beach color",
     "shortLabel": "Beach Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311477,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor3": {
     "value": "#6bad51",
     "defaultValue": "#6bad51",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Lowland color",
     "shortLabel": "Lowland Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311477,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor4": {
     "value": "#3f9438",
     "defaultValue": "#3f9438",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Grassland color",
     "shortLabel": "Grassland Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311477,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor5": {
     "value": "#2d6b26",
     "defaultValue": "#2d6b26",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Forest color",
     "shortLabel": "Forest Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311478,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor6": {
     "value": "#856148",
     "defaultValue": "#856148",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Mountain color",
     "shortLabel": "Mountain Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311478,
+    "modifiedBy": "server-defaults"
   },
   "biomeColor7": {
     "value": "#e0e6eb",
     "defaultValue": "#e0e6eb",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "blending",
     "description": "Snow color",
     "shortLabel": "Snow Col",
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311478,
+    "modifiedBy": "server-defaults"
   },
   "biomeThreshold0": {
-    "value": -1,
-    "defaultValue": -1.5,
+    "value": -5,
+    "defaultValue": -6,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -3558,12 +3585,12 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872341626,
+    "lastModified": 1780963017500,
     "modifiedBy": "user"
   },
   "biomeThreshold1": {
-    "value": -2,
-    "defaultValue": -1,
+    "value": -1,
+    "defaultValue": 0,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -3573,12 +3600,12 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872333797,
+    "lastModified": 1780963073804,
     "modifiedBy": "user"
   },
   "biomeThreshold2": {
     "value": 1,
-    "defaultValue": 2.5,
+    "defaultValue": 1,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -3588,12 +3615,12 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872336513,
+    "lastModified": 1780963083872,
     "modifiedBy": "user"
   },
   "biomeThreshold3": {
-    "value": 2,
-    "defaultValue": 4.5,
+    "value": 4,
+    "defaultValue": 1,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -3603,13 +3630,13 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872415796,
+    "lastModified": 1780962951702,
     "modifiedBy": "user"
   },
   "biomeThreshold4": {
-    "value": 11.5,
-    "defaultValue": 11.5,
-    "userOverridden": false,
+    "value": 5,
+    "defaultValue": 4,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Grassland-Forest boundary",
@@ -3618,13 +3645,13 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960526404,
+    "modifiedBy": "user"
   },
   "biomeThreshold5": {
-    "value": 19.5,
-    "defaultValue": 19.5,
-    "userOverridden": false,
+    "value": 8,
+    "defaultValue": 8,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Forest-Mountain boundary",
@@ -3633,13 +3660,13 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311478,
+    "modifiedBy": "server-defaults"
   },
   "biomeThreshold6": {
     "value": 26.5,
     "defaultValue": 26.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Mountain-Snow boundary",
@@ -3648,13 +3675,13 @@
     "max": 100,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311478,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexLayer0_0": {
-    "value": "sand-dunes1-bl",
+    "value": "wet-stones-with-sand-bl",
     "defaultValue": "sand-dunes1-bl",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Deep Water base layer texture",
@@ -3754,13 +3781,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962047134,
+    "modifiedBy": "user"
   },
   "biomeTexLayer1_0": {
-    "value": "",
+    "value": "rocky-rugged-terrain-bl",
     "defaultValue": "",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Deep Water overlay layer texture",
@@ -3864,13 +3891,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962062545,
+    "modifiedBy": "user"
   },
   "biomeTexScale0_0": {
-    "value": 1,
+    "value": 2,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Deep Water base layer UV scale",
@@ -3879,13 +3906,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962037688,
+    "modifiedBy": "user"
   },
   "biomeTexScale1_0": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Deep Water overlay layer UV scale",
@@ -3894,13 +3921,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311479,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexNoiseScale_0": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Deep Water layer 1 noise mask scale",
@@ -3909,13 +3936,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311479,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexLayer0_1": {
-    "value": "sand-dunes1-bl",
-    "defaultValue": "sand-dunes1-bl",
-    "userOverridden": false,
+    "value": "wet-stones-with-sand-bl",
+    "defaultValue": "leaf-fall1-bl4",
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Shallow Water base layer texture",
@@ -4015,13 +4042,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962009671,
+    "modifiedBy": "user"
   },
   "biomeTexLayer1_1": {
-    "value": "",
-    "defaultValue": "",
-    "userOverridden": false,
+    "value": "dirtwithrocks-bl",
+    "defaultValue": "dirtwithrocks-bl",
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Shallow Water overlay layer texture",
@@ -4125,13 +4152,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311479,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale0_1": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 4.37,
+    "defaultValue": 4.37,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Shallow Water base layer UV scale",
@@ -4140,13 +4167,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780960311480,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale1_1": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 2.45,
+    "defaultValue": 1.6,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Shallow Water overlay layer UV scale",
@@ -4155,13 +4182,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962016641,
+    "modifiedBy": "user"
   },
   "biomeTexNoiseScale_1": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 0.19,
+    "defaultValue": 3.51,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Shallow Water layer 1 noise mask scale",
@@ -4170,12 +4197,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886970,
-    "modifiedBy": "init"
+    "lastModified": 1780962013877,
+    "modifiedBy": "user"
   },
   "biomeTexLayer0_2": {
-    "value": "jagged-cliff1-bl",
-    "defaultValue": "sand-dunes1-bl",
+    "value": "mud-with-vegetation-bl",
+    "defaultValue": "wetcobble-bl",
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -4276,12 +4303,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872277573,
+    "lastModified": 1780963179600,
     "modifiedBy": "user"
   },
   "biomeTexLayer1_2": {
-    "value": "",
-    "defaultValue": "",
+    "value": "wet-stones-with-sand-bl",
+    "defaultValue": "sand-dunes1-bl",
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -4386,12 +4413,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872255325,
+    "lastModified": 1780963214021,
     "modifiedBy": "user"
   },
   "biomeTexScale0_2": {
-    "value": 3.06,
-    "defaultValue": 1,
+    "value": 3.21,
+    "defaultValue": 3.11,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4401,13 +4428,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872042450,
+    "lastModified": 1780963170550,
     "modifiedBy": "user"
   },
   "biomeTexScale1_2": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 2.18,
+    "defaultValue": 1.72,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Beach overlay layer UV scale",
@@ -4416,13 +4443,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780963137275,
+    "modifiedBy": "user"
   },
   "biomeTexNoiseScale_2": {
-    "value": 1,
-    "defaultValue": 1,
-    "userOverridden": false,
+    "value": 0.84,
+    "defaultValue": 0.04,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Beach layer 1 noise mask scale",
@@ -4431,13 +4458,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780963199722,
+    "modifiedBy": "user"
   },
   "biomeTexLayer0_3": {
-    "value": "grass1-bl",
+    "value": "patchy-meadow1-bl",
     "defaultValue": "grass1-bl",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Lowland base layer texture",
@@ -4537,12 +4564,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780962749814,
+    "modifiedBy": "user"
   },
   "biomeTexLayer1_3": {
-    "value": "sand-dunes1-bl",
-    "defaultValue": "",
+    "value": "jagged-cliff1-bl",
+    "defaultValue": "sand-dunes1-bl",
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -4647,12 +4674,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872372922,
+    "lastModified": 1780962638503,
     "modifiedBy": "user"
   },
   "biomeTexScale0_3": {
-    "value": 2.86,
-    "defaultValue": 1,
+    "value": 0.54,
+    "defaultValue": 2.86,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4662,12 +4689,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872423181,
+    "lastModified": 1780962762145,
     "modifiedBy": "user"
   },
   "biomeTexScale1_3": {
-    "value": 4.9,
-    "defaultValue": 1,
+    "value": 1.5,
+    "defaultValue": 4.9,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4677,12 +4704,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872435635,
+    "lastModified": 1780962680469,
     "modifiedBy": "user"
   },
   "biomeTexNoiseScale_3": {
-    "value": 0.09,
-    "defaultValue": 1,
+    "value": 1.19,
+    "defaultValue": 0.09,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4692,12 +4719,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872403303,
+    "lastModified": 1780962621298,
     "modifiedBy": "user"
   },
   "biomeTexLayer0_4": {
-    "value": "brown-varied-shingle-bl",
-    "defaultValue": "grass1-bl",
+    "value": "rocky-rugged-terrain-bl",
+    "defaultValue": "brown-varied-shingle-bl",
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -4798,12 +4825,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872483862,
+    "lastModified": 1780962783262,
     "modifiedBy": "user"
   },
   "biomeTexLayer1_4": {
-    "value": "rocky-rugged-terrain-bl",
-    "defaultValue": "",
+    "value": "dirtwithrocks-bl",
+    "defaultValue": "rocky-rugged-terrain-bl",
     "userOverridden": true,
     "type": "select",
     "category": "blending",
@@ -4908,12 +4935,12 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780872514484,
+    "lastModified": 1780961181578,
     "modifiedBy": "user"
   },
   "biomeTexScale0_4": {
-    "value": 1.19,
-    "defaultValue": 1,
+    "value": 1.37,
+    "defaultValue": 1.19,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4923,12 +4950,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872456593,
+    "lastModified": 1780962799947,
     "modifiedBy": "user"
   },
   "biomeTexScale1_4": {
-    "value": 1.27,
-    "defaultValue": 1,
+    "value": 0.59,
+    "defaultValue": 1.27,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4938,12 +4965,12 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872531189,
+    "lastModified": 1780962807026,
     "modifiedBy": "user"
   },
   "biomeTexNoiseScale_4": {
-    "value": 0.84,
-    "defaultValue": 1,
+    "value": 0.31,
+    "defaultValue": 0.84,
     "userOverridden": true,
     "type": "number",
     "category": "blending",
@@ -4953,13 +4980,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780872510149,
+    "lastModified": 1780962786747,
     "modifiedBy": "user"
   },
   "biomeTexLayer0_5": {
-    "value": "mud-with-vegetation-bl",
+    "value": "rocky-rugged-terrain-bl",
     "defaultValue": "mud-with-vegetation-bl",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Forest base layer texture",
@@ -5059,13 +5086,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960660540,
+    "modifiedBy": "user"
   },
   "biomeTexLayer1_5": {
-    "value": "",
+    "value": "jagged-cliff1-bl",
     "defaultValue": "",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Forest overlay layer texture",
@@ -5169,13 +5196,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960839077,
+    "modifiedBy": "user"
   },
   "biomeTexScale0_5": {
-    "value": 1,
+    "value": 1.07,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Forest base layer UV scale",
@@ -5184,13 +5211,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960633361,
+    "modifiedBy": "user"
   },
   "biomeTexScale1_5": {
-    "value": 1,
+    "value": 3.01,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Forest overlay layer UV scale",
@@ -5199,13 +5226,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960630010,
+    "modifiedBy": "user"
   },
   "biomeTexNoiseScale_5": {
-    "value": 1,
+    "value": 1.22,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Forest layer 1 noise mask scale",
@@ -5214,13 +5241,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960831161,
+    "modifiedBy": "user"
   },
   "biomeTexLayer0_6": {
     "value": "jagged-cliff1-bl",
     "defaultValue": "jagged-cliff1-bl",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Mountain base layer texture",
@@ -5320,13 +5347,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexLayer1_6": {
     "value": "",
     "defaultValue": "",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Mountain overlay layer texture",
@@ -5430,13 +5457,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale0_6": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Mountain base layer UV scale",
@@ -5445,13 +5472,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale1_6": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Mountain overlay layer UV scale",
@@ -5460,13 +5487,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexNoiseScale_6": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Mountain layer 1 noise mask scale",
@@ -5475,13 +5502,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexLayer0_7": {
     "value": "jagged-cliff1-bl",
     "defaultValue": "jagged-cliff1-bl",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Snow base layer texture",
@@ -5581,13 +5608,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311483,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexLayer1_7": {
     "value": "",
     "defaultValue": "",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "blending",
     "description": "Snow overlay layer texture",
@@ -5691,13 +5718,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311484,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale0_7": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Snow base layer UV scale",
@@ -5706,13 +5733,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311484,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexScale1_7": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Snow overlay layer UV scale",
@@ -5721,13 +5748,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311484,
+    "modifiedBy": "server-defaults"
   },
   "biomeTexNoiseScale_7": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "Snow layer 1 noise mask scale",
@@ -5736,13 +5763,13 @@
     "max": 5,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311484,
+    "modifiedBy": "server-defaults"
   },
   "biomeTextureBlend": {
     "value": 0.7,
     "defaultValue": 0.7,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "blending",
     "description": "How much real PBR biome textures blend into procedural color (0 = procedural only, 1 = full texture)",
@@ -5751,8 +5778,8 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "biomeModifierStack": {
     "value": {
@@ -5841,19 +5868,19 @@
       "globalScale": 1,
       "version": 1
     },
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "modifierStack",
     "category": "blending",
     "description": "Layered noise modifiers for biome surface edges",
     "shortLabel": "Modifier Stack",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "checkerFadeStrength": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "checkerboard",
     "description": "Checkerboard transparency fade strength (0 = full checkerboard, 1 = full biome)",
@@ -5862,37 +5889,37 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "checkerboardEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "checkerboard",
     "description": "Enable checkerboard pattern (disabled = full biome texture)",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "dontRenderTrees": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "environment",
     "description": "Dont render trees",
     "shortLabel": "No Trees",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "shadowMapSize": {
     "value": 1024,
     "defaultValue": 1024,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "graphics",
     "description": "Shadow map size",
@@ -5900,13 +5927,13 @@
     "max": 4096,
     "step": 512,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "shadowCameraSize": {
     "value": 400,
     "defaultValue": 400,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "graphics",
     "description": "Shadow camera size",
@@ -5914,25 +5941,25 @@
     "max": 800,
     "step": 25,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311486,
+    "modifiedBy": "server-defaults"
   },
   "taaEnabled": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "taa",
     "description": "Enable temporal anti-aliasing (WebGL2 devices only)",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871889514,
+    "lastModified": 1780960312915,
     "modifiedBy": "init"
   },
   "taaFeedbackLow": {
     "value": 0.82,
     "defaultValue": 0.82,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "taa",
     "description": "History weight when motion is calm (higher = softer edges)",
@@ -5941,13 +5968,13 @@
     "max": 0.95,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "taaFeedbackHigh": {
     "value": 0.95,
     "defaultValue": 0.95,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "taa",
     "description": "History weight when motion spikes (higher = smoother but blurrier)",
@@ -5956,13 +5983,13 @@
     "max": 0.99,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "taaClampScalar": {
     "value": 1.5,
     "defaultValue": 1.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "taa",
     "description": "Neighborhood clamp scalar (higher clamps ghosting more aggressively)",
@@ -5971,13 +5998,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "taaJitterSpread": {
     "value": 0.65,
     "defaultValue": 0.65,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "taa",
     "description": "Subpixel jitter spread (higher = faster convergence, but more shimmer)",
@@ -5986,13 +6013,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "taaSharpenStrength": {
     "value": 0.04,
     "defaultValue": 0.04,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "taa",
     "description": "Post-resolve sharpening to recover fine detail",
@@ -6001,25 +6028,25 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "flareEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "flare",
     "description": "Enable sun lens flares",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "flareOpacity": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "flare",
     "description": "Lens flare opacity multiplier",
@@ -6028,13 +6055,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "flareSize": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "flare",
     "description": "Lens flare size multiplier",
@@ -6043,13 +6070,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "flareSpread": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "flare",
     "description": "How far flares spread along the sun-camera axis",
@@ -6058,25 +6085,25 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapEdgeFade": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "minimap",
     "description": "Fade minimap chunks at the edge of explored area",
     "shortLabel": "Edge Fade",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapFadeDepth": {
     "value": 3,
     "defaultValue": 3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "minimap",
     "description": "How many chunk rings deep the edge fade goes (0 = no fade)",
@@ -6085,25 +6112,25 @@
     "max": 8,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapCircularMask": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "minimap",
     "description": "Apply circular soft-edge mask to the whole minimap",
     "shortLabel": "Circular Mask",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapMaskStart": {
     "value": 0.38,
     "defaultValue": 0.38,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "minimap",
     "description": "Where the circular mask fade begins (fraction of radius)",
@@ -6112,25 +6139,25 @@
     "max": 0.48,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapContourFade": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "minimap",
     "description": "Fade only chunks at the actual boundary of explored area",
     "shortLabel": "Contour Fade",
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapContourOpacity": {
     "value": 0.35,
     "defaultValue": 0.35,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "minimap",
     "description": "Opacity of chunks on the very edge (interior is always 1.0)",
@@ -6139,13 +6166,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "minimapUpdateInterval": {
     "value": 180,
     "defaultValue": 180,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "minimap",
     "description": "Minimap redraw throttle interval in ms (lower = faster updates)",
@@ -6154,8 +6181,8 @@
     "max": 1000,
     "step": 16,
     "persist": true,
-    "lastModified": 1780871886972,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "treeType": {
     "value": "realistic",
@@ -6199,13 +6226,13 @@
         "label": "Illuminated Trees"
       }
     ],
-    "persist": true,
-    "lastModified": 1780872589168,
+    "persist": false,
+    "lastModified": 1780963299531,
     "modifiedBy": "user"
   },
   "treeWindSensitivity": {
-    "value": 2.2960000000000003,
-    "defaultValue": 1,
+    "value": 2.7215,
+    "defaultValue": 2.2960000000000003,
     "userOverridden": true,
     "type": "number",
     "category": "tree",
@@ -6215,12 +6242,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780872003110,
+    "lastModified": 1780961018309,
     "modifiedBy": "user"
   },
   "treeSwayMult": {
-    "value": 2.6375,
-    "defaultValue": 1,
+    "value": 3,
+    "defaultValue": 2.6375,
     "userOverridden": true,
     "type": "number",
     "category": "tree",
@@ -6230,12 +6257,12 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871996249,
+    "lastModified": 1780961021580,
     "modifiedBy": "user"
   },
   "treeSize": {
     "value": 0.2,
-    "defaultValue": 1,
+    "defaultValue": 0.3027500000000006,
     "userOverridden": true,
     "type": "number",
     "category": "tree",
@@ -6245,25 +6272,25 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780872595074,
+    "lastModified": 1780963315392,
     "modifiedBy": "user"
   },
   "treeLODEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "tree",
     "description": "Enable LOD animation throttling",
     "shortLabel": "LOD",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311487,
+    "modifiedBy": "server-defaults"
   },
   "treeCullDistance": {
     "value": 120,
     "defaultValue": 120,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree cull distance",
@@ -6272,13 +6299,13 @@
     "max": 300,
     "step": 10,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311488,
+    "modifiedBy": "server-defaults"
   },
   "treeMaxVisible": {
     "value": 1000,
     "defaultValue": 1000,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Max visible trees",
@@ -6287,13 +6314,13 @@
     "max": 2000,
     "step": 100,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311488,
+    "modifiedBy": "server-defaults"
   },
   "treeDensityMultiplier": {
-    "value": 1,
+    "value": 3.3475000000000006,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Global multiplier for all biome tree densities (0 = no trees, 5 = 5x density)",
@@ -6302,13 +6329,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960996276,
+    "modifiedBy": "user"
   },
   "biomeTreeChance0": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for deep_water",
@@ -6317,13 +6344,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311488,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance1": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for shallow_water",
@@ -6332,13 +6359,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311489,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance2": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for beach",
@@ -6347,13 +6374,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311489,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance3": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for lowland",
@@ -6362,13 +6389,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311489,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance4": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for grassland",
@@ -6377,13 +6404,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311489,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance5": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for forest",
@@ -6392,13 +6419,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311490,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance6": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for mountain",
@@ -6407,13 +6434,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311490,
+    "modifiedBy": "server-defaults"
   },
   "biomeTreeChance7": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Tree chance multiplier for snow",
@@ -6422,13 +6449,13 @@
     "max": 5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311491,
+    "modifiedBy": "server-defaults"
   },
   "treeMinSlope": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Reduce minimum slope requirement for tree spawning (higher = more flat-land trees)",
@@ -6437,13 +6464,13 @@
     "max": 10,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311491,
+    "modifiedBy": "server-defaults"
   },
   "flatTreeDensity": {
     "value": 0.15,
     "defaultValue": 0.15,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Random flat-terrain tree density as fraction of biome density (0 = only slope trees)",
@@ -6452,25 +6479,25 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311491,
+    "modifiedBy": "server-defaults"
   },
   "treeUpright": {
     "value": true,
-    "defaultValue": false,
+    "defaultValue": true,
     "userOverridden": true,
     "type": "boolean",
     "category": "tree",
     "description": "Keep trees vertical instead of tilting to terrain normal",
     "shortLabel": "Upright",
     "persist": true,
-    "lastModified": 1780871938167,
+    "lastModified": 1780961008275,
     "modifiedBy": "user"
   },
   "billboardMaxInstances": {
-    "value": 1500,
+    "value": 500,
     "defaultValue": 1500,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "tree",
     "description": "Maximum billboard tree instances (recreates mesh)",
@@ -6479,13 +6506,13 @@
     "max": 10000,
     "step": 500,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961013534,
+    "modifiedBy": "user"
   },
   "maxRenderDistance": {
     "value": 80,
     "defaultValue": 80,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "performance",
     "description": "Maximum tile render distance",
@@ -6493,13 +6520,13 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "vertexReduction": {
     "value": 0.8,
     "defaultValue": 0.8,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "performance",
     "description": "Max vertex reduction (adaptive mesh)",
@@ -6507,13 +6534,13 @@
     "max": 0.95,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "targetFps": {
     "value": 30,
     "defaultValue": 30,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "performance",
     "description": "Target FPS for performance manager",
@@ -6521,13 +6548,13 @@
     "max": 120,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "scrollEffectStartHeight": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "camera",
     "description": "Height above terrain where drag-speed scaling begins",
@@ -6536,13 +6563,13 @@
     "max": 200,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "scrollBaseDragSpeed": {
     "value": 0.04,
     "defaultValue": 0.04,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "camera",
     "description": "Base right-click / touch drag pan speed",
@@ -6551,13 +6578,13 @@
     "max": 0.5,
     "step": 0.001,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "scrollHeightMultiplier": {
     "value": 0.001,
     "defaultValue": 0.001,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "camera",
     "description": "Extra drag speed per world unit above start height",
@@ -6566,13 +6593,13 @@
     "max": 0.05,
     "step": 0.0001,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "wheelSensitivity": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "camera",
     "description": "Mouse wheel zoom sensitivity multiplier",
@@ -6581,13 +6608,13 @@
     "max": 10,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "maxCameraHeight": {
     "value": 45,
     "defaultValue": 45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "camera",
     "description": "Maximum camera zoom distance (orbit radius)",
@@ -6596,25 +6623,25 @@
     "max": 300,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "isometricMode": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "camera",
     "description": "Enable isometric camera mode",
     "shortLabel": "Isometric",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311494,
+    "modifiedBy": "server-defaults"
   },
   "starType": {
     "value": "default",
     "defaultValue": "default",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "select",
     "category": "stars",
     "description": "Star field preset type",
@@ -6650,13 +6677,13 @@
       }
     ],
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyFadeStartHeight": {
     "value": 50,
     "defaultValue": 50,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "sky",
     "description": "Camera height where stars start appearing",
@@ -6665,13 +6692,13 @@
     "max": 500,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyFadeEndHeight": {
     "value": 120,
     "defaultValue": 120,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "sky",
     "description": "Camera height where stars are fully visible",
@@ -6680,13 +6707,13 @@
     "max": 1000,
     "step": 10,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyTransparency": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "sky",
     "description": "Atmospheric sky transparency (0 = orbit/space, 1 = full atmosphere)",
@@ -6695,8 +6722,8 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyStarDensity": {
     "value": 1000,
@@ -6710,8 +6737,8 @@
     "max": 5000,
     "step": 100,
     "persist": true,
-    "lastModified": 1780871887341,
-    "modifiedBy": "preset"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyStarBrightness": {
     "value": 1,
@@ -6725,8 +6752,8 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871887341,
-    "modifiedBy": "preset"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyShimmerSpeed": {
     "value": 2,
@@ -6740,8 +6767,8 @@
     "max": 10,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871887341,
-    "modifiedBy": "preset"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyShimmerIntensity": {
     "value": 0.3,
@@ -6755,8 +6782,8 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871887341,
-    "modifiedBy": "preset"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyStarColor": {
     "value": "#ffffff",
@@ -6767,25 +6794,25 @@
     "description": "Star color tint",
     "shortLabel": "Star Color",
     "persist": true,
-    "lastModified": 1780871887341,
-    "modifiedBy": "preset"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "skyEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "sky",
     "description": "Enable starfield shader (disable to use canvas sky)",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "jesusLift": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "jesus",
     "description": "Target lift height for Jesus summon hill",
@@ -6794,19 +6821,19 @@
     "max": 20,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "pieceModelOverrides": {
     "value": {},
     "defaultValue": {},
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "object",
     "category": "models",
     "description": "GLB model overrides for chess pieces",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorEnabled": {
     "value": false,
@@ -6817,13 +6844,13 @@
     "description": "Enable custom Navi cursor",
     "shortLabel": "Enabled",
     "persist": true,
-    "lastModified": 1780871888202,
+    "lastModified": 1780960311495,
     "modifiedBy": "server-defaults"
   },
   "cursorSize": {
     "value": 42,
     "defaultValue": 42,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Cursor overall size (pixels)",
@@ -6832,13 +6859,13 @@
     "max": 80,
     "step": 2,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingWidth": {
     "value": 14,
     "defaultValue": 14,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Wing width (pixels)",
@@ -6847,13 +6874,13 @@
     "max": 40,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingHeight": {
     "value": 32,
     "defaultValue": 32,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Wing height (pixels)",
@@ -6862,13 +6889,13 @@
     "max": 80,
     "step": 2,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingOffset": {
     "value": -6,
     "defaultValue": -6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Wing vertical offset (pixels)",
@@ -6877,13 +6904,13 @@
     "max": 0,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingAngle": {
     "value": 30,
     "defaultValue": 30,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Wing spread angle (degrees)",
@@ -6892,73 +6919,73 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorCoreColorInner": {
     "value": "#ffffff",
     "defaultValue": "#ffffff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cursor",
     "description": "Core inner color",
     "shortLabel": "Core Inner",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorCoreColorOuter": {
     "value": "#5eb2ff",
     "defaultValue": "#5eb2ff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cursor",
     "description": "Core outer glow color",
     "shortLabel": "Core Outer",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311495,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingColor": {
     "value": "#cef8ff",
     "defaultValue": "#cef8ff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cursor",
     "description": "Wing color",
     "shortLabel": "Wing Color",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorTrailColor": {
     "value": "#82e1ff",
     "defaultValue": "#82e1ff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cursor",
     "description": "Trail color",
     "shortLabel": "Trail Color",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorGlowColor": {
     "value": "#78ffff",
     "defaultValue": "#78ffff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "cursor",
     "description": "Cursor glow color",
     "shortLabel": "Glow Color",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorPulseSpeed": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Pulse animation speed (seconds)",
@@ -6967,25 +6994,25 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDistanceScale": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "cursor",
     "description": "Scale cursor size based on camera height",
     "shortLabel": "Distance Scale",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDistanceNear": {
     "value": 12,
     "defaultValue": 12,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera orbit distance where cursor stays full size",
@@ -6994,13 +7021,13 @@
     "max": 100,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDistanceFar": {
     "value": 100,
     "defaultValue": 100,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera orbit distance where cursor reaches min scale",
@@ -7009,13 +7036,13 @@
     "max": 500,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDistanceMinScale": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Cursor scale multiplier at far distance",
@@ -7024,13 +7051,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorTrailScaleX": {
     "value": 1.25,
     "defaultValue": 1.25,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Trail max X stretch multiplier",
@@ -7039,13 +7066,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorTrailScaleY": {
     "value": 0.7,
     "defaultValue": 0.7,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Trail max Y stretch multiplier",
@@ -7054,13 +7081,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorTrailOpacity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Trail opacity multiplier",
@@ -7069,13 +7096,13 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSpeedSize": {
     "value": 0.8,
     "defaultValue": 0.8,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Cursor size boost from speed (0 = no boost)",
@@ -7084,25 +7111,25 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingSpeedScale": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "cursor",
     "description": "Shrink wings when stationary and expand with speed",
     "shortLabel": "Wing Speed Scale",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingScaleMult": {
     "value": 1.5,
     "defaultValue": 1.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Max wing scale at full speed",
@@ -7111,13 +7138,13 @@
     "max": 3,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorWingOpacityMult": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Wing opacity multiplier",
@@ -7126,25 +7153,25 @@
     "max": 2,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorGrabDisableSpeedScale": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "cursor",
     "description": "Disable cursor speed-scale growth while left-click dragging",
     "shortLabel": "Grab: No Speed Scale",
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorGrabSlowFactor": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera pan speed multiplier while left-click dragging (lower = heavier feel)",
@@ -7153,13 +7180,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorGrabBuzzIntensity": {
     "value": 1.6,
     "defaultValue": 1.6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Buzz volume/intensity multiplier while dragging (effort sound)",
@@ -7168,13 +7195,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorBuzzVolume": {
     "value": 0.12,
     "defaultValue": 0.12,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Base volume of the cursor buzz sound",
@@ -7183,13 +7210,13 @@
     "max": 1,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorBuzzFadeNear": {
     "value": 10,
     "defaultValue": 10,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera distance where buzz volume fade begins",
@@ -7198,13 +7225,13 @@
     "max": 50,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorBuzzFadeFar": {
     "value": 40,
     "defaultValue": 40,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera distance where buzz reaches minimum volume",
@@ -7213,13 +7240,13 @@
     "max": 200,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDragSpeedCap": {
     "value": 0.04,
     "defaultValue": 0.04,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Maximum right-click drag pan speed (hard cap)",
@@ -7228,13 +7255,13 @@
     "max": 0.2,
     "step": 0.01,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDragCutoffDistance": {
     "value": 60,
     "defaultValue": 60,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Maximum world distance the camera can pan during a right-click drag",
@@ -7243,13 +7270,13 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDragMomentum": {
     "value": 0,
     "defaultValue": 0,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Camera coasting momentum after releasing a right-click drag (0 = no coasting)",
@@ -7258,13 +7285,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorIdleRadius": {
     "value": 18,
     "defaultValue": 18,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Max orbit radius of idle local-space hover (px)",
@@ -7273,13 +7300,13 @@
     "max": 60,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorIdleSpeed": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Speed multiplier for idle spherical flight",
@@ -7288,13 +7315,13 @@
     "max": 5,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownSubmergeMs": {
     "value": 400,
     "defaultValue": 400,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: time to dip under water (ms)",
@@ -7303,13 +7330,13 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownUnderwaterMs": {
     "value": 600,
     "defaultValue": 600,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: pause underwater before emerging (ms)",
@@ -7318,13 +7345,13 @@
     "max": 3000,
     "step": 50,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownEmergeMs": {
     "value": 500,
     "defaultValue": 500,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: time to rise back to surface (ms)",
@@ -7333,13 +7360,13 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownFlyUpMs": {
     "value": 800,
     "defaultValue": 800,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: time to fly up above water (ms)",
@@ -7348,13 +7375,13 @@
     "max": 3000,
     "step": 50,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownShakeMs": {
     "value": 1200,
     "defaultValue": 1200,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: wet-dog shake duration (ms)",
@@ -7363,13 +7390,13 @@
     "max": 4000,
     "step": 100,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownHarumphMs": {
     "value": 400,
     "defaultValue": 400,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: harumph TTS pause before ending (ms)",
@@ -7378,13 +7405,13 @@
     "max": 2000,
     "step": 50,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownShakeAmplitude": {
     "value": 12,
     "defaultValue": 12,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: max shake horizontal displacement (px)",
@@ -7393,13 +7420,13 @@
     "max": 40,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownShakeCycles": {
     "value": 4,
     "defaultValue": 4,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: number of wet-dog shake cycles",
@@ -7408,13 +7435,13 @@
     "max": 12,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownSubmergeDepth": {
     "value": 40,
     "defaultValue": 40,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: how far the sprite dips (px)",
@@ -7423,13 +7450,13 @@
     "max": 100,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorDrownFlyHeight": {
     "value": 25,
     "defaultValue": 25,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Drowning: how high the sprite flies above water (px)",
@@ -7438,13 +7465,13 @@
     "max": 80,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedOpacity": {
     "value": 0.5,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: cursor opacity while submerged",
@@ -7453,13 +7480,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedBrightness": {
     "value": 0.55,
     "defaultValue": 0.55,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: brightness filter while submerged",
@@ -7468,13 +7495,13 @@
     "max": 1.5,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedSepia": {
     "value": 0.45,
     "defaultValue": 0.45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: sepia filter while submerged",
@@ -7483,13 +7510,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedHue": {
     "value": 155,
     "defaultValue": 155,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: hue-rotate angle while submerged (deg)",
@@ -7498,13 +7525,13 @@
     "max": 360,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedSat": {
     "value": 1.7,
     "defaultValue": 1.7,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: saturation multiplier while submerged",
@@ -7513,13 +7540,13 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedBlur": {
     "value": 0.6,
     "defaultValue": 0.6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: blur amount while submerged (px)",
@@ -7528,13 +7555,13 @@
     "max": 4,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorSubmergedOverlay": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: blue water overlay opacity while submerged",
@@ -7543,13 +7570,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "cursorUnderwaterSpeed": {
     "value": 0.02,
     "defaultValue": 0.02,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "cursor",
     "description": "Underwater: cursor follow speed (lower = heavier feel)",
@@ -7558,13 +7585,13 @@
     "max": 0.5,
     "step": 0.005,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherFrontThreshold": {
     "value": 55,
     "defaultValue": 55,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Distance (world units) at which opposite pressure agents deform rings and show front symbols",
@@ -7573,13 +7600,13 @@
     "max": 200,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherSymbolCutoff": {
     "value": 0.8,
     "defaultValue": 0.8,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for symbol visibility gate (lower = symbols stay visible from further away)",
@@ -7588,13 +7615,13 @@
     "max": 1,
     "step": 0.05,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherRingScale": {
     "value": 3.5,
     "defaultValue": 3.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Visual scale multiplier for isobar ring radii on the minimap",
@@ -7603,13 +7630,13 @@
     "max": 8,
     "step": 0.5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherSpawnRadius": {
     "value": 80,
     "defaultValue": 80,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Radius (world units) for debug weather agent spawning around player",
@@ -7618,13 +7645,13 @@
     "max": 300,
     "step": 5,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherSpawnCount": {
     "value": 8,
     "defaultValue": 8,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Number of agents to spawn per debug spawn click",
@@ -7633,13 +7660,13 @@
     "max": 30,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "climateAgentCount": {
     "value": 200,
     "defaultValue": 200,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Target number of climate agents in the environmental simulation",
@@ -7648,13 +7675,13 @@
     "max": 500,
     "step": 10,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311496,
+    "modifiedBy": "server-defaults"
   },
   "weatherMoveScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for agent movement range. Higher = larger weather patterns",
@@ -7663,13 +7690,13 @@
     "max": 4,
     "step": 0.25,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherSampleCount": {
     "value": 6,
     "defaultValue": 6,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Number of squares sampled per agent move. Lower = more directed movement",
@@ -7678,13 +7705,13 @@
     "max": 12,
     "step": 1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherWetnessIntensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for terrain wetness darkening",
@@ -7693,13 +7720,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherLightBlockingIntensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for terrain light blocking",
@@ -7708,13 +7735,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherFogDensityScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for fog plane density from weather snapshot",
@@ -7723,13 +7750,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherCloudCoverageScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for sky cloud coverage / overcast darkening",
@@ -7738,13 +7765,13 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherStormWaveScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for storm-driven wave amplitude",
@@ -7753,13 +7780,13 @@
     "max": 3,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "weatherTreeWindScale": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Multiplier for weather-driven tree wind",
@@ -7768,26 +7795,26 @@
     "max": 2,
     "step": 0.1,
     "persist": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudEnabled": {
     "value": true,
     "defaultValue": true,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "weather",
     "description": "Enable voxel billboard cloud system",
     "shortLabel": "Clouds",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudQuality": {
     "value": 2,
     "defaultValue": 2,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud quality level (0=lowest, 6=highest)",
@@ -7800,13 +7827,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudBaseHeight": {
     "value": 45,
     "defaultValue": 45,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud base height above terrain",
@@ -7819,13 +7846,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudRenderRadius": {
     "value": 7,
     "defaultValue": 7,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud render radius in grid cells",
@@ -7838,13 +7865,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudColor": {
     "value": "#ffffff",
     "defaultValue": "#ffffff",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "weather",
     "description": "Cloud tint colour",
@@ -7854,13 +7881,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudDebug": {
     "value": false,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "weather",
     "description": "Show cloud position debug markers",
@@ -7870,13 +7897,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudSize": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud sprite size multiplier",
@@ -7889,13 +7916,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudDensity": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud spawn density threshold multiplier",
@@ -7908,13 +7935,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudVoxels": {
     "value": 24,
     "defaultValue": 24,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Billboards per cloud cluster",
@@ -7927,13 +7954,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudRipple": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Wind tearing / ripple strength",
@@ -7946,13 +7973,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudJetstream": {
     "value": 1,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Cloud wind speed multiplier (jetstream)",
@@ -7965,13 +7992,13 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "voxelCloudProximityFade": {
     "value": 60,
     "defaultValue": 60,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "weather",
     "description": "Distance at which cloud billboards fade in from camera",
@@ -7984,26 +8011,26 @@
       "param": "voxelCloudEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "fogPlaneEnabled": {
-    "value": false,
+    "value": true,
     "defaultValue": false,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "boolean",
     "category": "environment",
     "description": "Enable fog plane",
     "shortLabel": "Fog Plane",
     "persist": true,
     "rebuildCategory": true,
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780963977984,
+    "modifiedBy": "user"
   },
   "fogPlaneHeight": {
-    "value": 0.5,
+    "value": 5.267999999999997,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog plane height above water",
@@ -8016,13 +8043,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780963980146,
+    "modifiedBy": "user"
   },
   "fogPlaneRadius": {
     "value": 80,
     "defaultValue": 80,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog plane outer circular mask radius",
@@ -8035,13 +8062,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "fogPlaneInnerRadius": {
-    "value": 60,
+    "value": 59.325000000000024,
     "defaultValue": 60,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog plane inner radius where circular fade begins",
@@ -8054,13 +8081,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961833603,
+    "modifiedBy": "user"
   },
   "fogPlaneNearDist": {
-    "value": 10,
+    "value": 10.989999999999998,
     "defaultValue": 10,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Near distance for alpha ramp (transparent)",
@@ -8073,13 +8100,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961820911,
+    "modifiedBy": "user"
   },
   "fogPlaneFarDist": {
-    "value": 50,
+    "value": 5,
     "defaultValue": 50,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Far distance for alpha ramp (opaque)",
@@ -8092,13 +8119,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961816895,
+    "modifiedBy": "user"
   },
   "fogPlaneDistTransparency": {
-    "value": 1,
+    "value": 0.30119999999999997,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Distance transparency strength (0 = uniform opacity, 1 = full near-far fade)",
@@ -8111,13 +8138,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961796808,
+    "modifiedBy": "user"
   },
   "fogPlaneDensity": {
-    "value": 1,
+    "value": 2.4062499999999996,
     "defaultValue": 1,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Overall fog density multiplier",
@@ -8130,13 +8157,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961791908,
+    "modifiedBy": "user"
   },
   "fogPlaneWindFade": {
-    "value": 0.5,
+    "value": 1.0750000000000002,
     "defaultValue": 0.5,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "How much wind blows fog away",
@@ -8149,13 +8176,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961784263,
+    "modifiedBy": "user"
   },
   "fogPlaneNoiseScale": {
-    "value": 0.05,
+    "value": 0.06285,
     "defaultValue": 0.05,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Noise UV scale for fog splatter pattern",
@@ -8168,13 +8195,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961777155,
+    "modifiedBy": "user"
   },
   "fogPlaneSpeed": {
     "value": 0.3,
     "defaultValue": 0.3,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Fog animation speed",
@@ -8187,13 +8214,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   },
   "fogPlaneColor": {
-    "value": "#cccccc",
+    "value": "#813d9c",
     "defaultValue": "#cccccc",
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "color",
     "category": "environment",
     "description": "Fog color",
@@ -8203,13 +8230,13 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780961862261,
+    "modifiedBy": "user"
   },
   "fogPlaneDiurnalAmp": {
     "value": 0.15,
     "defaultValue": 0.15,
-    "userOverridden": false,
+    "userOverridden": true,
     "type": "number",
     "category": "environment",
     "description": "Diurnal temperature amplitude (±range)",
@@ -8222,7 +8249,7 @@
       "param": "fogPlaneEnabled",
       "value": true
     },
-    "lastModified": 1780871886973,
-    "modifiedBy": "init"
+    "lastModified": 1780960311497,
+    "modifiedBy": "server-defaults"
   }
 }

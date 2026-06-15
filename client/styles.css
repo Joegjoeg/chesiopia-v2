@@ -939,3 +939,162 @@ body.navi-cursor-active #naviCursor.is-visible {
     font-weight: bold;
     font-family: monospace;
 }
+
+/* ============================
+   Bridge Panel
+   ============================ */
+
+#bridgePanel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 320px;
+    background: rgba(6, 10, 18, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(12px);
+    z-index: 500;
+    padding: 16px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #f5f5f5;
+    pointer-events: auto;
+}
+
+.bridge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.bridge-hint {
+    font-size: 11px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.bridge-section {
+    margin-bottom: 14px;
+}
+
+.bridge-section:last-child {
+    margin-bottom: 0;
+}
+
+.bridge-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.bridge-row:last-child {
+    margin-bottom: 0;
+}
+
+.bridge-btn {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.07);
+    color: #f5f5f5;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.bridge-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.bridge-btn:active {
+    transform: translateY(1px);
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.bridge-btn-wide {
+    flex: 1;
+}
+
+.bridge-dir-btn {
+    width: 64px;
+    padding: 6px 0;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.07);
+    color: #f5f5f5;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+}
+
+.bridge-dir-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.bridge-dir-btn:active {
+    transform: translateY(1px);
+}
+
+.bridge-dir-btn.active {
+    background: rgba(78, 148, 230, 0.35);
+    border-color: rgba(78, 148, 230, 0.6);
+}
+
+.bridge-label {
+    display: block;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 6px;
+}
+
+.bridge-row input[type="range"] {
+    flex: 1;
+    accent-color: #4e94e6;
+    cursor: pointer;
+}
+
+.bridge-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.bridge-value-row span {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.8);
+    min-width: 40px;
+}
+
+.bridge-btn-apply {
+    flex: none;
+    padding: 8px 16px;
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.4);
+}
+
+.bridge-btn-apply:hover {
+    background: rgba(76, 175, 80, 0.35);
+    border-color: rgba(76, 175, 80, 0.6);
+}

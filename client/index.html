@@ -3,123 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chessopia - 3D Infinite Chess</title>
+    <title>Privateer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
-        
-        <!-- UI Overlay -->
-        <div id="uiOverlay">
-            <!-- Player Info -->
-            <div id="playerInfo" class="ui-panel" style="display: none;">
-                <h3>Player Info</h3>
-                <div id="playerName">Guest</div>
-                <div id="playerPoints">Points: 0</div>
-                <div id="playerPieces">Pieces: 0</div>
+    </div>
+
+    <!-- Bridge Panel — toggled with backtick (`) -->
+    <div id="bridgePanel" style="display:none;">
+        <div class="bridge-header">
+            <span>Bridge</span>
+            <span class="bridge-hint">` to close</span>
+        </div>
+        <div class="bridge-section">
+            <div class="bridge-row">
+                <button class="bridge-btn" data-cmd="easyPort">Easy Port</button>
+                <button class="bridge-btn" data-cmd="easyStarboard">Easy Starboard</button>
             </div>
-            
-            <!-- Server Errors -->
-            <div id="serverErrors" class="ui-panel" style="display: none;">
-                <h3 style="color: #ff0000;">Server Errors</h3>
-                <div id="errorList" style="font-family: monospace; font-size: 12px; color: #ff6666;">
-                    <div>No server errors...</div>
-                </div>
-                <button id="clearErrorsBtn" class="dev-btn" style="background: #cc0000; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin: 2px; font-size: 11px;">
-                    Clear Errors
-                </button>
+            <div class="bridge-row">
+                <button class="bridge-btn" data-cmd="hardPort">Hard Port</button>
+                <button class="bridge-btn" data-cmd="hardStarboard">Hard Starboard</button>
             </div>
-            
-            
-            <!-- Shop Modal (hidden by default) -->
-            <div id="shopModal" class="modal hidden">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h2>Chess Shop</h2>
-                        <button id="closeShop" class="close-btn">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div id="shopPoints">Points: 0</div>
-                        <div id="shopItems" class="shop-grid">
-                            <div class="shop-item" data-piece="pawn">
-                                <h3>Pawn</h3>
-                                <div class="cost">2 pts</div>
-                                <button class="buy-btn">Buy</button>
-                            </div>
-                            <div class="shop-item" data-piece="knight">
-                                <h3>Knight</h3>
-                                <div class="cost">6 pts</div>
-                                <button class="buy-btn">Buy</button>
-                            </div>
-                            <div class="shop-item" data-piece="bishop">
-                                <h3>Bishop</h3>
-                                <div class="cost">6 pts</div>
-                                <button class="buy-btn">Buy</button>
-                            </div>
-                            <div class="shop-item" data-piece="rook">
-                                <h3>Rook</h3>
-                                <div class="cost">10 pts</div>
-                                <button class="buy-btn">Buy</button>
-                            </div>
-                            <div class="shop-item" data-piece="queen">
-                                <h3>Queen</h3>
-                                <div class="cost">18 pts</div>
-                                <button class="buy-btn">Buy</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div class="bridge-row">
+                <button class="bridge-btn bridge-btn-wide" data-cmd="amidships">Rudder Amidships</button>
+                <button class="bridge-btn bridge-btn-wide" data-cmd="steady">Steady As She Goes</button>
             </div>
-            
-            <!-- Connection Status (Hidden) -->
-            <div id="connectionStatus" style="display: none;">
-                <div class="connection-status">
-                    <span id="statusText">Disconnected</span>
-                    <div id="connectionDebug" style="margin-top: 5px; font-size: 12px; color: #ff9999;"></div>
-                </div>
+        </div>
+        <div class="bridge-section">
+            <label class="bridge-label">Rudder Angle</label>
+            <div class="bridge-row">
+                <button class="bridge-dir-btn" id="bridgePortDir">Port</button>
+                <input type="range" id="bridgeRudderSlider" min="0" max="100" value="30">
+                <button class="bridge-dir-btn" id="bridgeStarboardDir">Starboard</button>
             </div>
-            
-            <script>
-                // Immediately hide connection status on page load
-                document.addEventListener('DOMContentLoaded', () => {
-                    const statusEl = document.getElementById('connectionStatus');
-                    if (statusEl) {
-                        statusEl.style.display = 'none';
-                        console.log('🔇 Connection status element hidden');
-                    }
-                });
-                
-                // Also hide it after a delay in case other scripts show it
-                setTimeout(() => {
-                    const statusEl = document.getElementById('connectionStatus');
-                    if (statusEl) {
-                        statusEl.style.display = 'none';
-                    }
-                }, 1000);
-            </script>
+            <div class="bridge-value-row">
+                <span id="bridgeRudderValue">30%</span>
+                <button class="bridge-btn bridge-btn-apply" id="bridgeApplyRudder">Apply Rudder</button>
+            </div>
         </div>
     </div>
-    
-                
+
+    <!-- Focus prompt - shown when window loses focus -->
+    <div id="focusPrompt" style="display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:12px 24px;border-radius:8px;font-family:sans-serif;font-size:14px;z-index:1000;pointer-events:none;text-align:center;">
+        Click the game to enable controls<br>
+        <span style="font-size:11px;color:#aaa;">1-8 = Speed &bull; WASD = Steer &bull; ` = Bridge &bull; Space = Fire</span>
+    </div>
+    <script>
+        (function() {
+            const prompt = document.getElementById('focusPrompt');
+            function updatePrompt() {
+                prompt.style.display = document.hasFocus() ? 'none' : 'block';
+            }
+            window.addEventListener('focus', updatePrompt);
+            window.addEventListener('blur', updatePrompt);
+            document.addEventListener('click', () => { window.focus(); updatePrompt(); });
+            setInterval(updatePrompt, 500);
+        })();
+    </script>
+
     <!-- Loading Screen -->
     <div id="loadingScreen">
         <div class="loading-content">
-            <h1>CHESSIA</h1>
+            <h1>PRIVATEER</h1>
             <div class="loading-bar">
                 <div class="loading-progress"></div>
             </div>
             <div class="loading-text">Loading 3D World...</div>
             <div id="loadingLog" style="margin-top:12px;max-height:40vh;overflow-y:auto;font-family:monospace;font-size:11px;color:#ccc;background:rgba(0,0,0,0.5);border-radius:6px;padding:8px;text-align:left;line-height:1.4;"></div>
         </div>
-    </div>
-
-    <!-- Navi cursor overlay -->
-    <div id="naviCursor" aria-hidden="true">
-        <div class="navi-cursor-trail"></div>
-        <div class="navi-cursor-wing is-left"></div>
-        <div class="navi-cursor-wing is-right"></div>
-        <div class="navi-cursor-core"></div>
     </div>
     
     <!-- Mobile debug logger: mirror console to the loading screen -->
@@ -694,162 +647,68 @@
     
     <!-- Game modules -->
     <script>
-        const dependencyTimeoutMs = 20000; // Fail fast after 20s instead of looping forever
-        
+        const dependencyTimeoutMs = 20000;
+
         function loadGameModules() {
-            // Load auth modules first
-            const authScripts = [
-                'authApi.js',
-                'authState.js',
-                'authOverlay.js'
+            const scripts = [
+                'network.js?v=' + Date.now(),
+                'consoleManager.js?v=' + Date.now(),
+                'terrain-new.js?v=' + Date.now(),
+                'RollingTerrainMesh.js?v=' + Date.now(),
+                'TerrainOuterRing.js?v=' + Date.now(),
+                'camera.js?v=' + Date.now(),
+                'performanceManager.js?v=' + Date.now(),
+                'ecs/componentRegistry.js?v=' + Date.now(),
+                'ecs/gameplayPool.js?v=' + Date.now(),
+                'ecs/visualPool.js?v=' + Date.now(),
+                'ecs/world.js?v=' + Date.now(),
+                'ecs/archetypes/ship.js?v=' + Date.now(),
+                'ecs/archetypes/cannonball.js?v=' + Date.now(),
+                'ecs/systems/inputSystem.js?v=' + Date.now(),
+                'ecs/systems/movementSystem.js?v=' + Date.now(),
+                'ecs/systems/combatSystem.js?v=' + Date.now(),
+                'ecs/systems/physicsSystem.js?v=' + Date.now(),
+                'ecs/systems/lifetimeSystem.js?v=' + Date.now(),
+                'ecs/systems/visualSyncSystem.js?v=' + Date.now(),
+                'ecs/systems/networkSyncSystem.js?v=' + Date.now(),
+                'game.js?v=' + Date.now()
             ];
-            
-            function loadAuthScript(index, callback) {
-                if (index >= authScripts.length) {
-                    callback();
+
+            function loadScript(index) {
+                if (index >= scripts.length) {
+                    console.log('All game modules loaded, initializing game...');
+                    if (typeof initializeGame === 'function') {
+                        setTimeout(initializeGame, 100);
+                    } else {
+                        console.error('initializeGame function not found');
+                    }
                     return;
                 }
+
                 const script = document.createElement('script');
-                script.src = authScripts[index];
+                script.src = scripts[index];
                 script.onload = () => {
-                    console.log(`Loaded auth module ${authScripts[index]}`);
-                    loadAuthScript(index + 1, callback);
+                    console.log(`Loaded ${scripts[index]}`);
+                    loadScript(index + 1);
                 };
                 script.onerror = () => {
-                    console.error(`Failed to load auth module ${authScripts[index]}`);
-                    loadAuthScript(index + 1, callback);
+                    console.error(`Failed to load ${scripts[index]}`);
+                    loadScript(index + 1);
                 };
                 document.body.appendChild(script);
             }
-            
-            // Initialize auth overlay after auth modules load
-            function initAuthAndGame() {
-                if (typeof window.authOverlay === 'undefined') {
-                    console.error('[Auth] Auth overlay not loaded, continuing without auth');
-                    startGameLoading();
-                    return;
-                }
-                
-                window.authOverlay.init((user) => {
-                    console.log('[Auth] User authenticated:', user.username, '(' + user.role + ')');
-                    startGameLoading();
-                });
-            }
-            
-            function startGameLoading() {
-                // Load game modules in order
-                const scripts = [
-                    'gameState.js?v=' + Date.now(),
-                    'network.js?v=' + Date.now(),
-                    'consoleManager.js?v=' + Date.now(),
-                    'serverErrorDisplay.js?v=' + Date.now(),
-                    'terrain-new.js?v=' + Date.now(),
-                    'textureAtlasGenerator.js?v=' + Date.now(),
-                    'planetMapping.js?v=' + Date.now(),
-                    'groundwaterSystem.js?v=' + Date.now(),
-                    'RollingTerrainMesh.js?v=' + Date.now(),
-                    'TerrainOuterRing.js?v=' + Date.now(),
-                    'waterReflectionManager.js?v=' + Date.now(),
-                    'skyShaderSystem.js?v=' + Date.now(),
-                    'zodiacConstellationSystem.js?v=' + Date.now(),
-                    'board_clean.js?v=' + Date.now(),
-                    'camera.js?v=' + Date.now(),
-                    'soundManager.js?v=' + Date.now(),
-                    'pieces3d.js?v=' + Date.now(),
-                    '/moveValidator.js?v=' + Date.now(),
-                    'movementBridge.js?v=' + Date.now(),
-                    'coveringSystem.js?v=' + Date.now(),
-                    'visualFeedback.js?v=' + Date.now(),
-                    'growingTreeSystem.js?v=' + Date.now(),
-                    'terrainTreeSystem.js?v=' + Date.now(),
-                    'poplarTreeSystem.js?v=' + Date.now(),
-                    'cherryTreeSystem.js?v=' + Date.now(),
-                    'billboardTreeSystem.js?v=' + Date.now(),
-                    'realisticTreeSystem.js?v=' + Date.now(),
-                    'hybridTreeManager.js?v=' + Date.now(),
-                    'terrainTreeIntegration.js?v=' + Date.now(),
-                    'debugTreeSystem.js?v=' + Date.now(),
-                    'shadowSystem.js?v=' + Date.now(),
-                    'celShaderSimple.js?v=' + Date.now(),
-                    'grassSystem.js?v=' + Date.now(),
-                    'materialRegistry.js?v=' + Date.now(),
-                    'textureSetLoader.js?v=' + Date.now(),
-                    'textureBlendingSystem.js?v=' + Date.now(),
-                    'fogPlaneSystem.js?v=' + Date.now(),
-                    'decorativeVisuals.js?v=' + Date.now(),
-                    'naviCursor.js?v=' + Date.now(),
-                    'settlementData.js?v=' + Date.now(),
-                    'settlementSystem.js?v=' + Date.now(),
-                    'buildingSystem.js?v=' + Date.now(),
-                    'roadSystem.js?v=' + Date.now(),
-                    'villagerSystem.js?v=' + Date.now(),
-                    'knightSystem.js?v=' + Date.now(),
-                    'tournamentSystem.js?v=' + Date.now(),
-                    'tomeUI.js?v=' + Date.now(),
-                    'minimapOverlay.js?v=' + Date.now(),
-                    'performanceManager.js?v=' + Date.now(),
-                    'weatherDirector.js?v=' + Date.now(),
-                    'voxelCloudSystem.js?v=' + Date.now(),
-                    'distanceManager.js?v=' + Date.now(),
-                    'validationTests.js?v=' + Date.now(),
-                    'modifierStack.js?v=' + Date.now(),
-                    'parameterSystem.js?v=' + Date.now(),
-                    'devInterface.js?v=' + Date.now(),
-                    'memoryProfiler.js?v=' + Date.now(),
-                    'resourceGuard.js?v=' + Date.now(),
-                    'lodManager.js?v=' + Date.now(),
-                    'jesusSummonTriggerSystem.js?v=' + Date.now(),
-                    'jesusSummonSystem.js?v=' + Date.now(),
-                    'temporalAASystem.js?v=' + Date.now(),
-                    'crashDump.js?v=' + Date.now(),
-                    'multiPieceSelector.js?v=' + Date.now(),
-                    'formationPathfinding.js?v=' + Date.now(),
-                    'moveReservation.js?v=' + Date.now(),
-                    'groupMoveExecutor.js?v=' + Date.now(),
-                    'game.js?v=' + Date.now()
-                ];
-                
-                function loadScript(index) {
-                    if (index >= scripts.length) {
-                        // All scripts loaded, initialize game
-                        console.log('All game modules loaded, initializing game...');
-                        if (typeof initializeGame === 'function') {
-                            setTimeout(initializeGame, 100);
-                        } else {
-                            console.error('initializeGame function not found');
-                        }
-                        return;
-                    }
-                    
-                    const script = document.createElement('script');
-                    script.src = scripts[index];
-                    script.onload = () => {
-                        console.log(`Loaded ${scripts[index]}`);
-                        loadScript(index + 1);
-                    };
-                    script.onerror = () => {
-                        console.error(`Failed to load ${scripts[index]}`);
-                        loadScript(index + 1); // Continue loading other scripts
-                    };
-                    document.body.appendChild(script);
-                }
-                
-                loadScript(0);
-            }
-            
-            // Start by loading auth modules
-            loadAuthScript(0, initAuthAndGame);
+
+            loadScript(0);
         }
-        
+
         function showError(message) {
             const loadingScreen = document.getElementById('loadingScreen');
             if (loadingScreen) {
                 const content = loadingScreen.querySelector('.loading-content');
                 if (content) {
-                    // Replace content but keep the log area
                     const logEl = document.getElementById('loadingLog');
                     content.innerHTML = `
-                        <h1>CHESSIA</h1>
+                        <h1>PRIVATEER</h1>
                         <div style="color: #ff6b6b; margin: 20px 0; text-align: center;">
                             ${message}
                         </div>
@@ -867,11 +726,10 @@
                 }
             }
         }
-        
-        // Test if JavaScript is working
+
         console.log('[HTML] JavaScript is running!');
         window.testJS = true;
-        
+
         const dependenciesReady = Promise.all([
             loadThreeJS().then(() => {
                 if (typeof window.THREE === 'undefined') {
